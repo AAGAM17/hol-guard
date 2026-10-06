@@ -1,0 +1,126 @@
+"""Thin offline native content bridge; no business decision or admission."""
+
+from __future__ import annotations
+
+import hashlib
+from collections.abc import Mapping
+from typing import cast
+
+from .native_policy_snapshot_codec import (
+    _canonical_json_bytes_v3,
+    _strict_json_loads_v3,
+    _valid_digest_v3,
+)
+from .native_policy_snapshot_constants import POLICY_SNAPSHOT_MAX_BYTES, NativePolicySnapshotError
+
+_INSPECTION_FIELDS = frozenset(
+    {
+        "schema",
+        "version",
+        "authenticity",
+        "currentness",
+        "snapshot_digest",
+        "config_digest",
+        "policy_digest",
+        "business_policy_present",
+    }
+)
+
+
+def capture_business_binding(value: Mapping[str, object]) -> dict[str, object]:
+    """Own an immutable-in-flight wire copy; Rust still validates semantics."""
+
+    encoded = _canonical_json_bytes_v3(value)
+    if len(encoded) > POLICY_SNAPSHOT_MAX_BYTES:
+        raise NativePolicySnapshotError("native_policy_snapshot_too_large")
+    result = _strict_json_loads_v3(encoded)
+    if not isinstance(result, dict):
+        raise NativePolicySnapshotError("native_business_policy_content_invalid")
+    return cast(dict[str, object], result)
+
+
+def _native_content_operation(command: str, value: Mapping[str, object]) -> dict[str, object]:
+    from .native_runtime import _run_native_process, native_runtime_status
+
+    if command not in {"policy-snapshot-build", "policy-snapshot-inspect"}:
+        raise NativePolicySnapshotError("native_business_policy_consumer_unavailable")
+    status = native_runtime_status()
+    required = {"native-policy-snapshot-build-v1", "native-policy-snapshot-inspect-v1"}
+    if (
+        not status.available
+        or not status.compatible
+        or status.identity is None
+        or status.capabilities is None
+        or not required <= set(status.capabilities.features)
+    ):
+        raise NativePolicySnapshotError("native_business_policy_consumer_unavailable")
+    encoded = _canonical_json_bytes_v3(value)
+    if len(encoded) > POLICY_SNAPSHOT_MAX_BYTES:
+        raise NativePolicySnapshotError("native_policy_snapshot_too_large")
+    output = _run_native_process(
+        status.identity.path,
+        (command, "--stdin"),
+        input_text=encoded.decode("utf-8"),
+        timeout_seconds=5.0,
+    )
+    if output is None or len(output.encode("utf-8")) > POLICY_SNAPSHOT_MAX_BYTES:
+        raise NativePolicySnapshotError("native_business_policy_content_invalid")
+    result = _strict_json_loads_v3(output.encode("utf-8"))
+    if not isinstance(result, dict):
+        raise NativePolicySnapshotError("native_business_policy_content_invalid")
+    return cast(dict[str, object], result)
+
+
+def validate_business_snapshot_content(
+    snapshot: Mapping[str, object],
+    *,
+    allow_empty_mac: bool = False,
+    verify_digests: bool = True,
+) -> None:
+    """Validate content with Rust; does not authenticate MAC or currentness."""
+
+    value = dict(snapshot)
+    if allow_empty_mac:
+        integrity = value.get("integrity")
+        if isinstance(integrity, Mapping) and integrity.get("mac") == "":
+            value["integrity"] = {**integrity, "mac": "0" * 64}
+    result = _native_content_operation("policy-snapshot-inspect", value)
+    if (
+        set(result) != _INSPECTION_FIELDS
+        or result.get("schema") != "guard-native-policy-content-inspection.v1"
+        or type(result.get("version")) is not int
+        or result.get("version") != 1
+        or result.get("authenticity") != "not_checked"
+        or result.get("currentness") != "not_checked"
+        or result.get("business_policy_present") is not True
+        or any(
+            not _valid_digest_v3(result.get(field)) for field in ("snapshot_digest", "config_digest", "policy_digest")
+        )
+        or result.get("snapshot_digest") != hashlib.sha256(_canonical_json_bytes_v3(value)).hexdigest()
+    ):
+        raise NativePolicySnapshotError("native_business_policy_content_invalid")
+    if verify_digests and any(result[field] != snapshot.get(field) for field in ("config_digest", "policy_digest")):
+        raise NativePolicySnapshotError("native_policy_snapshot_digest_mismatch")
+
+
+def build_native_business_snapshot(request: Mapping[str, object]) -> dict[str, object]:
+    """Forward a typed constructor request, then verify returned binding/content."""
+
+    result = _native_content_operation("policy-snapshot-build", request)
+    for field in (
+        "generation",
+        "runtime_identity",
+        "rule_digest",
+        "mode",
+        "scope_contract",
+        "effective_policy",
+        "issued_at_ms",
+        "expires_at_ms",
+        "business_policy",
+    ):
+        if result.get(field) != request.get(field):
+            raise NativePolicySnapshotError("native_business_policy_content_invalid")
+    if result.get("command_extensions") != request.get("command_extensions"):
+        raise NativePolicySnapshotError("native_business_policy_content_invalid")
+    validate_business_snapshot_content(result)
+    return cast(dict[str, object], result)

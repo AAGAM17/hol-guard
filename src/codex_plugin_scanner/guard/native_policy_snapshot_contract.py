@@ -238,6 +238,15 @@ def _validate_snapshot_v3(
     """Apply the resident's typed v3 validation before signing or transport."""
 
     _validate_json_limits_v3(snapshot)
+    if "business_policy" in snapshot:
+        from .native_policy_snapshot_business_bridge import validate_business_snapshot_content
+
+        validate_business_snapshot_content(
+            snapshot,
+            allow_empty_mac=allow_empty_mac,
+            verify_digests=verify_digests,
+        )
+        return
     optional_fields = snapshot.keys() & _OPTIONAL_SNAPSHOT_FIELDS if isinstance(snapshot, Mapping) else frozenset()
     root = _require_snapshot_mapping_fields_v3(snapshot, _SNAPSHOT_FIELDS | optional_fields)
     mode = _validate_snapshot_metadata_v3(root)
@@ -276,6 +285,7 @@ def build_policy_snapshot_v3(
     issued_at_ms: int | None = None,
     expires_at_ms: int | None = None,
     command_extensions: Mapping[str, object] | None = None,
+    business_policy: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Build and authenticate one Rust ``PolicySnapshotV3`` value."""
 
@@ -344,6 +354,47 @@ def build_policy_snapshot_v3(
     }
     if binding is not None:
         snapshot["command_extensions"] = binding
+    if business_policy is not None:
+        from .native_policy_snapshot_business_bridge import build_native_business_snapshot, capture_business_binding
+
+        request: dict[str, object] = {
+            field: snapshot[field]
+            for field in (
+                "generation",
+                "runtime_identity",
+                "rule_digest",
+                "mode",
+                "scope_contract",
+                "effective_policy",
+                "issued_at_ms",
+                "expires_at_ms",
+            )
+        }
+        key = list(verifier_key)
+        request.update(
+            schema="guard-native-policy-build.v1",
+            version=1,
+            verifier_key=key,
+            business_policy=capture_business_binding(business_policy),
+        )
+        if binding is not None:
+            request["command_extensions"] = binding
+        try:
+            built = build_native_business_snapshot(request)
+            integrity = built.get("integrity")
+            if (
+                not isinstance(integrity, Mapping)
+                or integrity.get("key_id") != native_policy_verifier_key_id(verifier_key)
+                or not hmac.compare_digest(
+                    cast(str, integrity.get("mac")), _snapshot_integrity_mac_v3(built, verifier_key)
+                )
+            ):
+                raise NativePolicySnapshotError("native_policy_snapshot_cache_integrity_invalid")
+            return built
+        finally:
+            for index in range(len(key)):
+                key[index] = 0
+            request.pop("verifier_key", None)
     _validate_snapshot_v3(snapshot, allow_empty_mac=True)
     integrity = cast(dict[str, object], snapshot["integrity"])
     # The MAC is a fixed-size lowercase hex string. Validate the complete

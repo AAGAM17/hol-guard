@@ -106,6 +106,7 @@ def _publish_snapshot_v3(
     master_key: bytes,
     client: Callable[..., bytes | None],
     renew_after_generation: int | None,
+    business_policy: Mapping[str, object] | None = None,
 ) -> tuple[dict[str, object], int]:
     """Materialize, push, and authenticate a snapshot, including one recovery retry."""
 
@@ -113,6 +114,10 @@ def _publish_snapshot_v3(
     from .native_runtime import _isolated_environment
 
     recovery_attempted = False
+    if business_policy is not None:
+        from .native_policy_snapshot_business_bridge import capture_business_binding
+
+        business_policy = capture_business_binding(business_policy)
     bound_extensions = _stamp_runtime_program_digest(command_extensions, capabilities)
     while True:
         # A cold or replacement resident needs the Rust startup allowance.
@@ -137,6 +142,7 @@ def _publish_snapshot_v3(
             deadline_monotonic=publisher._monotonic_clock() + publish_timeout,
             renew_after_generation=renew_after_generation,
             command_extensions=bound_extensions,
+            business_policy=business_policy,
         )
         encoded = _policy_snapshot_push_bytes_v3(snapshot, deadline_budget_ms=int(publish_timeout * 1_000))
         output = client(

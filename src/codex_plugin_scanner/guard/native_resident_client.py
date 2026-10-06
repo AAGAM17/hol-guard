@@ -106,7 +106,12 @@ class _PersistentNativeClientPool:
         """True when a live client is parked and can serve without a spawn."""
 
         with self._condition:
-            return not self._closed and bool(self._idle)
+            if self._closed:
+                return False
+            return any(
+                client._process is not None and client._process.poll() is None
+                for client in self._idle
+            )
 
     def _lease(self, *, deadline_monotonic: float) -> _PersistentNativeClient | None:
         with self._condition:

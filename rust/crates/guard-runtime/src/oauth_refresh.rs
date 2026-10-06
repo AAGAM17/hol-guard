@@ -15,7 +15,9 @@
 //! flips `needs_reauthorization` so the next caller demands re-sign-in rather
 //! than hammering the token endpoint.
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::fs::{File, OpenOptions};
+use std::path::Path;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use base64ct::{Base64, Base64UrlUnpadded, Encoding};
 use guard_command::guard_sync_transport::{self as gst, OAuthRefreshOutcome, OAuthRefreshRequest};
@@ -50,6 +52,29 @@ const CREDENTIALS_STATE_KEY: &str = "oauth_local_credentials";
 /// Lock file for the rotation persist — serializes the secret rewrite +
 /// re-fingerprint across concurrent resident / Python writers.
 const REFRESH_LOCK_NAME: &str = "oauth-refresh.lock";
+const CREDENTIAL_LOCK_NAME: &str = "oauth-credentials.lock";
+const OAUTH_LOCK_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn acquire_lock(path: &Path, timeout: Duration) -> Result<File, EvalError> {
+    let f = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| EvalError::Validation(format!("Guard OAuth lock open failed: {e}")))?;
+    let deadline = Instant::now() + timeout;
+    loop {
+        match fs2::FileExt::try_lock_exclusive(&f) {
+            Ok(()) => return Ok(f),
+            Err(_) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(50)),
+            Err(_) => {
+                return Err(EvalError::Validation(
+                    "Guard OAuth credential rotation is held by another process; retry.".into(),
+                ));
+            }
+        }
+    }
+}
 /// Reauth message mirrors `_guard_oauth_reconnect_after_revoked_message` so a
 /// propagated dead-grant matches the Python surface byte-for-byte (the retry
 /// loop keys off the exact string).
@@ -397,20 +422,10 @@ pub(crate) fn persist_rotated_oauth_refresh_token(
     let binding = refresh_binding(credentials, &recovered, access_token.is_some());
 
     let guard_home = store.guard_home().to_path_buf();
-    let lock_path = guard_home.join(REFRESH_LOCK_NAME);
-    let lock_file = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .write(true)
-        .open(&lock_path)
-        .map_err(|e| {
-            EvalError::Validation(format!("{RECONNECT_AFTER_REVOKED} lock open failed: {e}"))
-        })?;
-    fs2::FileExt::lock_exclusive(&lock_file).map_err(|_| {
-        EvalError::Validation(
-            "Guard OAuth credential rotation is held by another process; retry.".to_owned(),
-        )
-    })?;
+    let _credential_lock = acquire_lock(
+        &guard_home.join(CREDENTIAL_LOCK_NAME),
+        OAUTH_LOCK_TIMEOUT,
+    )?;
 
     // Build the secret payload the same way `set_oauth_local_credentials` does:
     // canonical sorted-compact JSON of the secret material.
@@ -561,9 +576,28 @@ pub(crate) fn refresh_oauth_access_token(
         .and_then(Value::as_str)
         .unwrap_or("ES256");
 
+    let _refresh_lock = acquire_lock(
+        &store.guard_home().join(REFRESH_LOCK_NAME),
+        OAUTH_LOCK_TIMEOUT,
+    )?;
+
     let mut attempt_refresh_token = refresh_token.to_owned();
     let mut attempt_private_key_pem = private_key_pem.to_owned();
     let mut attempt_public_jwk = public_jwk.clone();
+    if let Some((rt, mat)) = credential_reloader() {
+        let pk = mat
+            .get("private_key_pem")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let pj = mat.get("public_jwk").and_then(Value::as_object).cloned();
+        if let (Some(pk), Some(pj)) = (pk, pj) {
+            attempt_refresh_token = rt;
+            attempt_private_key_pem = pk;
+            attempt_public_jwk = pj;
+        } else {
+            attempt_refresh_token = rt;
+        }
+    }
     let mut nonce: Option<String> = None;
     let mut nonce_retry_count: u32 = 0;
 

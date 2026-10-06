@@ -3,18 +3,22 @@
 from __future__ import annotations
 
 import os
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from codex_plugin_scanner.guard.runtime import package_intent_parser
 from codex_plugin_scanner.guard.runtime.package_intent import (
     extract_package_intent_request,
     parse_manifest_dependency_changes,
     parse_package_intent,
 )
-from codex_plugin_scanner.guard.runtime.shell_execution_context import model_shell_execution_context
+
+
+@pytest.fixture(autouse=True)
+def _native_package_intent(package_intent_native):
+    """Every intent test runs against the resident authority."""
+
+    return package_intent_native
 
 
 def _write_text(path: Path, text: str) -> None:
@@ -181,80 +185,6 @@ def test_parse_package_intent_detects_package_command_after_control_operator() -
     assert parse_package_intent("echo safe && grep foo src/file.ts") is None
 
 
-def test_local_execution_context_hash_contains_no_raw_command_or_secret(tmp_path: Path) -> None:
-    def _hash(command: str, segment_index: int) -> str:
-        context = model_shell_execution_context(command, cwd=tmp_path, workspace_root=tmp_path)
-        segment = context.segments[segment_index]
-        return package_intent_parser._execution_context_hash(
-            context,
-            segment,
-            control_shape=tuple(
-                operator for modeled_segment in context.segments for operator in modeled_segment.control_after
-            ),
-            effective_cwd=segment.effective_cwd,
-            cwd_source=segment.cwd_source,
-            path_source="inherited",
-            opaque_context_binding=None,
-        )
-
-    first = _hash("true && npm install fixture", 1)
-    repeated = _hash("true && npm install fixture", 1)
-    different_operator = _hash("true; npm install fixture", 1)
-    different_segment = _hash("npm install fixture && true", 0)
-
-    assert first == repeated
-    assert first.startswith("sha256:")
-    assert first != different_operator
-    assert first != different_segment
-
-
-def test_rebase_preserves_declared_paths_that_disappear_or_do_not_exist(tmp_path: Path) -> None:
-    project = tmp_path / "project"
-    project.mkdir()
-    requirements = project / "requirements.txt"
-    _write_text(requirements, "fixture==1.0\n")
-    intent = package_intent_parser._parse_pip_intent(
-        ("pip", "install", "-r", "requirements.txt"),
-        workspace=project,
-    )
-    assert intent is not None
-    requirements.unlink()
-    intent = replace(intent, lockfile_paths=("future.lock",))
-
-    rebased = package_intent_parser._rebase_intent_paths(
-        intent,
-        from_directory=project,
-        workspace=tmp_path,
-    )
-
-    assert rebased.manifest_paths == ("project/requirements.txt",)
-    assert rebased.lockfile_paths == ("project/future.lock",)
-
-
-def test_unresolved_context_uses_process_ephemeral_keyed_identity() -> None:
-    first = package_intent_parser._opaque_unresolved_context_binding(
-        ["PATH=$FIRST_UNKNOWN", "bunx", "--no-install", "vitest"],
-        path_source="inline_unresolved",
-        cwd_source="workspace",
-    )
-    repeated = package_intent_parser._opaque_unresolved_context_binding(
-        ["PATH=$FIRST_UNKNOWN", "bunx", "--no-install", "vitest"],
-        path_source="inline_unresolved",
-        cwd_source="workspace",
-    )
-    second = package_intent_parser._opaque_unresolved_context_binding(
-        ["PATH=$SECOND_UNKNOWN", "bunx", "--no-install", "vitest"],
-        path_source="inline_unresolved",
-        cwd_source="workspace",
-    )
-
-    assert first == repeated
-    assert first is not None
-    assert second is not None
-    assert first != second
-    assert "FIRST_UNKNOWN" not in first
-
-
 def test_inline_path_assignment_uses_supplied_environment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -310,24 +240,51 @@ def test_parse_package_intent_reviews_declared_local_test_runner_execution(tmp_p
 def test_parse_package_intent_records_guard_shimmed_bunx_test_runner(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A `bunx` resolved to the guard's package-shim is flagged as a shim.
+
+    The resident detects the shim by canonicalizing
+    ``$HOME/.hol-guard/package-shims/bin/<command>`` against the resolved
+    manager path. ``HOME`` must point at the shim home *before* the resident
+    is spawned, and the parse must carry the shim directory on its effective
+    PATH. A fresh guard home is provisioned so a new resident is spawned
+    under the patched ``HOME`` rather than reusing the session pool.
+    """
+    from codex_plugin_scanner.guard.native_policy_snapshot import (
+        provision_native_policy_verifier_key,
+    )
+    from codex_plugin_scanner.guard.native_resident_client import close_native_residents
+
     _write_text(tmp_path / "package.json", '{"name":"demo","devDependencies":{"vitest":"^4.1.8"}}\n')
     _write_text(tmp_path / "bun.lock", '"vitest": "4.1.8"\n')
     runner = tmp_path / "node_modules" / ".bin" / "vitest"
     _write_text(runner, "#!/bin/sh\n")
     runner.chmod(0o755)
     home_dir = tmp_path / "home"
-    shim_path = home_dir / ".hol-guard" / "package-shims" / "bin" / "bunx"
+    shim_dir = home_dir / ".hol-guard" / "package-shims" / "bin"
+    shim_path = shim_dir / "bunx"
     _write_text(shim_path, "#!/bin/sh\n")
     shim_path.chmod(0o755)
-    monkeypatch.setattr(package_intent_parser.Path, "home", classmethod(lambda cls: home_dir))
-    monkeypatch.setattr(
-        package_intent_parser.shutil,
-        "which",
-        lambda command, path=None: str(shim_path) if command == "bunx" else None,
-    )
+    monkeypatch.setenv("HOME", str(home_dir))
 
-    intent = parse_package_intent("bunx vitest run tests/example.test.ts", workspace=tmp_path)
-    bun_intent = parse_package_intent("bunx --bun vitest run tests/example.test.ts", workspace=tmp_path)
+    guard_home = tmp_path / "shim-guard-home"
+    (guard_home / "native-runtime").mkdir(mode=0o700, parents=True)
+    provision_native_policy_verifier_key(guard_home, b"\x07" * 32)
+    try:
+        environment = {"PATH": str(shim_dir)}
+        intent = parse_package_intent(
+            "bunx vitest run tests/example.test.ts",
+            workspace=tmp_path,
+            guard_home=guard_home,
+            environment=environment,
+        )
+        bun_intent = parse_package_intent(
+            "bunx --bun vitest run tests/example.test.ts",
+            workspace=tmp_path,
+            guard_home=guard_home,
+            environment=environment,
+        )
+    finally:
+        close_native_residents(guard_home)
 
     assert intent is not None
     assert bun_intent is not None
@@ -335,24 +292,12 @@ def test_parse_package_intent_records_guard_shimmed_bunx_test_runner(
     assert bun_intent.local_executions[0].manager_is_guard_shim is True
 
 
-def test_extract_package_intent_records_guard_shimmed_npx_test_runner_in_pipeline(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_extract_package_intent_records_guard_shimmed_npx_test_runner_in_pipeline(tmp_path: Path) -> None:
     _write_text(tmp_path / "package.json", '{"name":"demo","devDependencies":{"vitest":"^4.1.8"}}\n')
     _write_text(tmp_path / "bun.lock", '"vitest": "4.1.8"\n')
     runner = tmp_path / "node_modules" / ".bin" / "vitest"
     _write_text(runner, "#!/bin/sh\n")
     runner.chmod(0o755)
-    home_dir = tmp_path / "home"
-    shim_path = home_dir / ".hol-guard" / "package-shims" / "bin" / "npx"
-    _write_text(shim_path, "#!/bin/sh\n")
-    shim_path.chmod(0o755)
-    monkeypatch.setattr(package_intent_parser.Path, "home", classmethod(lambda cls: home_dir))
-    monkeypatch.setattr(
-        package_intent_parser.shutil,
-        "which",
-        lambda command, path=None: str(shim_path) if command == "npx" else None,
-    )
     command = "cd project && npx vitest run tests/unit.test.tsx 2>&1 | tail -15"
 
     assert (

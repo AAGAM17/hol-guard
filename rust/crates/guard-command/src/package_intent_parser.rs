@@ -286,6 +286,7 @@ fn dispatch_intent(
         "pip" | "pip3" => parse_pip_intent(tokens, workspace),
         "pipx" => parse_pipx_intent(tokens, workspace),
         "uv" => parse_uv_intent(tokens, workspace),
+        "uvx" => parse_exec_intent_default(tokens, workspace),
         "poetry" => parse_poetry_intent(tokens, workspace),
         "pipenv" => parse_pipenv_intent(tokens, workspace),
         "cargo" => parse_cargo_intent(tokens, workspace),
@@ -1297,6 +1298,27 @@ fn effective_execution_context(
         );
     }
     let mut index = 0usize;
+    let (next_index, next_path, next_source) = consume_path_assignments(
+        raw_segment,
+        index,
+        effective_path.clone(),
+        &path_source,
+        "inline",
+        supplied_environment,
+    );
+    index = next_index;
+    effective_path = next_path;
+    path_source = next_source;
+    if index >= raw_segment.len() {
+        return (
+            effective_path
+                .as_deref()
+                .map(|path| path_for_resolution(path, effective_cwd.as_deref())),
+            path_source,
+            effective_cwd,
+            cwd_source,
+        );
+    }
     let mut name = command_name(&raw_segment[index]);
     if name == "sudo" {
         return (
@@ -1942,12 +1964,28 @@ fn redacted_segment(raw_segment: &[String]) -> Vec<String> {
 // package_intent_parser.py `_redact_local_source_tokens`
 fn redact_local_source_tokens(tokens: &[String]) -> Vec<String> {
     let mut redacted: Vec<String> = Vec::new();
-    for token in tokens {
-        if token.contains("://") || token.contains("git@") || token.contains("file:") {
-            redacted.push("[REDACTED_URL]".to_owned());
-        } else {
+    let path_flags = ["--path"];
+    let mut index = 0usize;
+    while index < tokens.len() {
+        let token = &tokens[index];
+        if path_flags.contains(&token.as_str()) && index + 1 < tokens.len() {
             redacted.push(token.clone());
+            redacted.push("<local-path>".to_owned());
+            index += 2;
+            continue;
         }
+        if token.starts_with("--path=") {
+            redacted.push("--path=<local-path>".to_owned());
+            index += 1;
+            continue;
+        }
+        if token.starts_with("file:") {
+            redacted.push("file:<local-path>".to_owned());
+            index += 1;
+            continue;
+        }
+        redacted.push(token.clone());
+        index += 1;
     }
     redacted
 }

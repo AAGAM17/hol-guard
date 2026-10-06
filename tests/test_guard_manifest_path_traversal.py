@@ -40,7 +40,7 @@ def test_resolve_path_within_workspace_rejects_symlink_escape(tmp_path: Path) ->
     assert read_text_within_workspace(workspace, "requirements.txt") is None
 
 
-def test_parse_pip_intent_ignores_requirements_outside_workspace(tmp_path: Path) -> None:
+def test_parse_pip_intent_ignores_requirements_outside_workspace(tmp_path: Path, package_intent_native: Path) -> None:
     workspace = tmp_path / "workspace"
     outside = tmp_path / "outside"
     workspace.mkdir()

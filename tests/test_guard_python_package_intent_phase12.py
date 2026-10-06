@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+import pytest
+
 from codex_plugin_scanner.guard.runtime.package_intent import (
     parse_manifest_dependency_changes,
     parse_package_intent,
 )
 from codex_plugin_scanner.guard.runtime.package_intent_common import build_package_request_artifact
+
+
+@pytest.fixture(autouse=True)
+def _native_package_intent(package_intent_native):
+    """Parse intents through the resident authority."""
+
+    return package_intent_native
 
 
 def _change_map(path: str, before_text: str, after_text: str) -> dict[str, tuple[str | None, str | None]]:

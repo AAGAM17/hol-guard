@@ -12,7 +12,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import os
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -21,7 +20,6 @@ from pathlib import Path
 from typing import Literal, TypeGuard, cast
 
 from ..native_context import _UNBOUND_PREFIX
-from .env_wrapper import parse_env_wrapper
 from .extension_control_runtime import current_extension_control_binding_digest
 
 APPROVAL_CONTEXT_TOKEN_PREFIX = "guard-approval-context:v1:"

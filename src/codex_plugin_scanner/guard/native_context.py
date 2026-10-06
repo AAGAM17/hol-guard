@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import threading
 import time
 import uuid
@@ -749,6 +750,20 @@ def context_mcp_launch_environment(
     return values
 
 
+def _ambient_launch_environment(launch_env: Mapping[str, str] | None) -> dict[str, str]:
+    """Mirror `launch_env if launch_env is not None else os.environ`.
+
+    The resident is spawned through `_isolated_environment`, which deliberately
+    drops PATH (and every other credential-bearing variable) on POSIX.  A caller
+    that supplies no launch environment would therefore lose the ambient PATH
+    and every interpreter/module entrypoint would resolve as `unresolved` —
+    the in-process reference implementation read `os.environ` here.  Forward the
+    ambient environment so the native decision sees exactly what Python saw.
+    """
+
+    return dict(launch_env) if launch_env is not None else dict(os.environ)
+
+
 def context_runtime_executable_identity(
     command: object,
     *,
@@ -763,7 +778,10 @@ def context_runtime_executable_identity(
         "runtime_executable_identity",
         {
             "command": command if command is None or isinstance(command, (str, int, float, bool, list, dict)) else None,
-            "search_path": search_path,
+            # The in-process reference resolved a bare command with
+            # `shutil.which(..., path=search_path or os.environ["PATH"])`; the
+            # resident cannot see the ambient PATH, so fall back here.
+            "search_path": search_path if search_path is not None else os.environ.get("PATH"),
             "cwd": str(cwd) if cwd is not None else None,
             "home_dir": str(home_dir) if home_dir is not None else None,
             "require_executable": require_executable,
@@ -799,7 +817,7 @@ def context_runtime_launch_identity(
             "search_path": search_path,
             "cwd": str(cwd) if cwd is not None else None,
             "home_dir": str(home_dir) if home_dir is not None else None,
-            "launch_env": dict(launch_env) if launch_env is not None else None,
+            "launch_env": _ambient_launch_environment(launch_env),
         },
         guard_home=_resolve_digest_home(guard_home),
     )
@@ -832,7 +850,7 @@ def context_runtime_launch_identity_matches(
             "direct_executable": direct_executable,
             "search_path": search_path,
             "cwd": str(cwd) if cwd is not None else None,
-            "launch_env": dict(launch_env) if launch_env is not None else None,
+            "launch_env": _ambient_launch_environment(launch_env),
         },
         guard_home=_resolve_digest_home(guard_home),
     )

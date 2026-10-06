@@ -391,8 +391,14 @@ class StdioGuardProxy:
         self._active_env_values_hash: str | None = None
         if guard_store is not None:
             from ..native_context import bind_context_digest_home
+            from ..native_policy_snapshot_publisher import ensure_native_launch_resident_verifier
 
             bind_context_digest_home(getattr(guard_store, "guard_home", None))
+            # A standalone stdio proxy never starts the snapshot publisher, so
+            # it owns the same one-time verifier prerequisite before the
+            # resident will serve `mcp_stdio_session_*`. A failure here must
+            # raise: there is no Python fallback for the resident session.
+            ensure_native_launch_resident_verifier(guard_store)
 
     def _response_timeout_seconds(self) -> float:
         configured = getattr(self.guard_config, "approval_wait_timeout_seconds", None)
@@ -551,9 +557,14 @@ class StdioGuardProxy:
                     raise RuntimeError(
                         f"native stdio session open failed: {opened.get('payload')}"
                     )
-                native_session_id = str(opened.get("session_id", "")) or None
-                if native_session_id is None:
-                    raise RuntimeError("native stdio session open returned no session_id")
+                # Resident echoes the caller-supplied session id in `payload`
+                # (same contract the runtime MCP proxy relies on). Keep our own
+                # id and cross-check the echo rather than inventing a field the
+                # result schema does not carry.
+                if opened.get("payload") != native_session_id:
+                    raise RuntimeError(
+                        "native stdio session open returned an unexpected session id"
+                    )
                 if not self._active_launch_identity_matches(launch_env):
                     raise ProxyLaunchIdentityChangedError(
                         "Guard stdio proxy launch identity changed while starting the MCP server."

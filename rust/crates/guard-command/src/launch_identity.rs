@@ -2495,6 +2495,35 @@ mod tests {
         assert_eq!(package_advisory_ids(&package), vec!["GHSA-X"]);
     }
 
+    /// `env -S` option clusters must terminate after an operand-consuming flag
+    /// (`short_index = len(token)` in `env_wrapper.parse_env_wrapper`). The port
+    /// omitted that advance, so the cluster loop re-read the same flag until
+    /// `ENV_SPLIT_MAX_EXPANSIONS` tripped and every `#!/usr/bin/env -S ...`
+    /// shebang resolved as `env_shebang_command_unresolved`.
+    #[test]
+    fn env_split_string_cluster_consumes_operand_once() {
+        for (args, expected) in [
+            (
+                vec!["-S", "python", "-m", "bootstrap"],
+                vec!["python", "-m", "bootstrap"],
+            ),
+            (
+                vec!["-S python -m bootstrap"],
+                vec!["python", "-m", "bootstrap"],
+            ),
+            (vec!["-Spython"], vec!["python"]),
+            (vec!["-u", "FOO", "cmd"], vec!["cmd"]),
+            (vec!["-C", "/tmp", "cmd"], vec!["cmd"]),
+            (vec!["cmd"], vec!["cmd"]),
+        ] {
+            let tokens: Vec<String> = args.iter().map(|s| (*s).to_string()).collect();
+            let parsed = crate::env_wrapper::parse_env_wrapper(&tokens, None, None);
+            assert_eq!(parsed.error, None, "{args:?}");
+            assert!(parsed.complete, "{args:?}");
+            assert_eq!(parsed.executable_argv, expected, "{args:?}");
+        }
+    }
+
     /// Descriptor-race parity for the ported executable hasher. The Python
     /// `test_windows_executable_hash_keeps_descriptor_race_checks` matrix was
     /// retired with the approval_context helper cluster; this keeps the same

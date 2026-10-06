@@ -90,6 +90,10 @@ _TRANSPORT_DECODE_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/native_execution.py",
         "src/codex_plugin_scanner/guard/native_runtime.py",
         "src/codex_plugin_scanner/guard/native_context.py",
+        # Same bridge shape for the package-intent / package-authority ops the
+        # hook pipeline now routes natively (`_resident_request` decodes the
+        # bounded resident response into a DTO).
+        "src/codex_plugin_scanner/guard/native_package_authority.py",
     }
 )
 _STRUCTURED_OUTPUT_MEDIATION_PATHS: Final = frozenset(

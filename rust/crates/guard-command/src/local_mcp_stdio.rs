@@ -1530,7 +1530,7 @@ pub fn run_mcp_stdio_probe(
 
 /// `_stop` — kill the process group (created via `process_group(0)`), then
 /// reap the direct child. `unsafe` libc `killpg` is crate-forbidden, so the
-/// group is signalled through `/bin/kill -KILL -<pgid>` like `sandbox.rs`.
+/// group is signalled through `/bin/kill -KILL -- -<pgid>`.
 fn stop_child(child: &mut Child) {
     let pid = child.id() as i32;
     if pid > 0 {
@@ -1543,12 +1543,21 @@ fn stop_child(child: &mut Child) {
 /// `os.killpg(child.pid, SIGKILL)` — group id equals the child pid after
 /// `process_group(0)`; reached without `unsafe` via `/bin/kill`.
 pub(crate) fn kill_process_group(pgid: i32) {
+    let Some(operand) = process_group_operand(pgid) else {
+        return;
+    };
     let _ = Command::new("/bin/kill")
-        .args(["-KILL", &format!("-{pgid}")])
+        .args(["-KILL", "--", operand.as_str()])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
+}
+
+pub(crate) fn process_group_operand(pgid: i32) -> Option<String> {
+    // 0 targets the caller's group; -1 targets nearly every process. Neither
+    // can identify a fresh child-owned group, including the reserved ID 1.
+    (pgid > 1).then(|| format!("-{pgid}"))
 }
 
 #[cfg(test)]

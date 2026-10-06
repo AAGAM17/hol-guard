@@ -406,8 +406,10 @@ def build_policy_snapshot_v3(
                 raise NativePolicySnapshotError("native_policy_snapshot_cache_integrity_invalid")
             return built
         finally:
-            for index in range(len(key)):
-                key[index] = 0
+            # Drop owned references only. CPython's shared integers, immutable
+            # caller bytes and JSON/subprocess copies cannot be reliably wiped.
+            # This transport does not establish secret custody or zeroization.
+            key.clear()
             request.pop("verifier_key", None)
     _validate_snapshot_v3(snapshot, allow_empty_mac=True, deadline_monotonic=deadline_monotonic)
     integrity = cast(dict[str, object], snapshot["integrity"])

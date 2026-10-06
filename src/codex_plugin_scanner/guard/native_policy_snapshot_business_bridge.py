@@ -31,7 +31,12 @@ def begin_business_deadline(deadline: float | None) -> Token[float | None]:
     if deadline is not None and (isinstance(deadline, bool) or not math.isfinite(deadline)):
         raise NativePolicySnapshotError("native_policy_snapshot_deadline_invalid")
     existing = _DEADLINE.get()
-    chosen = deadline if existing is None else existing if deadline is None else min(existing, deadline)
+    if existing is None:
+        chosen = deadline
+    elif deadline is None:
+        chosen = existing
+    else:
+        chosen = min(existing, deadline)
     return _DEADLINE.set(chosen)
 
 
@@ -102,6 +107,9 @@ def _native_content_operation(
         raise NativePolicySnapshotError("native_business_policy_consumer_unavailable")
     selected = status if status is not None else _selected_runtime()
     assert selected.identity is not None
+    # CPython JSON/subprocess serialization creates immutable key copies for
+    # constructor requests. Reference cleanup is best effort, not zeroization
+    # or isolated custody; the native constructor separately zeroizes its input.
     encoded = _canonical_json_bytes_v3(value)
     if len(encoded) > POLICY_SNAPSHOT_MAX_BYTES:
         raise NativePolicySnapshotError("native_policy_snapshot_too_large")

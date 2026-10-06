@@ -33,7 +33,7 @@ pub struct BusinessPolicyRuleV1 {
     pub selector: BusinessPolicyMatchV1,
     #[serde(
         default,
-        deserialize_with = "present_expiry",
+        deserialize_with = "present_string",
         skip_serializing_if = "Option::is_none"
     )]
     pub expires_at: Option<String>,
@@ -48,7 +48,7 @@ pub struct BusinessPolicyBindingV1 {
     pub rules: Vec<BusinessPolicyRuleV1>,
     #[serde(
         default,
-        deserialize_with = "present_source_digest",
+        deserialize_with = "present_string",
         skip_serializing_if = "Option::is_none"
     )]
     pub source_document_digest: Option<String>,
@@ -102,18 +102,11 @@ impl BusinessPolicyBindingV1 {
     }
 }
 
-fn present_source_digest<'de, D: serde::Deserializer<'de>>(
-    d: D,
-) -> Result<Option<String>, D::Error> {
-    // Null cannot silently discard the complete-document identity.
-    String::deserialize(d).map(Some)
-}
-
-fn present_expiry<'de, D>(d: D) -> Result<Option<String>, D::Error>
+fn present_string<'de, D>(d: D) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    // An explicit null must not turn a bounded rule into a permanent one.
+    // Null cannot discard an expiry or the complete-document identity.
     String::deserialize(d).map(Some)
 }
 

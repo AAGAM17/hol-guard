@@ -62,7 +62,7 @@ def test_older_native_consumer_refuses_before_constructor_receives_key(
         build(tmp_path, binding())
 
 
-def test_constructor_failure_clears_owned_key_list_and_request_reference(
+def test_constructor_failure_drops_owned_key_references_without_zeroization_claim(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -78,7 +78,7 @@ def test_constructor_failure_clears_owned_key_list_and_request_reference(
     with pytest.raises(api.NativePolicySnapshotError, match="synthetic_constructor_failure"):
         build(tmp_path, binding())
     assert "verifier_key" not in observed[0]
-    assert observed[1] == [0] * 32
+    assert observed[1] == []
 
 
 def test_refused_business_declaration_does_not_provision_verifier(

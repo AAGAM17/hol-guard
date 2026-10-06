@@ -401,6 +401,8 @@ def run_case(
                 "--extension",
                 str(HERE / "observer.ts"),
                 "--extension",
+                str(HERE / "initial_tool_requirement.ts"),
+                "--extension",
                 str(extension),
                 "--no-skills",
                 "--no-rules",

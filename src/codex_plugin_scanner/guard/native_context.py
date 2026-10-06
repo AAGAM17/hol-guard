@@ -723,9 +723,11 @@ def native_context_digest(
         )
         if output is not None or native_resident_client_failure_code() != _TIMEOUT_FAILURE_CODE:
             break
-        # A timeout means the client never got an answer in time, which a busy
-        # sibling on the same pooled client explains just as well as a resident
-        # that has to be spawned.  One retry with the allowance tells them apart.
+        if cold_start:
+            # The allowance was already granted; more time will not help.
+            break
+        cold_start = True
+        budget_seconds += _COLD_START_ALLOWANCE_SECONDS
         deadline_monotonic = time.monotonic() + timeout_seconds + _COLD_START_ALLOWANCE_SECONDS
     if output is None:
         # The client's own code ("native_client_timed_out",

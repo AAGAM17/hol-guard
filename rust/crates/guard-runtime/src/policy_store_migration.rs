@@ -28,6 +28,7 @@ pub(super) fn load_legacy_authority(
                     invalid_on_startup: true,
                     migrate: true,
                     command_control_floor: None,
+                    business_policy_floor: None,
                 });
             }
             return Err(error);
@@ -43,6 +44,7 @@ pub(super) fn load_legacy_authority(
                 invalid_on_startup: false,
                 migrate: false,
                 command_control_floor: None,
+                business_policy_floor: None,
             });
         };
         return Ok(LoadedAuthority {
@@ -53,11 +55,30 @@ pub(super) fn load_legacy_authority(
             invalid_on_startup: false,
             migrate: true,
             command_control_floor: None,
+            business_policy_floor: None,
         });
     };
 
     let floor_generation = floor.as_ref().map_or(0, |item| item.generation);
     let floor_digest = floor.as_ref().map(|item| item.policy_digest.as_str());
+    let business_policy_floor = if legacy_snapshot.generation >= floor_generation
+        && (legacy_snapshot.generation != floor_generation
+            || floor_digest.is_none_or(|digest| digest == legacy_snapshot.policy_digest))
+        && legacy_snapshot.scope_contract.scope_digest == expected_scope_digest
+        && validate_v3(
+            &legacy_snapshot,
+            floor_generation.max(1),
+            &legacy_snapshot.runtime_identity,
+            &legacy_snapshot.rule_digest,
+            verifier_key,
+            legacy_snapshot.issued_at_ms,
+        )
+        .is_ok()
+    {
+        super::policy_store_business_floor::snapshot_floor(Some(&legacy_snapshot))?
+    } else {
+        None
+    };
     let mut generation_floor = floor_generation.max(legacy_snapshot.generation);
     let mut invalid_on_startup = false;
     let mut snapshot = None;
@@ -102,6 +123,7 @@ pub(super) fn load_legacy_authority(
         migrate: true,
         // Command-control authority starts only from a current bound snapshot.
         command_control_floor: None,
+        business_policy_floor,
     })
 }
 

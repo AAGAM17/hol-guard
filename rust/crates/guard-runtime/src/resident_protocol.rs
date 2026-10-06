@@ -58,6 +58,7 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         "native-policy-in-memory-v1".into(),
         "native-policy-snapshot-build-v1".into(),
         "native-policy-snapshot-inspect-v1".into(),
+        "native-business-policy-retained-floor-v1".into(),
         "hook-envelope-v2".into(),
         "git-execution-context-v1".into(),
         "native-resident-client-v1".into(),

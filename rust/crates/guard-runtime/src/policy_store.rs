@@ -31,6 +31,8 @@ pub(crate) mod native_review_origin;
 mod policy_store_approval;
 #[path = "policy_store_authority.rs"]
 mod policy_store_authority;
+#[path = "policy_store_business_floor.rs"]
+mod policy_store_business_floor;
 #[path = "policy_store_command_authority.rs"]
 mod policy_store_command_authority;
 #[path = "policy_store_command_floor.rs"]
@@ -130,6 +132,8 @@ struct PolicyAuthorityRecordV3 {
     pub(super) floor_mac: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) command_control_floor: Option<policy_store_command_floor::CommandControlFloor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) business_policy_floor: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,6 +152,7 @@ struct PolicyState {
     pub(super) policy_digest: Option<String>,
     pub(super) invalid_on_startup: bool,
     pub(super) command_control_floor: Option<policy_store_command_floor::CommandControlFloor>,
+    pub(super) business_policy_floor: Option<String>,
 }
 
 struct LoadedAuthority {
@@ -158,6 +163,7 @@ struct LoadedAuthority {
     pub(super) invalid_on_startup: bool,
     pub(super) migrate: bool,
     pub(super) command_control_floor: Option<policy_store_command_floor::CommandControlFloor>,
+    pub(super) business_policy_floor: Option<String>,
 }
 
 pub(crate) struct PolicySnapshotStore {
@@ -272,6 +278,7 @@ impl PolicySnapshotStore {
                 policy_digest: loaded.policy_digest,
                 invalid_on_startup: loaded.invalid_on_startup || admission_failed,
                 command_control_floor: loaded.command_control_floor,
+                business_policy_floor: loaded.business_policy_floor,
             }),
         })
     }
@@ -302,12 +309,17 @@ impl PolicySnapshotStore {
         )?;
         if loaded.migrate {
             if let Some(digest) = loaded.policy_digest.as_deref() {
-                persist_authority(
+                let controls = loaded.command_control_floor.clone().or_else(|| {
+                    policy_store_command_floor::snapshot_floor(loaded.snapshot.as_ref())
+                });
+                persist_authority_with_control_floor(
                     &authority_path,
                     loaded.generation_floor,
                     digest,
                     loaded.snapshot.as_ref(),
                     &verifier_key,
+                    controls.as_ref(),
+                    loaded.business_policy_floor.as_deref(),
                 )?;
             }
         }
@@ -372,6 +384,10 @@ impl PolicySnapshotStore {
             state.command_control_floor.as_ref(),
             &request.snapshot,
         )?;
+        let business_floor = policy_store_business_floor::next_floor(
+            state.business_policy_floor.as_deref(),
+            &request.snapshot,
+        )?;
         let admitted = Arc::new(AdmittedPolicySnapshot::new(request.snapshot)?);
         let mut observed = match self.authority_observed.lock() {
             Ok(observed) => observed,
@@ -391,6 +407,7 @@ impl PolicySnapshotStore {
             Some(admitted.snapshot()),
             &self.verifier_key,
             control_floor.as_ref(),
+            business_floor.as_deref(),
         )?;
         state.generation_floor = admitted.generation;
         state.policy_digest = Some(admitted.policy_digest.clone());
@@ -398,6 +415,7 @@ impl PolicySnapshotStore {
         state.canonical_bytes = snapshot_bytes;
         state.invalid_on_startup = false;
         state.command_control_floor = control_floor;
+        state.business_policy_floor = business_floor;
         *observed = authority_fingerprint(&self.authority_path);
         drop(observed);
         self.authority_changed.store(

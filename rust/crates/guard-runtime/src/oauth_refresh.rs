@@ -400,7 +400,7 @@ pub(crate) fn persist_rotated_oauth_refresh_token(
     let lock_path = guard_home.join(REFRESH_LOCK_NAME);
     let lock_file = std::fs::OpenOptions::new()
         .create(true)
-        .read(true)
+        .truncate(true)
         .write(true)
         .open(&lock_path)
         .map_err(|e| {

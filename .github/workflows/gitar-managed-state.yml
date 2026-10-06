@@ -150,9 +150,9 @@ jobs:
           if [[ "$directive" != "on" ]]; then
             pr_files="$(
               gh api --paginate "repos/${REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
-                | jq -r '.[].filename'
+                | jq -r '.[] | .filename, (.previous_filename // empty)'
             )"
-            outside="$(grep -Ev '^(contributions/|tests/fixtures/command-source-[^/]+\.v1\.json$|contracts/extensions/|docs/guard/extensions/catalog\.v[12]\.json$|src/codex_plugin_scanner/guard/contracts/data/extensions/)' <<<"$pr_files")"
+            outside="$(grep -Ev '^(contributions/|tests/fixtures/command-source-[^/]+\.v1\.json$|contracts/extensions/|docs/guard/extensions/catalog\.v[12]\.json$|src/codex_plugin_scanner/guard/contracts/data/extensions/)' <<<"$pr_files" || [[ $? -eq 1 ]])"
             if [[ -n "$outside" ]] || [[ -z "$pr_files" ]]; then
               remove_managed
               exit 0

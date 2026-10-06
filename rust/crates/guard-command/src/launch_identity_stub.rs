@@ -15,13 +15,28 @@ use sha2::{Digest, Sha256};
 // stays non-reusable (`reuse_nonce`) and `unsupported_platform`, so saved
 // approvals still fail closed and nothing claims a verified launch.
 
+// `reuse_nonce` must never be reusable, so it must stay unique even when the
+// OS RNG is unavailable. Hash entropy plus a per-process counter and pid so two
+// identities can never share a nonce a saved approval could match; a constant
+// zero nonce would let an attacker pin a stable identity.
 fn token_hex(bytes: usize) -> String {
-    let mut buffer = vec![0u8; bytes];
-    if getrandom::fill(&mut buffer).is_ok() {
-        hex::encode(buffer)
-    } else {
-        "0".repeat(bytes * 2)
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let mut entropy = vec![0u8; bytes.max(16)];
+    let _ = getrandom::fill(&mut entropy);
+    let mut hasher = Sha256::new();
+    hasher.update(&entropy);
+    hasher.update(std::process::id().to_be_bytes());
+    hasher.update(COUNTER.fetch_add(1, Ordering::Relaxed).to_be_bytes());
+    let digest = hex::encode(hasher.finalize());
+    // Produce exactly `bytes` bytes of hex (2*bytes chars); the digest is 32
+    // bytes, so this truncates when bytes<=16 and stays hex-shaped otherwise.
+    let mut out = digest;
+    while out.len() < bytes * 2 {
+        out.push_str(&digest);
     }
+    out.truncate(bytes * 2);
+    out
 }
 
 // `launch_identity.rs::launch_argv_digest` — sha256 over canonical JSON argv.

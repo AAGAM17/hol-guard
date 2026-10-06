@@ -38,17 +38,6 @@ def test_business_content_requires_native_consumer_without_python_fallback(
     monkeypatch.setenv("HOL_GUARD_NATIVE", "off")
     with pytest.raises(api.NativePolicySnapshotError, match="native_business_policy_consumer_unavailable"):
         build(tmp_path, binding())
-    legacy = api.build_policy_snapshot_v3(
-        config={},
-        guard_home=tmp_path,
-        runtime_identity="a" * 64,
-        rule_digest="b" * 64,
-        verifier_key=b"k" * 32,
-        generation=1,
-        issued_at_ms=100,
-        expires_at_ms=1000,
-    )
-    assert "business_policy" not in legacy
 
 
 def test_older_native_consumer_refuses_before_constructor_receives_key(
@@ -63,7 +52,7 @@ def test_older_native_consumer_refuses_before_constructor_receives_key(
         identity=SimpleNamespace(path=tmp_path / "unused"),
         capabilities=SimpleNamespace(features=("native-policy-snapshot-build-v1",)),
     )
-    monkeypatch.setattr(native_runtime, "native_runtime_status", lambda: old)
+    monkeypatch.setattr(native_runtime, "native_runtime_status", lambda **kwargs: old)
 
     def forbidden(*args: object, **kwargs: object) -> None:
         pytest.fail("An older consumer must not receive a constructor request or verifier key")
@@ -71,6 +60,100 @@ def test_older_native_consumer_refuses_before_constructor_receives_key(
     monkeypatch.setattr(native_runtime, "_run_native_process", forbidden)
     with pytest.raises(api.NativePolicySnapshotError, match="native_business_policy_consumer_unavailable"):
         build(tmp_path, binding())
+
+
+def test_constructor_failure_clears_owned_key_list_and_request_reference(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codex_plugin_scanner.guard import native_policy_snapshot_business_bridge as bridge
+
+    observed = []
+
+    def fail(request: dict[str, object]) -> dict[str, object]:
+        observed.extend((request, request["verifier_key"]))
+        raise api.NativePolicySnapshotError("synthetic_constructor_failure")
+
+    monkeypatch.setattr(bridge, "build_native_business_snapshot", fail)
+    with pytest.raises(api.NativePolicySnapshotError, match="synthetic_constructor_failure"):
+        build(tmp_path, binding())
+    assert "verifier_key" not in observed[0]
+    assert observed[1] == [0] * 32
+
+
+def test_refused_business_declaration_does_not_provision_verifier(
+    tmp_path: Path,
+    native_hook_force: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codex_plugin_scanner.guard import native_policy_snapshot_generation as generation
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        pytest.fail("A refused business declaration must not provision a resident key")
+
+    monkeypatch.setattr(generation, "provision_native_policy_verifier_key", forbidden)
+    inputs = dict(
+        config={}, guard_home=tmp_path, runtime_identity="a" * 64, rule_digest="b" * 64, policy_integrity_key=b"m" * 32
+    )
+    with pytest.raises(api.NativePolicySnapshotError, match="content_invalid"):
+        api.native_policy_snapshot_v3(**inputs, business_policy={**binding(), "private_canary": True})
+    monkeypatch.setenv("HOL_GUARD_NATIVE", "off")
+    with pytest.raises(api.NativePolicySnapshotError, match="consumer_unavailable"):
+        api.native_policy_snapshot_v3(**inputs, business_policy=binding())
+
+
+def test_expired_publication_deadline_refuses_before_native_probe_or_key_provision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codex_plugin_scanner.guard import native_policy_snapshot_generation as generation
+    from codex_plugin_scanner.guard import native_runtime
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        pytest.fail("Expired publication must not probe, spawn or provision")
+
+    monkeypatch.setattr(native_runtime, "native_runtime_status", forbidden)
+    monkeypatch.setattr(generation, "provision_native_policy_verifier_key", forbidden)
+    with pytest.raises(api.NativePolicySnapshotError, match="deadline_exceeded"):
+        api.native_policy_snapshot_v3(
+            config={},
+            guard_home=tmp_path,
+            runtime_identity="a" * 64,
+            rule_digest="b" * 64,
+            policy_integrity_key=b"m" * 32,
+            business_policy=binding(),
+            deadline_monotonic=time.monotonic() - 1,
+        )
+
+
+def test_inspection_cache_is_content_only_and_subprocess_uses_remaining_deadline(
+    tmp_path: Path,
+    native_hook_force: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codex_plugin_scanner.guard import native_policy_snapshot_business_bridge as bridge
+    from codex_plugin_scanner.guard import native_runtime
+
+    snapshot = build(tmp_path, binding())
+    snapshot["generation"] = 7
+    observed = []
+    real = native_runtime._run_native_process
+
+    def recording(*args: object, **kwargs: object) -> str | None:
+        observed.append(kwargs["timeout_seconds"])
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(native_runtime, "_run_native_process", recording)
+    token = bridge.begin_business_deadline(time.monotonic() + 0.75)
+    try:
+        validate_business_snapshot_content(snapshot)
+        validate_business_snapshot_content(snapshot)
+    finally:
+        bridge.end_business_deadline(token)
+    assert len(observed) == 1 and 0 < observed[0] <= 0.75
+    monkeypatch.setenv("HOL_GUARD_NATIVE", "off")
+    with pytest.raises(api.NativePolicySnapshotError, match="consumer_unavailable"):
+        validate_business_snapshot_content(snapshot)
 
 
 def test_native_business_builder_preserves_binding_and_cache_authentication(

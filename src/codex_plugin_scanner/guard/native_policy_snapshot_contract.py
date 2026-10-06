@@ -370,16 +370,17 @@ def build_policy_snapshot_v3(
                 "expires_at_ms",
             )
         }
+        captured_business = capture_business_binding(business_policy)
         key = list(verifier_key)
-        request.update(
-            schema="guard-native-policy-build.v1",
-            version=1,
-            verifier_key=key,
-            business_policy=capture_business_binding(business_policy),
-        )
-        if binding is not None:
-            request["command_extensions"] = binding
         try:
+            request.update(
+                schema="guard-native-policy-build.v1",
+                version=1,
+                verifier_key=key,
+                business_policy=captured_business,
+            )
+            if binding is not None:
+                request["command_extensions"] = binding
             built = build_native_business_snapshot(request)
             integrity = built.get("integrity")
             if (

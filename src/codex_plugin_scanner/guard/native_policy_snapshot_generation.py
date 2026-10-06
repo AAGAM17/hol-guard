@@ -336,6 +336,9 @@ def native_policy_snapshot_v3(
     allowing retries to reuse a previously materialized renewal candidate.
     """
 
+    from .native_policy_snapshot_business_bridge import begin_business_deadline, end_business_deadline
+
+    deadline_token = begin_business_deadline(deadline_monotonic) if business_policy is not None else None
     verifier_key: bytes | None = None
     try:
         _validate_snapshot_request_v3(
@@ -350,7 +353,8 @@ def native_policy_snapshot_v3(
 
             business_policy = capture_business_binding(business_policy)
         verifier_key = derive_native_policy_verifier_key(policy_integrity_key)
-        provision_native_policy_verifier_key(guard_home, policy_integrity_key)
+        if business_policy is None:
+            provision_native_policy_verifier_key(guard_home, policy_integrity_key)
         binding = capture_native_command_control_binding(command_extensions) if command_extensions is not None else None
         effective_policy, mode, config_digest, policy_digest, scope_digest = _snapshot_inputs_v3(
             config,
@@ -360,6 +364,8 @@ def native_policy_snapshot_v3(
             binding,
             business_policy,
         )
+        if business_policy is not None:
+            provision_native_policy_verifier_key(guard_home, policy_integrity_key)
         api = _snapshot_api()
         with api._v3_generation_lock(guard_home, deadline_monotonic=deadline_monotonic) as lock_descriptor:
             api._recover_v3_snapshot_transaction(guard_home, verifier_key)
@@ -409,3 +415,5 @@ def native_policy_snapshot_v3(
         # only the purpose-specific verifier-derived key id and MAC.
         verifier_key = None
         policy_integrity_key = b""
+        if deadline_token is not None:
+            end_business_deadline(deadline_token)

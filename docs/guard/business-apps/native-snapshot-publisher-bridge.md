@@ -24,6 +24,13 @@ authenticity and currentness must remain `not_checked`. Cache MAC verification
 and actual resident admission remain separate: resident admission supplies the
 trusted clock, runtime identity, rule digest and generation floor. Keyless
 content success cannot authenticate a forged MAC or establish currentness.
+Successful finite content projections are memoized in a bounded process-local
+cache keyed by selected runtime identity and canonical snapshot digest. No
+request content or verifier key is retained in that cache. A current compatible
+consumer and remaining deadline are checked even on a cache hit; MAC and time
+admission are never memoized. Build/inspect probes and processes consume the
+caller's remaining publication budget. Declaration/capability validation
+precedes business verifier-key provisioning; refusal does not install a key.
 
 Semantic generation identity comes from a non-installed native constructor
 value with synthetic key/generation/times, which do not participate in policy

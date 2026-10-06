@@ -2,16 +2,50 @@
 
 from __future__ import annotations
 
-import hashlib
+import math
+import time
+from collections import OrderedDict
 from collections.abc import Mapping
-from typing import cast
+from contextvars import ContextVar, Token
+from threading import Lock
+from typing import TYPE_CHECKING, cast
 
 from .native_policy_snapshot_codec import (
     _canonical_json_bytes_v3,
+    _digest_v3,
     _strict_json_loads_v3,
     _valid_digest_v3,
 )
 from .native_policy_snapshot_constants import POLICY_SNAPSHOT_MAX_BYTES, NativePolicySnapshotError
+
+if TYPE_CHECKING:
+    from .native_runtime_values import NativeRuntimeStatus
+
+_DEADLINE: ContextVar[float | None] = ContextVar("business_snapshot_deadline", default=None)
+_INSPECTED: OrderedDict[tuple[str, str], dict[str, object]] = OrderedDict()
+_CACHE_LOCK = Lock()
+_CACHE_LIMIT = 128
+
+
+def begin_business_deadline(deadline: float | None) -> Token[float | None]:
+    if deadline is not None and (isinstance(deadline, bool) or not math.isfinite(deadline)):
+        raise NativePolicySnapshotError("native_policy_snapshot_deadline_invalid")
+    existing = _DEADLINE.get()
+    chosen = deadline if existing is None else existing if deadline is None else min(existing, deadline)
+    return _DEADLINE.set(chosen)
+
+
+def end_business_deadline(token: Token[float | None]) -> None:
+    _DEADLINE.reset(token)
+
+
+def _remaining_timeout() -> float:
+    deadline = _DEADLINE.get()
+    remaining = 5.0 if deadline is None else min(5.0, deadline - time.monotonic())
+    if remaining <= 0:
+        raise NativePolicySnapshotError("native_policy_snapshot_deadline_exceeded")
+    return remaining
+
 
 _INSPECTION_FIELDS = frozenset(
     {
@@ -39,12 +73,11 @@ def capture_business_binding(value: Mapping[str, object]) -> dict[str, object]:
     return cast(dict[str, object], result)
 
 
-def _native_content_operation(command: str, value: Mapping[str, object]) -> dict[str, object]:
-    from .native_runtime import _run_native_process, native_runtime_status
+def _selected_runtime() -> NativeRuntimeStatus:
+    from .native_runtime import native_runtime_status
 
-    if command not in {"policy-snapshot-build", "policy-snapshot-inspect"}:
-        raise NativePolicySnapshotError("native_business_policy_consumer_unavailable")
-    status = native_runtime_status()
+    _remaining_timeout()
+    status = native_runtime_status(deadline_monotonic=_DEADLINE.get())
     required = {"native-policy-snapshot-build-v1", "native-policy-snapshot-inspect-v1"}
     if (
         not status.available
@@ -54,14 +87,29 @@ def _native_content_operation(command: str, value: Mapping[str, object]) -> dict
         or not required <= set(status.capabilities.features)
     ):
         raise NativePolicySnapshotError("native_business_policy_consumer_unavailable")
+    return status
+
+
+def _native_content_operation(
+    command: str,
+    value: Mapping[str, object],
+    *,
+    status: NativeRuntimeStatus | None = None,
+) -> dict[str, object]:
+    from .native_runtime import _run_native_process
+
+    if command not in {"policy-snapshot-build", "policy-snapshot-inspect"}:
+        raise NativePolicySnapshotError("native_business_policy_consumer_unavailable")
+    selected = status if status is not None else _selected_runtime()
+    assert selected.identity is not None
     encoded = _canonical_json_bytes_v3(value)
     if len(encoded) > POLICY_SNAPSHOT_MAX_BYTES:
         raise NativePolicySnapshotError("native_policy_snapshot_too_large")
     output = _run_native_process(
-        status.identity.path,
+        selected.identity.path,
         (command, "--stdin"),
         input_text=encoded.decode("utf-8"),
-        timeout_seconds=5.0,
+        timeout_seconds=_remaining_timeout(),
     )
     if output is None or len(output.encode("utf-8")) > POLICY_SNAPSHOT_MAX_BYTES:
         raise NativePolicySnapshotError("native_business_policy_content_invalid")
@@ -84,7 +132,17 @@ def validate_business_snapshot_content(
         integrity = value.get("integrity")
         if isinstance(integrity, Mapping) and integrity.get("mac") == "":
             value["integrity"] = {**integrity, "mac": "0" * 64}
-    result = _native_content_operation("policy-snapshot-inspect", value)
+    status = _selected_runtime()
+    assert status.identity is not None
+    digest = _digest_v3(value)
+    key = (status.identity.sha256, digest)
+    with _CACHE_LOCK:
+        cached = _INSPECTED.get(key)
+        result = dict(cached) if cached is not None else None
+        if cached is not None:
+            _INSPECTED.move_to_end(key)
+    if result is None:
+        result = _native_content_operation("policy-snapshot-inspect", value, status=status)
     if (
         set(result) != _INSPECTION_FIELDS
         or result.get("schema") != "guard-native-policy-content-inspection.v1"
@@ -96,11 +154,18 @@ def validate_business_snapshot_content(
         or any(
             not _valid_digest_v3(result.get(field)) for field in ("snapshot_digest", "config_digest", "policy_digest")
         )
-        or result.get("snapshot_digest") != hashlib.sha256(_canonical_json_bytes_v3(value)).hexdigest()
+        or result.get("snapshot_digest") != digest
     ):
         raise NativePolicySnapshotError("native_business_policy_content_invalid")
     if verify_digests and any(result[field] != snapshot.get(field) for field in ("config_digest", "policy_digest")):
         raise NativePolicySnapshotError("native_policy_snapshot_digest_mismatch")
+    # Cache only finite content projections, never MAC authentication or time
+    # admission. Each caller still performs its own requested digest checks.
+    with _CACHE_LOCK:
+        _INSPECTED[key] = dict(result)
+        _INSPECTED.move_to_end(key)
+        while len(_INSPECTED) > _CACHE_LIMIT:
+            _INSPECTED.popitem(last=False)
 
 
 def build_native_business_snapshot(request: Mapping[str, object]) -> dict[str, object]:

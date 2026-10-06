@@ -118,6 +118,13 @@ jobs:
           HOL_GUARD_WIN_DIAG_DIR: ${{ github.workspace }}\win-diag
         run: |
           New-Item -ItemType Directory -Force -Path win-diag | Out-Null
+          # Reproduce native_regression_shard's installed-native env: resolve the
+          # wheel's bundled runtime and pin it, so native_hook_force sees
+          # HOL_GUARD_NATIVE_BINARY (installed-wheel identity, not source tree).
+          $rt = uv run --no-sync python -c "from codex_plugin_scanner.guard.native_runtime import native_runtime_status; s=native_runtime_status(); print(s.identity.path if s.identity is not None else '')"
+          Write-Host "resolved runtime: $rt"
+          if ([string]::IsNullOrWhiteSpace($rt)) { Write-Host "no runtime identity"; exit 3 }
+          $env:HOL_GUARD_NATIVE_BINARY = $rt.Trim()
           uv run --no-sync python -m pytest -p conftest_win_diag `
             tests/test_environment_secret_dump.py::test_grok_pretool_denies_python_environ_dump `
             tests/test_hermes_runtime_hooks.py::test_pretool_call_records_runtime_receipt `

@@ -115,6 +115,11 @@ _last_bound_home: Path | None = None
 _RESULT_CACHE_LOCK = threading.Lock()
 _RESULT_CACHE: OrderedDict[tuple[str, str], dict[str, Any]] = OrderedDict()
 _RESULT_CACHE_MAX = 256
+# Guard homes whose resident on-disk prerequisite is already established by
+# this process.  Provisioning is idempotent but builds a store, so the result
+# is remembered; a child process re-establishes it (see `forget_in_child`).
+_RESIDENT_PREREQUISITE_LOCK = threading.Lock()
+_RESIDENT_PREREQUISITE_HOMES: set[str] = set()
 # ``native_runtime_status()`` re-reads and SHA-256-hashes the whole runtime
 # binary per call.  Batch digest sites (``environment_material`` hashes one
 # value per env var, launch verification re-hashes argv/shebang/search-path)
@@ -170,6 +175,7 @@ def _native_runtime_status_memo() -> NativeRuntimeStatus:
 
 
 forget_in_child(_RESULT_CACHE)
+forget_in_child(_RESIDENT_PREREQUISITE_HOMES)
 
 
 def bind_context_digest_home(guard_home: Path | None, *, remember: bool = True) -> Any:
@@ -204,6 +210,55 @@ def _resolve_digest_home(guard_home: Path | None) -> Path:
     from .runtime.approval_context import _context_digest_guard_home
 
     return _context_digest_guard_home(str(Path.home()))
+
+
+def ensure_resident_prerequisite(guard_home: Path) -> bool:
+    """Establish the resident's on-disk prerequisite for ``guard_home``.
+
+    The resident refuses every request until the owner-private verifier key
+    exists under the home's runtime state, and it never creates that state
+    itself.  Native launch/session callers have always provisioned it before
+    their RPC; the plain digest transport never did, because launch and
+    executable identities used to be computed in Python.  Now that the
+    resident owns them, the transport must establish the same prerequisite or
+    every identity request fails closed.
+
+    An existing key file is taken as satisfied without touching the store:
+    callers that ship their own key (the test harness seeds one, and every
+    production entry point provisions before its first RPC) must not need a
+    secret-store master that their guard home was never given.  Returns
+    ``False`` when a missing prerequisite cannot be created, which callers
+    report as an unavailable runtime rather than a crash.
+    """
+
+    try:
+        key = str(canonical_guard_home_path(guard_home))
+    except OSError:
+        key = str(guard_home)
+    with _RESIDENT_PREREQUISITE_LOCK:
+        if key in _RESIDENT_PREREQUISITE_HOMES:
+            return True
+    from .native_policy_snapshot_constants import (
+        NATIVE_POLICY_VERIFIER_KEY_NAME,
+        NATIVE_RUNTIME_STATE_DIRECTORY,
+    )
+
+    if os.path.isfile(guard_home / NATIVE_RUNTIME_STATE_DIRECTORY / NATIVE_POLICY_VERIFIER_KEY_NAME):
+        with _RESIDENT_PREREQUISITE_LOCK:
+            _RESIDENT_PREREQUISITE_HOMES.add(key)
+        return True
+    try:
+        from .native_policy_snapshot_publisher import provision_native_verifier_key_for_store
+        from .store import GuardStore
+
+        provision_native_verifier_key_for_store(GuardStore(guard_home))
+    except Exception:
+        # Nothing to fall back to: the resident is the only authority for these
+        # digests, so an unprovisionable home is an unavailable runtime.
+        return False
+    with _RESIDENT_PREREQUISITE_LOCK:
+        _RESIDENT_PREREQUISITE_HOMES.add(key)
+    return True
 
 
 @contextmanager
@@ -535,6 +590,8 @@ def native_context_digest(
         or _RESIDENT_PROTOCOL_FEATURE not in status.capabilities.features
         or timeout_seconds <= 0
     ):
+        return None
+    if not ensure_resident_prerequisite(guard_home):
         return None
     deadline_started = time.monotonic()
     deadline_budget_ms = max(1, min(9_000, int(timeout_seconds * 1_000)))

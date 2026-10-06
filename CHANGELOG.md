@@ -15,6 +15,10 @@ Older releases are preserved in the [changelog archive](docs/changelog-archive.m
 * **mcp:** the resident owns the tools/list boundary — `_canonical_tool_catalog_entry`, `_normalized_tools_catalog_page`, and `_tool_catalog_fingerprint` delegate to the new `mcp_tool_catalog_fingerprint` context-digest kind. Rust canonicalizes each advertised entry (name-strip, `input_schema`→`inputSchema`, `output_schema`→`outputSchema`), rejects malformed pages (non-dict item, blank/non-trimmed/duplicate name, unserializable payload), and emits the sha256 fingerprint over `{state, tools(sorted), version}`. `validate_context_tokens` now treats byte-identical opaque tokens — including the `guard-context-unbound:*` sentinel — as unchanged instead of `approval_reuse_content_changed`.
 * **mcp:** the resident owns MCP call-argument display safety — `_safe_mcp_arguments`/`_safe_mcp_params`/`_mcp_arguments_digest`/`_launch_target` and the stdio `_redact_json` traffic recorder delegate to `mcp_arguments_projection`/`mcp_redact_json` context-digest ops; Python keeps no fallback masking path.
 
+### Bug Fixes
+
+* **native:** the context-digest transport now establishes the resident's on-disk prerequisite (the owner-private `policy-verifier.key` under `<guard-home>/native-runtime/`) before shipping a request, the way every native launch/session caller already did. Launch and executable identities became resident-owned, so a guard home that had never been provisioned — a fresh deployment, or a test home carrying a seeded key — failed closed on `native_runtime_launch_identity_unavailable`, `native_mcp_launch_environment_unavailable`, and `native_package_context_digest_unavailable`. An existing key file is accepted as satisfied without opening a store; only a missing key is provisioned, once per home per process.
+
 ## [3.25.2](https://github.com/hashgraph-online/hol-guard/compare/v3.25.1...v3.25.2) (2026-10-05)
 
 

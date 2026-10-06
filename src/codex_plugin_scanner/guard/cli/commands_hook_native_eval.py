@@ -304,12 +304,13 @@ def _apply_stored_package_policy_via_resident(
     now: str,
     current_action: object | None,
     claim_saved_approval: bool,
-    execution_context: PackageExecutionContext | None = None,
 ):
-    """Apply saved package policy through the resident when available.
+    """Route the saved-package-policy claim through the resident.
 
-    Fall back to the Python override when the resident is unreachable so saved
-    package approvals and blocks are not silently dropped.
+    The resident is the sole authority for the stored-approval claim. When it
+    is unreachable (``None`` — transport/identity failure) the evaluation is
+    returned unchanged: no saved approval is applied, matching the resident's
+    own no-saved-approval result rather than re-running a Python path.
     """
     payload = apply_stored_package_policy_native(
         package_evaluation.to_dict(),
@@ -323,17 +324,7 @@ def _apply_stored_package_policy_via_resident(
         claim_saved_approval=claim_saved_approval,
     )
     if payload is None:
-        return apply_stored_package_policy_override(
-            package_evaluation,
-            store=store,
-            artifact=artifact,
-            artifact_hash=artifact_hash,
-            workspace_dir=workspace_dir,
-            now=now,
-            execution_context=execution_context,
-            current_action=current_action,
-            claim_saved_approval=claim_saved_approval,
-        )
+        return package_evaluation
     return evaluation_from_native_payload(payload)
 
 

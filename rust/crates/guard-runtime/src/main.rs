@@ -30,6 +30,7 @@ mod mcp_stdio_session_op;
 mod native_hook_receipt;
 mod native_runtime_admission;
 mod native_runtime_resilience;
+mod oauth_secret_authority;
 mod oneshot;
 mod package_authority_op;
 mod policy_decision_lookup_op;

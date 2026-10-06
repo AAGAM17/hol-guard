@@ -581,9 +581,12 @@ fn oauth_credential_state(guard_home: &Path, payload: Option<&Value>) -> String 
 }
 
 /// `_load_oauth_secret_payload` — resolve the scoped secret ref from
-/// `credentials_ref` (falling back to the home-scoped default ref) and read
-/// the JSON secret from the encrypted file store.
-fn load_oauth_secret_payload(guard_home: &Path, payload: &Value) -> Option<Value> {
+/// `credentials_ref` (falling back to the home-scoped default ref), read the
+/// secret from the encrypted file store, and verify it against the record's
+/// `credentials_sha256` (`store_base._secret_matches_hash`, all three accepted
+/// prefixes). Bytes that no longer match the fingerprint they were stored with
+/// are not usable, so the caller degrades instead of trusting them.
+fn load_oauth_secret_raw(guard_home: &Path, payload: &Value) -> Option<String> {
     let resolved_home = resolve_runtime_home(guard_home)?;
     let default_ref = crate::policy_integrity_resolver::build_scoped_secret_ref(
         "guard-oauth-local-credentials",
@@ -598,7 +601,20 @@ fn load_oauth_secret_payload(guard_home: &Path, payload: &Value) -> Option<Value
         .unwrap_or(default_ref);
     let mut store = crate::encrypted_secret_store::EncryptedFileSecretStore::new(&resolved_home);
     let raw = store.get_secret(&secret_ref)?;
-    serde_json::from_str(&raw).ok()
+    let expected = payload
+        .get(crate::oauth_secret_authority::CREDENTIALS_HASH_KEY)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|v| !v.is_empty())?;
+    crate::oauth_secret_authority::secret_matches_fingerprint(&raw, expected)
+        .ok()
+        .filter(|matches| *matches)?;
+    Some(raw)
+}
+
+/// `_load_oauth_secret_payload` — the parsed form of `load_oauth_secret_raw`.
+fn load_oauth_secret_payload(guard_home: &Path, payload: &Value) -> Option<Value> {
+    serde_json::from_str(&load_oauth_secret_raw(guard_home, payload)?).ok()
 }
 
 /// `_build_oauth_local_credentials_result` — a secret payload is usable only
@@ -1346,15 +1362,24 @@ impl GuardSyncRunnerApi for ResidentGuardSyncRunner {
             return Ok(env_ctx);
         }
         // `_resolve_guard_sync_auth_context` (:4733) — read the stored OAuth
-        // credentials, extract DPoP material, and reuse a still-valid cached
-        // access token. Token refresh (the network leg + rotation persist) is
-        // NOT ported in stage A: a missing/expired token surfaces
-        // `EvalError::Validation` (the `GuardSyncAuthorizationExpiredError`
-        // mirror) so `_evaluate_with_cloud` fail-closes to `ask` rather than
-        // mislabeling a refresh-needed credential as `NotFound` ("not
-        // configured") and falling back to local-only evaluation.
+        // credentials through the scoped secret authority: metadata from the
+        // `oauth_local_credentials` payload, secret material (refresh token,
+        // DPoP key, cached access token) from the verified secret behind
+        // `credentials_ref`. `store_oauth` never inlines the secret, so the
+        // payload alone cannot start a sync. Token refresh (the network leg +
+        // rotation persist) is still the stage-B port: a missing/expired token
+        // surfaces `EvalError::Validation` (the
+        // `GuardSyncAuthorizationExpiredError` mirror) so `_evaluate_with_cloud`
+        // fail-closes to `ask` rather than mislabeling a refresh-needed
+        // credential as `NotFound` ("not configured") and falling back to
+        // local-only evaluation.
         let oauth_credentials = match store.get_sync_payload("oauth_local_credentials") {
-            Some(c) if c.is_object() => c,
+            Some(payload) if payload.is_object() => {
+                crate::oauth_secret_authority::resolve_credentials(&payload, &|_| {
+                    load_oauth_secret_raw(store.guard_home(), &payload)
+                })
+                .map_err(EvalError::Validation)?
+            }
             _ => return Err(EvalError::NotFound("Guard is not logged in.".to_owned())),
         };
         let issuer = oauth_credentials

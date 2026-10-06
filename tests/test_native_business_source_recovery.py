@@ -88,11 +88,14 @@ def test_cli_exposes_freshly_approved_recovery(tmp_path, native_mcp_probe, monke
         ),
     )
     output = io.StringIO()
-    assert command._run_guard_policy_document_command(
-        SimpleNamespace(policy_command="recover-business-source", file=str(path), json=True),
-        store=store,
-        output_stream=output,
-    ) == 0, output.getvalue()
+    assert (
+        command._run_guard_policy_document_command(
+            SimpleNamespace(policy_command="recover-business-source", file=str(path), json=True),
+            store=store,
+            output_stream=output,
+        )
+        == 0
+    ), output.getvalue()
     source = owner.read_installed_business_source(store, _key(store))
     assert json.loads(output.getvalue())["digest"] == source.source_digest
     assert "synthetic-source-installation-password" not in output.getvalue()

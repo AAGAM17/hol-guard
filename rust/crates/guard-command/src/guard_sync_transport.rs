@@ -290,9 +290,7 @@ pub fn cached_oauth_access_token(credentials: &Value, now_unix: i64) -> Option<S
 /// OAuth credential read; the resident honors the same env knobs so the
 /// eval-path tests exercise the native seam without a live Cloud.
 pub fn test_sync_auth_context_from_env() -> Option<Map<String, Value>> {
-    if std::env::var_os("PYTEST_CURRENT_TEST").is_none() {
-        return None;
-    }
+    std::env::var_os("PYTEST_CURRENT_TEST")?;
     if let Ok(raw) = std::env::var("GUARD_TEST_SYNC_AUTH_CONTEXT_JSON") {
         if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&raw) {
             return Some(map);

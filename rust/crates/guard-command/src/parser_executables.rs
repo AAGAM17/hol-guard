@@ -1,5 +1,3 @@
-use super::*;
-
 pub(super) fn is_shell_token_whitespace(value: char) -> bool {
     matches!(value, ' ' | '\t' | '\r' | '\n')
 }

@@ -41,7 +41,7 @@ async function inspectBusinessPolicy(requestId, candidateDigest) {
     if (response.status === 409 && payload && typeof payload === "object" && "error" in payload && payload.error === "business_source_recovery_candidate_unavailable") return { state: "unavailable", candidateDigest };
     throw recoveryError(response.status, payload);
   }
-  if (!payload || typeof payload !== "object" || !("candidateDigest" in payload) || payload.candidateDigest !== candidateDigest || !("state" in payload) || !["unavailable", "interrupted", "installed"].includes(String(payload.state))) {
+  if (!payload || typeof payload !== "object" || !("candidateDigest" in payload) || payload.candidateDigest !== candidateDigest || !("state" in payload) || typeof payload.state !== "string" || !["unavailable", "interrupted", "installed"].includes(payload.state)) {
     throw new Error("The saved policy inspection was not confirmed. Refresh before continuing.");
   }
   if (payload.state !== "unavailable" && (!("policy" in payload) || !payload.policy || typeof payload.policy !== "object" || Array.isArray(payload.policy) || !("provenanceRedacted" in payload) || payload.provenanceRedacted !== true)) {

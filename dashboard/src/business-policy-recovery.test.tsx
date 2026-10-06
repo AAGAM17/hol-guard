@@ -57,6 +57,8 @@ try {
     policy: { spec: { rules: [{ effect: "deny" }] } }, provenanceRedacted: true };
   globalThis.fetch = async () => new Response(JSON.stringify(inspection), { status: 200 });
   assert.equal((await inspectBusinessPolicy("synthetic-request", "synthetic-digest")).requestRecovered, true);
+  globalThis.fetch = async () => new Response(JSON.stringify({ ...inspection, state: ["interrupted"] }), { status: 200 });
+  await assert.rejects(inspectBusinessPolicy("synthetic-request", "synthetic-digest"), /not confirmed/);
   for (const policy of [null, [], "unverified policy"]) {
     globalThis.fetch = async () => new Response(JSON.stringify({ ...inspection, policy }), { status: 200 });
     await assert.rejects(inspectBusinessPolicy("synthetic-request", "synthetic-digest"), /not confirmed/);

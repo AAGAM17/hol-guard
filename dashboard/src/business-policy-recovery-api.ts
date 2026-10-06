@@ -51,7 +51,7 @@ export async function inspectBusinessPolicy(requestId: string, candidateDigest: 
     throw recoveryError(response.status, payload);
   }
   if (!payload || typeof payload !== "object" || !("candidateDigest" in payload) || payload.candidateDigest !== candidateDigest ||
-      !("state" in payload) || !["unavailable", "interrupted", "installed"].includes(String(payload.state))) {
+      !("state" in payload) || typeof payload.state !== "string" || !["unavailable", "interrupted", "installed"].includes(payload.state)) {
     throw new Error("The saved policy inspection was not confirmed. Refresh before continuing.");
   }
   if (payload.state !== "unavailable" && (!("policy" in payload) || !payload.policy ||

@@ -184,6 +184,13 @@ pub fn sign_business_source(
     }
     let compiled = compile_business_document(source_document)
         .map_err(|_| BusinessSourceError::InvalidSource)?;
+    if source_document["metadata"]["id"].as_str().is_none()
+        || !source_document["metadata"]["revision"]
+            .as_u64()
+            .is_some_and(|revision| revision > 0)
+    {
+        return Err(BusinessSourceError::InvalidSource);
+    }
     let mut record = BusinessSourceRecord {
         schema: BUSINESS_SOURCE_AUTHORITY_SCHEMA.to_owned(),
         mutation_revision,

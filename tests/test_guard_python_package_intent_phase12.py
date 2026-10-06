@@ -21,7 +21,10 @@ def native_package_parser(request: pytest.FixtureRequest, monkeypatch: pytest.Mo
         return False
     if not os.environ.get("HOL_GUARD_NATIVE_BINARY"):
         pytest.skip("native parser proof requires an explicitly pinned runtime")
-    request.getfixturevalue("native_hook_force")
+    guard_home = request.getfixturevalue("native_context_digest")
+    from codex_plugin_scanner.guard import config
+
+    monkeypatch.setattr(config, "resolve_guard_home", lambda *_args, **_kwargs: guard_home)
 
     def reject_python_fallback(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("native package-intent parsing fell back to Python")

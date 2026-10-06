@@ -550,17 +550,13 @@ class StdioGuardProxy:
                 # status is terminal — never fall back to the Python transport
                 # on a real open failure.
                 if opened.get("status") != "opened":
-                    raise RuntimeError(
-                        f"native stdio session open failed: {opened.get('payload')}"
-                    )
+                    raise RuntimeError(f"native stdio session open failed: {opened.get('payload')}")
                 # Resident echoes the caller-supplied session id in `payload`
                 # (same contract the runtime MCP proxy relies on). Keep our own
                 # id and cross-check the echo rather than inventing a field the
                 # result schema does not carry.
                 if opened.get("payload") != native_session_id:
-                    raise RuntimeError(
-                        "native stdio session open returned an unexpected session id"
-                    )
+                    raise RuntimeError("native stdio session open returned an unexpected session id")
                 if not self._active_launch_identity_matches(launch_env):
                     raise ProxyLaunchIdentityChangedError(
                         "Guard stdio proxy launch identity changed while starting the MCP server."

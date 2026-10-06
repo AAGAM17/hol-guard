@@ -352,6 +352,12 @@ class ZCodeHarnessAdapter(HarnessAdapter):
                 (path, payload, _snapshot(path), (path.stat().st_mode & 0o777) if path.is_file() else 0o644)
             )
 
+        file_config = self._file_config_path(context)
+        if str(file_config) not in enabled_history and str(config_path) in enabled_history:
+            # The CLI migration will copy config.json (including Guard's opt-in)
+            # into setting.json; remember the pre-install value for it too.
+            enabled_history[str(file_config)] = enabled_history[str(config_path)]
+
         config_before = _snapshot(config_path)
         state_mode = state_path.stat().st_mode & 0o777 if state_before is not None else 0o644
         backup_mode = backup_path.stat().st_mode & 0o777 if backup_before is not None else 0o644

@@ -18,25 +18,18 @@ use sha2::{Digest, Sha256};
 // `reuse_nonce` must never be reusable, so it must stay unique even when the
 // OS RNG is unavailable. Hash entropy plus a per-process counter and pid so two
 // identities can never share a nonce a saved approval could match; a constant
-// zero nonce would let an attacker pin a stable identity.
-fn token_hex(bytes: usize) -> String {
+// zero nonce would let an attacker pin a stable identity. Every call site
+// produces a 16-byte nonce.
+fn token_hex() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let mut entropy = vec![0u8; bytes.max(16)];
+    let mut entropy = [0u8; 16];
     let _ = getrandom::fill(&mut entropy);
     let mut hasher = Sha256::new();
-    hasher.update(&entropy);
+    hasher.update(entropy);
     hasher.update(std::process::id().to_be_bytes());
     hasher.update(COUNTER.fetch_add(1, Ordering::Relaxed).to_be_bytes());
-    let digest = hex::encode(hasher.finalize());
-    // Produce exactly `bytes` bytes of hex (2*bytes chars); the digest is 32
-    // bytes, so this truncates when bytes<=16 and stays hex-shaped otherwise.
-    let mut out = String::with_capacity(bytes * 2);
-    while out.len() < bytes * 2 {
-        out.push_str(&digest);
-    }
-    out.truncate(bytes * 2);
-    out
+    hex::encode(&hasher.finalize()[..16])
 }
 
 // `launch_identity.rs::launch_argv_digest` — sha256 over canonical JSON argv.
@@ -46,8 +39,7 @@ fn launch_argv_digest(argv: &[String]) -> String {
     if guard_contracts::write_canonical_json(&material, &mut bytes).is_err() {
         bytes.clear();
     }
-    let text = String::from_utf8_lossy(&bytes);
-    hex::encode(Sha256::digest(text.as_bytes()))
+    hex::encode(Sha256::digest(&bytes))
 }
 
 // `launch_identity.rs::unreusable_executable_identity` — non-Unix executables
@@ -66,7 +58,7 @@ fn unsupported_executable_identity(command: &Value) -> Value {
         "status".to_string(),
         Value::String("unsupported_platform".to_string()),
     );
-    map.insert("reuse_nonce".to_string(), Value::String(token_hex(16)));
+    map.insert("reuse_nonce".to_string(), Value::String(token_hex()));
     Value::Object(map)
 }
 
@@ -87,7 +79,7 @@ fn unsupported_entrypoint_identity() -> Value {
         Value::String(launch_argv_digest(&[])),
     );
     map.insert("status".to_string(), Value::String("unproven".to_string()));
-    map.insert("reuse_nonce".to_string(), Value::String(token_hex(16)));
+    map.insert("reuse_nonce".to_string(), Value::String(token_hex()));
     Value::Object(map)
 }
 

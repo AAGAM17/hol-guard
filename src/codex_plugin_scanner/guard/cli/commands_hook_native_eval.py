@@ -113,6 +113,10 @@ def _native_edge_floor_action(
     if not isinstance(native_edge_result, Mapping):
         return None
     action = coerce_guard_action(native_edge_result.get("policy_action") or native_edge_result.get("minimum_action"))
+    if event_name == "PreToolUse" and action in {"block", "sandbox-required"}:
+        # A typed terminal native edge cannot become browser-overridable review
+        # when the compatibility command floor lacks the same source context.
+        return action
     if event_name != "PostToolUse":
         # PreToolUse/UserPromptSubmit composition floors come from the
         # command-level native review (``native_pre_tool_floor``) and the

@@ -64,6 +64,7 @@ export function McpPolicyRequestPanel(props: McpPolicyRequestPanelProps) {
   const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
   const [installationRecovered, setInstallationRecovered] = useState(false);
   const [inspection, setInspection] = useState<BusinessRecoveryInspection | null>(null);
+  const [inspectionError, setInspectionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
@@ -71,6 +72,7 @@ export function McpPolicyRequestPanel(props: McpPolicyRequestPanelProps) {
     setRecoveryCode(null);
     setInstallationRecovered(false);
     setInspection(null);
+    setInspectionError(null);
     setApprovalPassword("");
     setApprovalTotpCode("");
     try {
@@ -79,9 +81,13 @@ export function McpPolicyRequestPanel(props: McpPolicyRequestPanelProps) {
         setState({ kind: "not-found" });
         return;
       }
-      const inspected = await inspectBusinessPolicy(request.requestId, request.candidateDigest);
-      setInspection(inspected);
-      setInstallationRecovered(inspected.state === "installed");
+      try {
+        const inspected = await inspectBusinessPolicy(request.requestId, request.candidateDigest);
+        setInspection(inspected);
+        setInstallationRecovered(inspected.state === "installed");
+      } catch {
+        setInspectionError("Saved installation state could not be verified. Refresh before approving; you can still decline this request.");
+      }
       setState({ kind: "ready", request });
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : "Unable to load the request.";
@@ -214,6 +220,7 @@ export function McpPolicyRequestPanel(props: McpPolicyRequestPanelProps) {
     recoveryRequired ||
     installationRecovered ||
     requestRecovered ||
+    inspectionError !== null ||
     !actable ||
     resolving ||
     isApprovalProofSubmitDisabled(
@@ -402,7 +409,8 @@ export function McpPolicyRequestPanel(props: McpPolicyRequestPanelProps) {
 
       <section aria-labelledby="mcp-policy-actions" className="space-y-3">
         <SectionLabel>Actions</SectionLabel>
-        {actable && !installationRecovered && !recoveryRequired && !requestRecovered ? (
+        {inspectionError ? <p role="alert" className="text-sm text-slate-600">{inspectionError}</p> : null}
+        {actable && !installationRecovered && !recoveryRequired && !requestRecovered && !inspectionError ? (
           <div className="max-w-md rounded-xl border border-brand-blue/20 bg-brand-blue/[0.04] p-4">
             <p className="mb-3 text-sm text-slate-600">
               Approval requires your local proof. It is sent once and never stored.

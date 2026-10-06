@@ -163,12 +163,14 @@ function McpPolicyRequestPanel(props) {
   const [recoveryCode, setRecoveryCode] = reactExports.useState(null);
   const [installationRecovered, setInstallationRecovered] = reactExports.useState(false);
   const [inspection, setInspection] = reactExports.useState(null);
+  const [inspectionError, setInspectionError] = reactExports.useState(null);
   const load = reactExports.useCallback(async () => {
     setState({ kind: "loading" });
     setOutcome(null);
     setRecoveryCode(null);
     setInstallationRecovered(false);
     setInspection(null);
+    setInspectionError(null);
     setApprovalPassword("");
     setApprovalTotpCode("");
     try {
@@ -177,9 +179,13 @@ function McpPolicyRequestPanel(props) {
         setState({ kind: "not-found" });
         return;
       }
-      const inspected = await inspectBusinessPolicy(request2.requestId, request2.candidateDigest);
-      setInspection(inspected);
-      setInstallationRecovered(inspected.state === "installed");
+      try {
+        const inspected = await inspectBusinessPolicy(request2.requestId, request2.candidateDigest);
+        setInspection(inspected);
+        setInstallationRecovered(inspected.state === "installed");
+      } catch {
+        setInspectionError("Saved installation state could not be verified. Refresh before approving; you can still decline this request.");
+      }
       setState({ kind: "ready", request: request2 });
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : "Unable to load the request.";
@@ -290,7 +296,7 @@ function McpPolicyRequestPanel(props) {
   const resolving = state.kind === "resolving";
   const approving = resolving && state.action === "approve";
   const declining = resolving && state.action === "decline";
-  const approveDisabled = recoveryRequired || installationRecovered || requestRecovered || !actable || resolving || isApprovalProofSubmitDisabled(
+  const approveDisabled = recoveryRequired || installationRecovered || requestRecovered || inspectionError !== null || !actable || resolving || isApprovalProofSubmitDisabled(
     props.approvalGate,
     { approvalPassword, approvalTotpCode },
     resolving
@@ -421,7 +427,8 @@ function McpPolicyRequestPanel(props) {
     ] }) }) : null,
     /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-labelledby": "mcp-policy-actions", className: "space-y-3", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(SectionLabel, { children: "Actions" }),
-      actable && !installationRecovered && !recoveryRequired && !requestRecovered ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-md rounded-xl border border-brand-blue/20 bg-brand-blue/[0.04] p-4", children: [
+      inspectionError ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "alert", className: "text-sm text-slate-600", children: inspectionError }) : null,
+      actable && !installationRecovered && !recoveryRequired && !requestRecovered && !inspectionError ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-md rounded-xl border border-brand-blue/20 bg-brand-blue/[0.04] p-4", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-3 text-sm text-slate-600", children: "Approval requires your local proof. It is sent once and never stored." }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           ApprovalProofFieldInputs,

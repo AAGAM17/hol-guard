@@ -215,11 +215,16 @@ def _cached_snapshot_v3(
     rule_digest: str,
     scope_digest: str,
     renew_after_generation: int | None,
+    business_binding_present: bool = False,
 ) -> tuple[dict[str, object] | None, int | None]:
     cached = api._read_v3_snapshot_cache(guard_home, verifier_key=verifier_key)
     if cached is None:
         return None, renew_after_generation
     cached_snapshot, _cached_bytes = cached
+    if "business_policy" in cached_snapshot and not business_binding_present:
+        # Omission by an ordinary caller is not authenticated removal authority.
+        # Do not discard a signed business binding to recover compatibility.
+        raise NativePolicySnapshotError("native_business_policy_removal_requires_authority")
     matches = _snapshot_matches_inputs_v3(
         cached_snapshot,
         mode=mode,
@@ -387,6 +392,7 @@ def native_policy_snapshot_v3(
                 rule_digest=rule_digest,
                 scope_digest=scope_digest,
                 renew_after_generation=renew_after_generation,
+                business_binding_present=business_policy is not None,
             )
             if cached_snapshot is not None:
                 return cached_snapshot

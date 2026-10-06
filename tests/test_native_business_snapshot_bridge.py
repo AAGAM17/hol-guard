@@ -225,10 +225,12 @@ def test_business_binding_rotates_generation_and_reuses_exact_cache(
     assert renewed["policy_digest"] == changed["policy_digest"]
 
 
+@pytest.mark.parametrize("clock_offset", [-1_000_000.0, 1_000_000.0])
 def test_business_transport_receives_real_native_ack_without_provider_dispatch(
     tmp_path: Path,
     native_hook_force: Path,
     monkeypatch: pytest.MonkeyPatch,
+    clock_offset: float,
 ) -> None:
     from codex_plugin_scanner.guard.native_command_control_binding import read_native_command_control_binding
     from codex_plugin_scanner.guard.native_policy_snapshot_publisher_transport import _publish_snapshot_v3
@@ -247,8 +249,13 @@ def test_business_transport_receives_real_native_ack_without_provider_dispatch(
         guard_home=home,
         _snapshot=None,
         _wall_clock=time.time,
-        _monotonic_clock=time.monotonic,
+        _monotonic_clock=lambda: time.monotonic() + clock_offset,
     )
+
+    def client(**kwargs: object) -> bytes | None:
+        assert 0 < kwargs["deadline_monotonic"] - time.monotonic() <= 9.0
+        return native_resident_client_request(**kwargs)
+
     try:
         snapshot, resident_generation = _publish_snapshot_v3(
             publisher=publisher,
@@ -257,7 +264,7 @@ def test_business_transport_receives_real_native_ack_without_provider_dispatch(
             config={},
             command_extensions=controls,
             master_key=b"m" * 32,
-            client=native_resident_client_request,
+            client=client,
             renew_after_generation=None,
             business_policy=binding(),
         )
@@ -267,3 +274,24 @@ def test_business_transport_receives_real_native_ack_without_provider_dispatch(
         assert cached is not None and cached[0] == snapshot
     finally:
         assert close_native_residents(home, deadline_monotonic=time.monotonic() + 5.0)
+
+
+def test_business_cache_requires_removal_authority_and_cannot_be_skipped_for_older_consumer(
+    tmp_path: Path,
+    native_hook_force: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "guard"
+    home.mkdir(mode=0o700)
+    inputs = dict(
+        config={}, guard_home=home, runtime_identity="a" * 64, rule_digest="b" * 64, policy_integrity_key=b"m" * 32
+    )
+    first = api.native_policy_snapshot_v3(**inputs, business_policy=binding())
+    with pytest.raises(api.NativePolicySnapshotError, match="removal_requires_authority"):
+        api.native_policy_snapshot_v3(**inputs)
+    monkeypatch.setenv("HOL_GUARD_NATIVE", "off")
+    with pytest.raises(api.NativePolicySnapshotError, match="consumer_unavailable"):
+        api.native_policy_snapshot_v3(**inputs)
+    monkeypatch.setenv("HOL_GUARD_NATIVE", "force")
+    preserved = api._read_v3_snapshot_cache(home, verifier_key=api.derive_native_policy_verifier_key(b"m" * 32))
+    assert preserved is not None and preserved[0] == first

@@ -132,7 +132,11 @@ def _publish_snapshot_v3(
             )
             else _PUBLISH_TIMEOUT_SECONDS
         )
-        publication_deadline = publisher._monotonic_clock() + publish_timeout
+        publication_deadline = (
+            time.monotonic() + publish_timeout
+            if business_policy is not None
+            else publisher._monotonic_clock() + publish_timeout
+        )
         snapshot = native_policy_snapshot_v3(
             config=config,
             guard_home=publisher.guard_home,

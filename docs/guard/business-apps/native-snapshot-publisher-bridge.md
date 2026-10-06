@@ -4,6 +4,12 @@ The internal snapshot builder, durable generation/cache flow and transport
 accept an optional `business_policy` declaration. Omission keeps the legacy
 path. This plumbing supplies no declaration source or activation authority:
 the ordinary publisher still supplies none. Cloud publication remains refused.
+An existing signed business cache cannot be discarded merely because an
+ordinary caller omits the binding or an older consumer lacks inspection. With a
+compatible consumer, omission returns `native_business_policy_removal_requires_authority`;
+an older consumer retains its unavailable diagnostic. Authenticated removal is
+not implemented in this plumbing. Upgrade/repair the consumer and supply the
+authenticated declaration; never skip the cache to clear protection.
 
 For a business declaration the bridge requires a compatible selected native
 runtime advertising both `native-policy-snapshot-build-v1` and
@@ -31,6 +37,8 @@ consumer and remaining deadline are checked even on a cache hit; MAC and time
 admission are never memoized. Build/inspect probes and processes consume the
 caller's remaining publication budget. Declaration/capability validation
 precedes business verifier-key provisioning; refusal does not install a key.
+Business deadlines crossing into the bridge and resident use real monotonic
+time; an injected publisher clock cannot extend or prematurely exhaust them.
 
 Semantic generation identity comes from a non-installed native constructor
 value with synthetic key/generation/times, which do not participate in policy

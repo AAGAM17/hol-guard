@@ -142,6 +142,28 @@ pub(super) fn read_generation_floor(
     Ok(Some(floor))
 }
 
+pub(super) fn persist_loaded_authority(
+    path: &Path,
+    loaded: &LoadedAuthority,
+    verifier_key: &[u8; VERIFIER_KEY_BYTES],
+) -> Result<(), String> {
+    if let Some(digest) = loaded.policy_digest.as_deref() {
+        let controls = loaded.command_control_floor.clone().or_else(|| {
+            super::policy_store_command_floor::snapshot_floor(loaded.snapshot.as_ref())
+        });
+        persist_authority_with_control_floor(
+            path,
+            loaded.generation_floor,
+            digest,
+            loaded.snapshot.as_ref(),
+            verifier_key,
+            controls.as_ref(),
+            loaded.business_policy_floor.as_deref(),
+        )?;
+    }
+    Ok(())
+}
+
 pub(super) fn persist_authority_with_control_floor(
     path: &Path,
     generation_floor: u64,

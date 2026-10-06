@@ -117,14 +117,38 @@ fn authenticated_legacy_whole_snapshot_recovers_business_floor_without_weakening
         &key,
     ));
     fixture_file(&path, &canonical_json_bytes(&record).unwrap());
+    let legacy_bytes = fs::read(&path).unwrap();
+    PERSIST_FAILPOINT.with(|failpoint| failpoint.set(PersistBoundary::Rename as u8));
+    assert!(PolicySnapshotStore::new(&root, &"a".repeat(64)).is_err());
+    assert_eq!(fs::read(&path).unwrap(), legacy_bytes);
     let restarted = PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();
     assert_eq!(restarted.current_generation(), Some(1));
+    let mut upgraded: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    assert!(upgraded["business_policy_floor"].is_string());
+    let ack: Value = serde_json::from_slice(
+        &push(
+            &restarted,
+            serde_json::from_value(upgraded["snapshot"].clone()).unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(ack["idempotent"], true);
     assert_eq!(
         push(&restarted, signed_snapshot(2, &key, &root)).unwrap_err(),
         "native_business_policy_removal_requires_authority"
     );
-    push(&restarted, business_snapshot(2, &key, &root)).unwrap();
     drop(restarted);
+    upgraded["snapshot"] = Value::Null;
+    fixture_file(&path, &canonical_json_bytes(&upgraded).unwrap());
+    let after_loss = PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();
+    assert_eq!(after_loss.current_generation(), None);
+    assert_eq!(
+        push(&after_loss, signed_snapshot(2, &key, &root)).unwrap_err(),
+        "native_business_policy_removal_requires_authority"
+    );
+    push(&after_loss, business_snapshot(2, &key, &root)).unwrap();
+    drop(after_loss);
     let record: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
     assert!(record["business_policy_floor"].is_string());
     fs::remove_dir_all(root).unwrap();
@@ -167,4 +191,43 @@ fn private_fixture_bytes(path: &Path, bytes: &[u8]) {
     let mut file = crate::resident_state::private_file(path, true, path.parent().unwrap()).unwrap();
     file.write_all(bytes).unwrap();
     file.sync_all().unwrap();
+}
+
+#[test]
+fn authentic_record_with_incoherent_binding_is_not_admitted() {
+    for omit in [false, true] {
+        let root = test_root(if omit {
+            "business-floor-incoherent-omitted"
+        } else {
+            "business-floor-incoherent-digest"
+        });
+        let key = install_test_key(&root, 76);
+        let store = PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();
+        push(&store, business_snapshot(1, &key, &root)).unwrap();
+        drop(store);
+        let path = root.join(SNAPSHOT_FILE_NAME);
+        let mut record: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        if omit {
+            let snapshot = signed_snapshot(1, &key, &root);
+            record["policy_digest"] = Value::String(snapshot.policy_digest.clone());
+            record["snapshot"] = serde_json::to_value(snapshot).unwrap();
+        } else {
+            record["business_policy_floor"] = Value::String("f".repeat(64));
+        }
+        record["floor_mac"] = Value::String(
+            super::super::policy_store_business_floor::authority_floor_mac(
+                1,
+                record["policy_digest"].as_str().unwrap(),
+                None,
+                record["business_policy_floor"].as_str(),
+                &key,
+            )
+            .unwrap(),
+        );
+        fixture_file(&path, &canonical_json_bytes(&record).unwrap());
+        let restarted = PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();
+        assert_eq!(restarted.current_generation(), None);
+        assert!(push(&restarted, signed_snapshot(2, &key, &root)).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
 }

@@ -413,6 +413,7 @@ pub(super) fn load_combined_authority(
     let mut canonical_snapshot = Vec::new();
     let mut invalid_on_startup = false;
     let mut business_floor = record.business_policy_floor;
+    let mut migrate = false;
     if let Some(candidate) = record.snapshot {
         // Recover an old record's floor only from authenticated whole content,
         // including expired snapshots. This grants no current admission.
@@ -432,6 +433,7 @@ pub(super) fn load_combined_authority(
             .is_ok()
         {
             business_floor = super::policy_store_business_floor::snapshot_floor(Some(&candidate))?;
+            migrate = true;
         }
         if candidate.generation != record.generation_floor
             || candidate.policy_digest != record.policy_digest
@@ -467,7 +469,7 @@ pub(super) fn load_combined_authority(
         generation_floor: record.generation_floor,
         policy_digest: Some(record.policy_digest),
         invalid_on_startup,
-        migrate: false,
+        migrate,
         command_control_floor: record.command_control_floor,
         business_policy_floor: business_floor,
     })

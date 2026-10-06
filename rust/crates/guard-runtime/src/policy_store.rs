@@ -208,6 +208,11 @@ impl PolicySnapshotStore {
             &expected_scope_digest,
             &verifier_key,
         )?;
+        if loaded.migrate {
+            // A recovered business floor must be durable before startup or an
+            // idempotent ACK can rely on it. Failure leaves this store closed.
+            persist_loaded_authority(&authority_path, &loaded, &verifier_key)?;
+        }
         let approval_authority = approval_authority::load(state_base)?;
         let approval_v4_authority = approval_v4_authority::load(state_base)?;
         let approval_authority_observed = Arc::new(Mutex::new(
@@ -308,20 +313,7 @@ impl PolicySnapshotStore {
             &verifier_key,
         )?;
         if loaded.migrate {
-            if let Some(digest) = loaded.policy_digest.as_deref() {
-                let controls = loaded.command_control_floor.clone().or_else(|| {
-                    policy_store_command_floor::snapshot_floor(loaded.snapshot.as_ref())
-                });
-                persist_authority_with_control_floor(
-                    &authority_path,
-                    loaded.generation_floor,
-                    digest,
-                    loaded.snapshot.as_ref(),
-                    &verifier_key,
-                    controls.as_ref(),
-                    loaded.business_policy_floor.as_deref(),
-                )?;
-            }
+            persist_loaded_authority(&authority_path, &loaded, &verifier_key)?;
         }
         Ok(())
     }

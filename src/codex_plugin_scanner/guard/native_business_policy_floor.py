@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from .native_command_control_binding import native_command_control_floor_mac
-from .native_policy_snapshot_codec import _generation_floor_mac_v3, _valid_digest_v3
+from .native_policy_snapshot_codec import _digest_v3, _generation_floor_mac_v3, _valid_digest_v3
 from .native_policy_snapshot_constants import NativePolicySnapshotError
 
 
@@ -20,6 +20,14 @@ def native_policy_authority_fields(record: Mapping[str, object], error: str) -> 
             raise NativePolicySnapshotError(error)
         fields.add("business_policy_floor")
     return fields
+
+
+def business_binding_matches_floor(snapshot: Mapping[str, object], floor: object) -> bool:
+    # Wire identity equality only; business semantics remain native-owned.
+    if floor is None:
+        return True
+    binding = snapshot.get("business_policy")
+    return isinstance(binding, Mapping) and _valid_digest_v3(floor) and _digest_v3(binding) == floor
 
 
 def native_policy_authority_floor_mac(

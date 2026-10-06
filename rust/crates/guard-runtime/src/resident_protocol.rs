@@ -301,6 +301,21 @@ mod tests {
         ))
         .expect("redacted policy error is JSON");
         assert_eq!(unknown_policy["error"], "native_request_invalid_json");
+        for code in [
+            "native_business_policy_floor_invalid",
+            "native_business_policy_removal_requires_authority",
+        ] {
+            let response: Value =
+                serde_json::from_slice(&safe_error_response(code, false)).unwrap();
+            assert_eq!(response["error"], code);
+            assert_eq!(response["retryable"], false);
+        }
+        let unknown_business: Value = serde_json::from_slice(&safe_error_response(
+            "native_business_policy_future_unregistered_code",
+            false,
+        ))
+        .unwrap();
+        assert_eq!(unknown_business["error"], "native_request_invalid_json");
     }
 
     #[test]

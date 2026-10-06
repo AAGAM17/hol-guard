@@ -290,6 +290,9 @@ pub fn cached_oauth_access_token(credentials: &Value, now_unix: i64) -> Option<S
 /// OAuth credential read; the resident honors the same env knobs so the
 /// eval-path tests exercise the native seam without a live Cloud.
 pub fn test_sync_auth_context_from_env() -> Option<Map<String, Value>> {
+    if std::env::var_os("PYTEST_CURRENT_TEST").is_none() {
+        return None;
+    }
     if let Ok(raw) = std::env::var("GUARD_TEST_SYNC_AUTH_CONTEXT_JSON") {
         if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&raw) {
             return Some(map);
@@ -590,6 +593,26 @@ pub fn guard_sync_request(
     })
 }
 
+fn guard_sync_request_with_dpop_nonce(
+    request: &GuardSyncRequest,
+    dpop_nonce: Option<&str>,
+) -> Option<GuardSyncRequest> {
+    let ctx = request.retry_context.as_ref()?;
+    let auth_context = ctx.get("auth_context").cloned()?;
+    let request_url = ctx.get("request_url").and_then(Value::as_str)?;
+    let method = ctx.get("method").and_then(Value::as_str)?;
+    let extra_headers = ctx.get("extra_headers").and_then(Value::as_object);
+    guard_sync_request(
+        &auth_context,
+        request_url,
+        method,
+        request.body.as_deref(),
+        extra_headers,
+        dpop_nonce,
+    )
+    .ok()
+}
+
 /// `runner.py:_guard_sync_request_with_nonce` (:4823) — re-issue the same
 /// request with the server-provided DPoP nonce bound into the proof. Reads
 /// the retry context from the request itself (the Python side-channel);
@@ -602,20 +625,11 @@ pub fn guard_sync_request_with_nonce(
     if request.dpop_nonce.as_deref() == Some(dpop_nonce) {
         return None;
     }
-    let ctx = request.retry_context.as_ref()?;
-    let auth_context = ctx.get("auth_context").cloned()?;
-    let request_url = ctx.get("request_url").and_then(Value::as_str)?;
-    let method = ctx.get("method").and_then(Value::as_str)?;
-    let extra_headers = ctx.get("extra_headers").and_then(Value::as_object);
-    guard_sync_request(
-        &auth_context,
-        request_url,
-        method,
-        request.body.as_deref(),
-        extra_headers,
-        Some(dpop_nonce),
-    )
-    .ok()
+    guard_sync_request_with_dpop_nonce(request, Some(dpop_nonce))
+}
+
+fn guard_sync_request_for_retry(request: &GuardSyncRequest) -> Option<GuardSyncRequest> {
+    guard_sync_request_with_dpop_nonce(request, request.dpop_nonce.as_deref())
 }
 
 /// `runner.py:_guard_http_header_value` (:3736) — case-insensitive header
@@ -747,8 +761,7 @@ pub fn urlopen_with_sync_retries(
                     std::thread::sleep(Duration::from_secs_f64(
                         wait.max(sync_retry_poll_interval_seconds()),
                     ));
-                    let nonce = current_request.dpop_nonce.clone().unwrap_or_default();
-                    if let Some(next) = guard_sync_request_with_nonce(&current_request, &nonce) {
+                    if let Some(next) = guard_sync_request_for_retry(&current_request) {
                         current_request = next;
                     }
                     continue;
@@ -760,6 +773,9 @@ pub fn urlopen_with_sync_retries(
                     let wait = sync_retry_poll_interval_seconds()
                         .min(SYNC_GATEWAY_MAX_WAIT_SECONDS as f64);
                     std::thread::sleep(Duration::from_secs_f64(wait));
+                    if let Some(next) = guard_sync_request_for_retry(&current_request) {
+                        current_request = next;
+                    }
                     continue;
                 }
                 if nonce_retry_count < SYNC_NONCE_RETRY_LIMIT {
@@ -782,6 +798,9 @@ pub fn urlopen_with_sync_retries(
                 if !retried_timeout {
                     retried_timeout = true;
                     current_timeout = retry_timeout_seconds;
+                    if let Some(next) = guard_sync_request_for_retry(&current_request) {
+                        current_request = next;
+                    }
                     continue;
                 }
                 return Err(EvalError::Internal(format!("timeout: {msg}")));

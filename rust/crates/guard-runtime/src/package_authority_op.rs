@@ -1332,7 +1332,17 @@ impl GuardSyncRunnerApi for ResidentGuardSyncRunner {
             }
             return Ok(ctx);
         }
-        if let Some(env_ctx) = gst::test_sync_auth_context_from_env() {
+        if let Some(mut env_ctx) = gst::test_sync_auth_context_from_env() {
+            if let Some(sync_url) = env_ctx.get("sync_url").and_then(Value::as_str) {
+                let issuer = env_ctx.get("issuer").and_then(Value::as_str);
+                env_ctx.insert(
+                    "sync_url".to_owned(),
+                    Value::String(
+                        gst::validate_guard_sync_endpoint(sync_url, issuer)
+                            .map_err(EvalError::Validation)?,
+                    ),
+                );
+            }
             return Ok(env_ctx);
         }
         // `_resolve_guard_sync_auth_context` (:4733) — read the stored OAuth

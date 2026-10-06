@@ -104,7 +104,7 @@ _COLD_START_ALLOWANCE_SECONDS = 3.0
 # timeout: the pooled client serialises requests, so a tight budget can lose the
 # lock to a long sibling RPC rather than to a round trip.
 _DIGEST_ATTEMPTS = 2
-_TIMEOUT_FAILURE_CODE = "native_client_timed_out"
+_TIMEOUT_FAILURE_CODES = frozenset({"native_client_timed_out", "native_client_deadline_exceeded"})
 
 # Enforcement entry points that already resolved a guard home bind it here so
 # digest calls share the ambient resident instead of spawning a second one
@@ -749,7 +749,7 @@ def native_context_digest(
             payload=envelope,
             deadline_monotonic=deadline_monotonic,
         )
-        if output is not None or native_resident_client_failure_code() != _TIMEOUT_FAILURE_CODE:
+        if output is not None or native_resident_client_failure_code() not in _TIMEOUT_FAILURE_CODES:
             break
         # Retry even when the first attempt already carried the allowance: on a
         # contended runner the allowance covers a spawn that has not finished

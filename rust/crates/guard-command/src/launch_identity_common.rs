@@ -223,9 +223,12 @@ fn strip_generated_extended_prefix(original: &str, mut resolved: String) -> Stri
 }
 
 pub(crate) fn normalized_launch_cwd(cwd: Option<&Path>) -> std::path::PathBuf {
-    let candidate = cwd.map(expand_user).unwrap_or_else(|| {
-        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
-    });
+    let candidate = cwd
+        .map(expand_user)
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        });
     let resolved = candidate.canonicalize().unwrap_or_else(|_| {
         if candidate.is_absolute() {
             candidate.clone()
@@ -260,6 +263,13 @@ mod tests {
             RuntimeLaunchArgv::Valid(argv) => Ok(argv),
             RuntimeLaunchArgv::Invalid(executable_cmd) => Err(executable_cmd),
         }
+    }
+
+    #[test]
+    fn empty_cwd_serializes_like_the_current_directory() {
+        let empty = normalized_launch_cwd(Some(Path::new("")));
+        let current = normalized_launch_cwd(None);
+        assert_eq!(empty.as_os_str(), current.as_os_str());
     }
 
     // Review regression (PR3664): a shell command string and the equivalent

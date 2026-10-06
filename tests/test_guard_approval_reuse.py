@@ -154,6 +154,20 @@ def test_no_saved_approval_preserves_recomputed_current_action(
     assert result.should_claim is False
 
 
+@pytest.mark.parametrize("field", ("current_action", "saved_action"))
+def test_non_json_action_cannot_become_allow(field: str, native_approval_reuse_runtime: Path) -> None:
+    from codex_plugin_scanner.guard.runtime.approval_reuse import ApprovalReuseMalformedResultError
+
+    class LooksLikeAllow:
+        def __str__(self) -> str:
+            return "allow"
+
+    actions = {"current_action": "review", "saved_action": "allow"}
+    actions[field] = LooksLikeAllow()
+    with pytest.raises(ApprovalReuseMalformedResultError):
+        evaluate_approval_reuse(**actions)
+
+
 def test_exact_saved_allow_can_satisfy_only_current_review(native_approval_reuse_runtime: Path) -> None:
     result = evaluate_approval_reuse("review", "allow")
 
@@ -432,13 +446,18 @@ def test_malformed_native_payload_raises_instead_of_granting_reuse(
             evaluate_approval_reuse("review", "allow", saved_decision_present=True)
 
 
-@pytest.mark.parametrize("corruption", ("json", "schema", "request_id", "status", "code", "payload"))
+@pytest.mark.parametrize("corruption", ("json", "schema", "request_id", "request_sha256", "status", "code", "payload"))
 def test_invalid_resident_envelope_cannot_grant_reuse(
     corruption: str, monkeypatch: pytest.MonkeyPatch, native_approval_reuse_runtime: Path
 ) -> None:
+    import hashlib
     import json
 
     from codex_plugin_scanner.guard import native_approval_reuse
+
+    # Malformed transport frames must not poison the session resident used by
+    # independent behavior tests.
+    monkeypatch.setattr(native_approval_reuse, "native_record_resident_failure", lambda *a, **kw: None)
 
     def reply(*args: object, **kwargs: object) -> bytes:
         if corruption == "json":
@@ -447,6 +466,10 @@ def test_invalid_resident_envelope_cannot_grant_reuse(
         envelope = {
             "schema": "guard-approval-reuse-result.v1",
             "request_id": request["request_id"],
+            "request_sha256": "sha256:"
+            + hashlib.sha256(
+                json.dumps(request, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+            ).hexdigest(),
             "status": "ok",
             "code": "ok",
             "payload": {

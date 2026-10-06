@@ -849,11 +849,11 @@ class StdioGuardProxy:
                             saved_decision_present=True,
                             validation_reason=postclaim_validation_reason,
                         )
-                        if postclaim_reuse is not None:
-                            reuse = postclaim_reuse
-                        # Resident unreachable after the atomic claim was
-                        # consumed: keep the claimed decision rather than
-                        # discarding a claim the user already granted.
+                        reuse = (
+                            postclaim_reuse
+                            if postclaim_reuse is not None
+                            else approval_reuse_authority_unavailable(fresh_current_action)
+                        )
                         runtime_artifact = fresh_artifact
                         runtime_artifact_hash = fresh_artifact_hash
                         current_action = fresh_current_action

@@ -16,6 +16,7 @@ that ``native_context`` uses so callers do not need to thread it.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -26,6 +27,7 @@ from .native_runtime_resilience import (
     native_record_overload,
     native_record_resident_failure,
     native_record_resident_success,
+    native_runtime_health_snapshot,
 )
 from .runtime.approval_reuse import ApprovalReuseMalformedResultError
 
@@ -70,17 +72,18 @@ def approval_reuse_decide_native(
         or _APPROVAL_REUSE_FEATURE not in status.capabilities.features
     ):
         return None
+    if native_runtime_health_snapshot(status.identity.sha256, guard_home).circuit_open:
+        return None
 
     request: dict[str, object] = {
         "schema": _REQUEST_SCHEMA,
         "request_id": f"ar-{_request_counter}",
         "current_action": current_action,
+        "saved_action": saved_action,
         "fresh_local_approval": bool(fresh_local_approval),
         "durable_exact_approval": bool(durable_exact_approval),
     }
     _request_counter += 1
-    if saved_action is not None:
-        request["saved_action"] = saved_action
     if saved_decision_present is not None:
         request["saved_decision_present"] = bool(saved_decision_present)
     if validation_reason is not None:
@@ -89,6 +92,14 @@ def approval_reuse_decide_native(
     deadline_monotonic = time.monotonic() + timeout_seconds
     deadline_budget_ms = max(1, min(9_000, int(timeout_seconds * 1_000)))
     try:
+        request_sha256 = (
+            "sha256:"
+            + hashlib.sha256(
+                json.dumps(request, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False).encode(
+                    "utf-8"
+                )
+            ).hexdigest()
+        )
         resident = json.dumps(
             {
                 "operation": "approval_reuse_decide",
@@ -97,10 +108,10 @@ def approval_reuse_decide_native(
             },
             separators=(",", ":"),
             ensure_ascii=False,
-            default=str,
+            allow_nan=False,
         ).encode("utf-8")
-    except (TypeError, ValueError):
-        return None
+    except (TypeError, ValueError) as exc:
+        raise ApprovalReuseMalformedResultError("approval_reuse request is not JSON data") from exc
     if len(resident) > _MAX_REQUEST_BYTES:
         return None
 
@@ -134,6 +145,7 @@ def approval_reuse_decide_native(
         not isinstance(envelope, dict)
         or envelope.get("schema") != _RESULT_SCHEMA
         or envelope.get("request_id") != request["request_id"]
+        or envelope.get("request_sha256") != request_sha256
     ):
         native_record_resident_failure(
             status.identity.sha256,

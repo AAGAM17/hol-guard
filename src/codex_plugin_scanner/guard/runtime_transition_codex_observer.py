@@ -12,8 +12,10 @@ import hmac
 import json
 import os
 import sqlite3
+import sys
 import time
 import uuid
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -23,7 +25,7 @@ from .codex_config import tomllib
 from .codex_hook_bridge_runtime import bridge_config_from_argv, trusted_hook_launch
 from .codex_hook_file_integrity import CodexHookIntegrityError, hook_validation_deadline, split_hook_command
 from .codex_hook_integrity import hook_manifest_path, load_authenticated_hook_manifest
-from .codex_hook_launch_runtime import run_isolated_hook_process
+from .codex_hook_launch_runtime import desktop_hook_proxy_context, run_isolated_hook_process
 from .codex_hook_recovery import _snapshot
 from .codex_hook_runtime_trust import TrustedCodexHookLaunch
 from .codex_install_transaction import require_codex_install_owner
@@ -51,22 +53,82 @@ def _digest(value: object) -> str:
 
 
 def _desktop_hook_proxy_context() -> dict[str, str]:
-    """Carry only Desktop's signed-proxy selectors into the verified hook probe.
+    """Carry the allow-listed Desktop proxy selectors into the hook probe."""
 
-    The child revalidates the app bundle, executable ownership, and Apple team
-    before using this proxy. Keep the runtime-owner path out of this boundary:
-    it can select an executable and is not needed by the proxy.
-    """
+    return desktop_hook_proxy_context()
 
-    if os.environ.get("HOL_GUARD_DESKTOP") != "1":
-        return {}
-    proxy = os.environ.get("HOL_GUARD_DESKTOP_HOOK_PROXY", "")
-    if not proxy or "\x00" in proxy or not Path(proxy).is_absolute():
-        return {}
-    return {
-        "HOL_GUARD_DESKTOP": "1",
-        "HOL_GUARD_DESKTOP_HOOK_PROXY": proxy,
-    }
+
+def _desktop_hook_proxy_probe_command(
+    *,
+    bridge_config: Mapping[str, object],
+    guard_home: Path,
+    config_path: Path,
+    workspace: Path,
+    environment: Mapping[str, str],
+) -> tuple[str, ...] | None:
+    """Build a fail-closed signed Desktop proxy probe for packaged macOS Core."""
+
+    if not bool(getattr(sys, "frozen", False)) or sys.platform != "darwin":
+        return None
+    if environment.get("HOL_GUARD_DESKTOP") != "1":
+        return None
+    proxy_context = desktop_hook_proxy_context(environment)
+    proxy = proxy_context.get("HOL_GUARD_DESKTOP_HOOK_PROXY")
+    if proxy is None:
+        raise TransitionError("admission_hook_proxy_unavailable")
+
+    hook_timeouts = bridge_config.get("hook_timeouts")
+    timeout_seconds = hook_timeouts.get("PreToolUse") if isinstance(hook_timeouts, dict) else None
+    if type(timeout_seconds) not in {int, float} or timeout_seconds <= 0:
+        raise TransitionError("admission_hook_proxy_unavailable")
+
+    from .adapters.bounded_cli_hook_bridge import (
+        _DESKTOP_PROXY_LAUNCH_SCRIPT,
+        bounded_cli_hook_command,
+    )
+
+    cli_args = [
+        "guard",
+        "hook",
+        "--guard-home",
+        str(guard_home.resolve(strict=False)),
+        "--harness",
+        "codex",
+        "--home",
+        str(config_path.parent.parent.resolve(strict=False)),
+        "--workspace",
+        str(workspace.resolve(strict=False)),
+    ]
+    try:
+        command = bounded_cli_hook_command(
+            # The packaged Desktop executable is the signed proxy and the
+            # shell wrapper's only permitted fallback target. This observer
+            # refuses that fallback, so the receipt proves the proxy ran.
+            python_executable=proxy,
+            package_root=Path(__file__).resolve().parents[2],
+            guard_home=guard_home,
+            cli_args=cli_args,
+            harness="codex",
+            timeout_seconds=float(timeout_seconds),
+            require_desktop_proxy=True,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise TransitionError("admission_hook_proxy_unavailable") from exc
+    if (
+        len(command) != 10
+        or command[:4]
+        != (
+            "/bin/sh",
+            "-c",
+            _DESKTOP_PROXY_LAUNCH_SCRIPT,
+            "hol-guard-desktop-proxy",
+        )
+        or command[4] != proxy
+        or command[8] != proxy
+        or command[9] != "1"
+    ):
+        raise TransitionError("admission_hook_proxy_unavailable")
+    return command
 
 
 def observe_configured_codex_hook(
@@ -241,6 +303,16 @@ def _observe_configured_codex_hook(
     launch_environment = dict(trusted.environment)
     launch_environment.update(environment)
     launch_environment.update(_desktop_hook_proxy_context())
+    probe_argv = (
+        _desktop_hook_proxy_probe_command(
+            bridge_config=bridge_config,
+            guard_home=guard_home,
+            config_path=config_path,
+            workspace=workspace,
+            environment=os.environ,
+        )
+        or argv
+    )
     for probe_command, decision in (("pwd", "allow"), ("rm -rf /", "deny")):
         check_deadline()
         request_id = "transition-hook-" + uuid.uuid4().hex
@@ -257,7 +329,7 @@ def _observe_configured_codex_hook(
         check_legacy_key()
         since = datetime.now(timezone.utc)
         result = run_isolated_hook_process(
-            argv,
+            probe_argv,
             input_text=json.dumps(payload),
             cwd=trusted.cwd,
             environment=launch_environment,

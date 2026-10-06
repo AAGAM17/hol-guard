@@ -8,6 +8,7 @@ import pytest
 
 from codex_plugin_scanner.guard import runtime_transition_codex_observer as observer
 from codex_plugin_scanner.guard.adapters import codex as codex_adapter
+from codex_plugin_scanner.guard.adapters import desktop_hook_proxy
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.adapters.codex import CodexHarnessAdapter
 from codex_plugin_scanner.guard.codex_hook_integrity import hook_manifest_path
@@ -86,6 +87,65 @@ def test_desktop_hook_proxy_context_is_explicit_and_minimal(monkeypatch, desktop
 
     assert context == expected
     assert "HOL_GUARD_DESKTOP_RUNTIME_OWNER" not in context
+
+
+def test_frozen_desktop_probe_requires_the_signed_codex_proxy(monkeypatch, tmp_path):
+    bundle = tmp_path / "HOL Guard.app"
+    macos = bundle / "Contents" / "MacOS"
+    macos.mkdir(parents=True)
+    proxy = macos / "HOL Guard"
+    proxy.write_text("signed app fixture", encoding="utf-8")
+    proxy.chmod(0o755)
+    monkeypatch.setattr(observer.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(observer.sys, "platform", "darwin")
+    monkeypatch.setattr(desktop_hook_proxy, "_codesign_team", lambda _path: "TEAMID")
+    monkeypatch.setenv("HOL_GUARD_DESKTOP", "1")
+    monkeypatch.setenv("HOL_GUARD_DESKTOP_HOOK_PROXY", str(proxy))
+
+    command = observer._desktop_hook_proxy_probe_command(
+        bridge_config={"hook_timeouts": {"PreToolUse": 25}},
+        guard_home=tmp_path / "guard-home",
+        config_path=tmp_path / "home" / "config" / "config.toml",
+        workspace=tmp_path / "workspace",
+        environment={"HOL_GUARD_DESKTOP": "1", "HOL_GUARD_DESKTOP_HOOK_PROXY": str(proxy)},
+    )
+
+    assert command is not None
+    assert command[0:2] == ("/bin/sh", "-c")
+    assert command[3] == "hol-guard-desktop-proxy"
+    assert command[4] == str(proxy)
+    assert command[8] == str(proxy)
+    assert command[9] == "1"
+    config = json.loads(command[7])
+    assert config["harness"] == "codex"
+    assert config["cli_args"] == [
+        "guard",
+        "hook",
+        "--guard-home",
+        str((tmp_path / "guard-home").resolve()),
+        "--harness",
+        "codex",
+        "--home",
+        str((tmp_path / "home").resolve()),
+        "--workspace",
+        str((tmp_path / "workspace").resolve()),
+    ]
+
+
+def test_frozen_desktop_probe_fails_closed_without_proxy(monkeypatch, tmp_path):
+    monkeypatch.setattr(observer.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(observer.sys, "platform", "darwin")
+    monkeypatch.setenv("HOL_GUARD_DESKTOP", "1")
+    monkeypatch.delenv("HOL_GUARD_DESKTOP_HOOK_PROXY", raising=False)
+
+    with pytest.raises(TransitionError, match="admission_hook_proxy_unavailable"):
+        observer._desktop_hook_proxy_probe_command(
+            bridge_config={"hook_timeouts": {"PreToolUse": 25}},
+            guard_home=tmp_path / "guard-home",
+            config_path=tmp_path / "home" / "config" / "config.toml",
+            workspace=tmp_path / "workspace",
+            environment={"HOL_GUARD_DESKTOP": "1"},
+        )
 
 
 @pytest.mark.usefixtures("native_hook_force")
@@ -307,17 +367,9 @@ def test_real_configured_argv_traverses_daemon_rpc_and_native_edge(tmp_path, mon
         assert environment.get("HOL_GUARD_DESKTOP") == "1"
         assert environment.get("HOL_GUARD_DESKTOP_HOOK_PROXY") == "/Applications/HOL Guard.app/Contents/MacOS/HOL Guard"
         assert "HOL_GUARD_DESKTOP_RUNTIME_OWNER" not in environment
-        # This source-tree test exercises observer propagation. The real
-        # packaged Desktop E2E validates the signed proxy process itself.
-        child_kwargs = {
-            **kwargs,
-            "environment": {
-                key: value
-                for key, value in environment.items()
-                if key not in {"HOL_GUARD_DESKTOP", "HOL_GUARD_DESKTOP_HOOK_PROXY"}
-            },
-        }
-        result = real_launch(*args, **child_kwargs)
+        # Keep selectors through the real configured hook child. Frozen
+        # Desktop qualification separately routes its probes through the proxy.
+        result = real_launch(*args, **kwargs)
         assert not result.timed_out, {
             "elapsed": time.monotonic() - started,
             "returncode": result.returncode,

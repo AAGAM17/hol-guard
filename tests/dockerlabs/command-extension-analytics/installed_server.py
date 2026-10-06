@@ -32,50 +32,13 @@ _GH_FIXTURE = Path("/opt/guard-lab/github-cli-fixture.sh")
 _REPOSITORY = "hashgraph-online/hol-guard"
 _VIEWER = "dashboard-reviewer"
 _WORKFLOW_COMMAND = f"{_GH_EXECUTABLE} issue lock 17 --repo {_REPOSITORY}"
-_KEYRING_MODULE = """\
-import hashlib
-import os
-from pathlib import Path
-
-from keyring.backend import KeyringBackend
-from keyring.errors import PasswordDeleteError
-
-
-class GuardLabKeyring(KeyringBackend):
-    priority = 1
-    _root = Path("/guard-home/lab-keyring")
-
-    def _path(self, service, username):
-        identity = f"{service}\\0{username}".encode("utf-8")
-        return self._root / hashlib.sha256(identity).hexdigest()
-
-    def get_password(self, service, username):
-        try:
-            return self._path(service, username).read_text(encoding="utf-8")
-        except FileNotFoundError:
-            return None
-
-    def set_password(self, service, username, password):
-        self._root.mkdir(mode=0o700, exist_ok=True)
-        path = self._path(service, username)
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            stream.write(password)
-
-    def delete_password(self, service, username):
-        try:
-            self._path(service, username).unlink()
-        except FileNotFoundError as error:
-            raise PasswordDeleteError("credential unavailable") from error
-"""
+_KEYRING_FIXTURE = Path(__file__).with_name("keyring_fixture.py")
 
 
 def _safe_hook_diagnostic(value: str) -> str:
     redacted = re.sub(
         r"([#&?]guard-token=)[^\s\"'&]+", r"\1[REDACTED]", value.replace(SENTINEL, "[REDACTED]")
     )
-    if len(redacted) <= _MAX_HOOK_DIAGNOSTIC_CHARS:
-        return redacted
     return redacted[-_MAX_HOOK_DIAGNOSTIC_CHARS:]
 
 
@@ -189,9 +152,8 @@ def _run_installed_hook(
                 and isinstance(hook_output, dict)
                 and hook_output.get("permissionDecision") == "deny"
             )
-            native_approval = (
-                harness == "claude-code"
-                and response.get("policy_action") in {"review", "require-reapproval"}
+            native_approval = harness == "claude-code" and (
+                response.get("policy_action") in {"review", "require-reapproval"}
                 and isinstance(hook_output, dict)
                 and hook_output.get("permissionDecision") == "ask"
             )
@@ -384,7 +346,7 @@ def _prepare_workspace() -> None:
     os.environ["PATH"] = f"{_GH_EXECUTABLE.parent}:{os.environ.get('PATH', '')}"
     os.environ["GITHUB_TOKEN"] = SENTINEL
     keyring_module = GUARD_HOME / "guard_lab_keyring.py"
-    _ = keyring_module.write_text(_KEYRING_MODULE, encoding="utf-8")
+    _ = keyring_module.write_text(_KEYRING_FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
     keyring_module.chmod(0o600)
     os.environ["PYTHONPATH"] = str(GUARD_HOME)
     os.environ["PYTHON_KEYRING_BACKEND"] = "guard_lab_keyring.GuardLabKeyring"

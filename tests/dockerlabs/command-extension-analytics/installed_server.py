@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import signal
 import sqlite3
 import subprocess
@@ -70,7 +71,7 @@ class GuardLabKeyring(KeyringBackend):
 
 
 def _safe_hook_diagnostic(value: str) -> str:
-    redacted = value.replace(SENTINEL, "[REDACTED]")
+    redacted = re.sub(r"#guard-token=[^\s\"']+", "#guard-token=[REDACTED]", value.replace(SENTINEL, "[REDACTED]"))
     if len(redacted) <= _MAX_HOOK_DIAGNOSTIC_CHARS:
         return redacted
     return redacted[-_MAX_HOOK_DIAGNOSTIC_CHARS:]
@@ -140,8 +141,11 @@ def _run_installed_hook(
     *,
     expected_status: int = 0,
     expect_denial: bool = False,
+    expect_approval: bool = False,
     policy_action: str | None = None,
 ) -> str:
+    if expect_denial and expect_approval:
+        raise ValueError("hook cannot expect both denial and approval")
     command = [
         "hol-guard",
         "hook",
@@ -170,7 +174,8 @@ def _run_installed_hook(
     if expect_denial:
         expected_status = native_hook_verdict_exit_code(harness, "block", str(payload.get("hook_event_name", "")))
     native_denial = False
-    if expect_denial and expected_status == 0 and completed.returncode == 0:
+    native_approval = False
+    if (expect_denial or expect_approval) and expected_status == 0 and completed.returncode == 0:
         try:
             response = json.loads(completed.stdout)
         except json.JSONDecodeError:
@@ -182,7 +187,17 @@ def _run_installed_hook(
                 and isinstance(hook_output, dict)
                 and hook_output.get("permissionDecision") == "deny"
             )
-    if completed.returncode != expected_status or (expect_denial and expected_status == 0 and not native_denial):
+            native_approval = (
+                harness == "claude-code"
+                and response.get("policy_action") in {"review", "require-reapproval"}
+                and isinstance(hook_output, dict)
+                and hook_output.get("permissionDecision") == "ask"
+            )
+    if (
+        completed.returncode != expected_status
+        or (expect_denial and expected_status == 0 and not native_denial)
+        or (expect_approval and not native_approval)
+    ):
         diagnostic = (
             f"installed {harness} hook returned {completed.returncode}, expected {expected_status}; "
             + f"response={_safe_hook_response_summary(completed.stdout)}; "
@@ -227,7 +242,7 @@ def _invoke_real_harnesses() -> int:
     _run_installed_hook("codex", codex_pre)
     _run_installed_hook("codex", codex_post)
     _run_installed_hook("claude-code", claude_no_post)
-    _run_installed_hook("claude-code", claude_review, expect_denial=True)
+    _run_installed_hook("claude-code", claude_review, expect_approval=True)
     _run_installed_hook("cursor", cursor_block, expect_denial=True, policy_action="block")
     return 2
 

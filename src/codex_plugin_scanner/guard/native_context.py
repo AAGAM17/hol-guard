@@ -783,6 +783,7 @@ def native_context_digest(
     if _native_error(payload) == "native_overloaded":
         native_record_overload(status.identity.sha256, guard_home)
         return _digest_failed("native_overloaded")
+    _LAST_RESULT_REJECTION.set(None)
     decoded = _decode_result(payload, request_id=request_id, request_sha256=request_sha256, kind=kind)
     if decoded is None:
         native_record_resident_failure(

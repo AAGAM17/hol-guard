@@ -69,6 +69,9 @@ _TRANSPORT_INTEGRITY_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/hook_execution_environment.py",
         "src/codex_plugin_scanner/guard/native_hook_edge.py",
         "src/codex_plugin_scanner/guard/daemon/hook_native_review_approval.py",
+        # The request digest correlates resident framing; it never owns a
+        # semantic approval, policy, or context identity or decision.
+        "src/codex_plugin_scanner/guard/native_approval_reuse.py",
         # Retry lineage is local diagnostic metadata. Its digests protect
         # reattachment integrity but never authorize or evaluate an action.
         "src/codex_plugin_scanner/guard/retry_lineage.py",
@@ -94,10 +97,6 @@ _TRANSPORT_DECODE_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/native_approval_reuse.py",
         "src/codex_plugin_scanner/guard/native_runtime.py",
         "src/codex_plugin_scanner/guard/native_context.py",
-        # Same bridge shape for the package-intent / package-authority ops the
-        # hook pipeline now routes natively (`_resident_request` decodes the
-        # bounded resident response into a DTO).
-        "src/codex_plugin_scanner/guard/native_package_authority.py",
     }
 )
 _STRUCTURED_OUTPUT_MEDIATION_PATHS: Final = frozenset(

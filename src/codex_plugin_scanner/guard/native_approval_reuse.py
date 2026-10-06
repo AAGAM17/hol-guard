@@ -50,6 +50,7 @@ def approval_reuse_decide_native(
     durable_exact_approval: bool,
     guard_home: Path,
     timeout_seconds: float = 2.0,
+    deadline_monotonic: float | None = None,
 ) -> dict[str, object] | None:
     """Compose a reuse decision in the resident.
 
@@ -59,8 +60,11 @@ def approval_reuse_decide_native(
     preserves the current evaluation. Malformed results raise instead of
     being treated as unavailable authority. Business-rule outcomes always
     return ``ok``; there is no domain-error envelope to reconstruct.
+    Shared caller deadlines may shorten, never extend, the per-call timeout.
     """
     global _request_counter
+    if deadline_monotonic is not None and deadline_monotonic <= time.monotonic():
+        return None
     status = native_runtime_status()
     if (
         status.mode == "off"
@@ -89,8 +93,13 @@ def approval_reuse_decide_native(
     if validation_reason is not None:
         request["validation_reason"] = str(validation_reason)
 
-    deadline_monotonic = time.monotonic() + timeout_seconds
-    deadline_budget_ms = max(1, min(9_000, int(timeout_seconds * 1_000)))
+    effective_deadline = time.monotonic() + timeout_seconds
+    if deadline_monotonic is not None:
+        effective_deadline = min(effective_deadline, deadline_monotonic)
+    remaining_seconds = effective_deadline - time.monotonic()
+    if remaining_seconds <= 0:
+        return None
+    deadline_budget_ms = max(1, min(9_000, int(remaining_seconds * 1_000)))
     try:
         request_sha256 = (
             "sha256:"
@@ -120,7 +129,7 @@ def approval_reuse_decide_native(
         guard_home=guard_home,
         environment=_isolated_environment(),
         payload=resident,
-        deadline_monotonic=deadline_monotonic,
+        deadline_monotonic=effective_deadline,
     )
     if output is None:
         native_record_resident_failure(
@@ -155,9 +164,13 @@ def approval_reuse_decide_native(
         raise ApprovalReuseMalformedResultError("approval_reuse result does not match the request")
 
     if envelope.get("status") != "ok" or envelope.get("code") != "ok":
+        native_record_resident_failure(status.identity.sha256, guard_home, reason="native_approval_reuse_bad_status")
         raise ApprovalReuseMalformedResultError("resident rejected the approval_reuse request")
     payload = envelope.get("payload")
     if not isinstance(payload, dict):
+        native_record_resident_failure(
+            status.identity.sha256, guard_home, reason="native_approval_reuse_no_decision_payload"
+        )
         raise ApprovalReuseMalformedResultError("approval_reuse result has no decision object")
     native_record_resident_success(status.identity.sha256, guard_home)
     return payload

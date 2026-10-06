@@ -2000,3 +2000,40 @@ def test_runtime_saved_artifact_allow_requires_matching_v1_context_token(native_
         )
         is None
     )
+
+
+def test_shared_deadline_expiry_cannot_grant_another_reuse(
+    monkeypatch: pytest.MonkeyPatch, native_approval_reuse_runtime: Path
+) -> None:
+    import time
+    from types import SimpleNamespace
+
+    from codex_plugin_scanner.guard import native_approval_reuse
+
+    now = time.monotonic()
+    deadline = now + 30.0
+    first = evaluate_approval_reuse("review", "allow", saved_decision_present=True, deadline_monotonic=deadline)
+    assert first is not None and first.action == "allow" and first.should_claim
+    monkeypatch.setattr(native_approval_reuse, "time", SimpleNamespace(monotonic=lambda: deadline + 1.0))
+
+    def forbidden_transport(**kwargs: object) -> bytes:
+        pytest.fail("expired request dispatched to the resident")
+
+    monkeypatch.setattr(native_approval_reuse, "native_resident_client_request", forbidden_transport)
+    second = evaluate_approval_reuse("review", "allow", saved_decision_present=True, deadline_monotonic=deadline)
+    assert second is None
+
+
+def test_already_expired_deadline_cannot_grant_reuse(monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
+    from codex_plugin_scanner.guard import native_approval_reuse
+
+    def forbidden_transport(**kwargs: object) -> bytes:
+        pytest.fail("expired request dispatched to the resident")
+
+    monkeypatch.setattr(native_approval_reuse, "native_resident_client_request", forbidden_transport)
+    assert (
+        evaluate_approval_reuse("review", "allow", saved_decision_present=True, deadline_monotonic=time.monotonic() - 1)
+        is None
+    )

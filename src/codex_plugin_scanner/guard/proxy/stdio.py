@@ -9,6 +9,7 @@ import queue
 import select
 import subprocess
 import threading
+import time
 from collections.abc import Callable, Mapping
 from contextlib import suppress
 from datetime import datetime, timezone
@@ -69,6 +70,7 @@ _GUARD_PROXY_TIMEOUT_ERROR_CODE = -32800
 # Bump when sensitive-read classification or action-composition semantics change.
 _STDIO_SENSITIVE_READ_EVALUATOR_POLICY_VERSION = "stdio-sensitive-read-evaluation-v1"
 _APPROVAL_REUSE_CONFIG_REFRESH_FAILED = "approval_reuse_current_config_refresh_failed"
+_APPROVAL_REUSE_DEADLINE_SECONDS = 2.0
 
 
 def _sensitive_read_current_action(
@@ -736,6 +738,7 @@ class StdioGuardProxy:
                         else diagnosed_reason
                     )
                 )
+                reuse_deadline_monotonic = time.monotonic() + _APPROVAL_REUSE_DEADLINE_SECONDS
                 reuse_native = evaluate_approval_reuse(
                     current_action,
                     saved_action,
@@ -743,6 +746,7 @@ class StdioGuardProxy:
                         saved_decision is not None or ignored_integrity is not None or diagnosed_reason is not None
                     ),
                     validation_reason=validation_reason,
+                    deadline_monotonic=reuse_deadline_monotonic,
                 )
                 reuse = (
                     reuse_native
@@ -760,6 +764,7 @@ class StdioGuardProxy:
                             saved_action,
                             saved_decision_present=True,
                             validation_reason=APPROVAL_REUSE_CLAIM_FAILED,
+                            deadline_monotonic=reuse_deadline_monotonic,
                         )
                         reuse = (
                             claim_failed_native
@@ -785,6 +790,7 @@ class StdioGuardProxy:
                             "require-reapproval",
                             "allow",
                             saved_decision_present=True,
+                            deadline_monotonic=reuse_deadline_monotonic,
                         )
                         reuse = (
                             refresh_reuse
@@ -848,6 +854,7 @@ class StdioGuardProxy:
                             postclaim_saved_action,
                             saved_decision_present=True,
                             validation_reason=postclaim_validation_reason,
+                            deadline_monotonic=reuse_deadline_monotonic,
                         )
                         reuse = (
                             postclaim_reuse

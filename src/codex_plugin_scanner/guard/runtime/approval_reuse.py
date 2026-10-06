@@ -23,7 +23,7 @@ never grant reuse.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Literal
+from typing import Literal, cast
 
 from ..action_lattice import is_guard_action
 from ..models import GuardAction
@@ -168,6 +168,7 @@ def evaluate_approval_reuse(
     validation_reason: ApprovalReuseValidationFailure | None = None,
     fresh_local_approval: bool = False,
     durable_exact_approval: bool = False,
+    deadline_monotonic: float | None = None,
 ) -> ApprovalReuseDecision | None:
     """Compose a recomputed action with saved approval evidence in the resident.
 
@@ -189,6 +190,7 @@ def evaluate_approval_reuse(
     Raises :class:`ApprovalReuseMalformedResultError` when the resident answers
     with a payload that fails strict decision validation — a malformed answer
     is not a successful no-decision and never grants reuse.
+    Sequential compositions for one request share ``deadline_monotonic``.
     """
     # RTM-032: the resident is the sole authority for this composition. There
     # is no Python fallback evaluator.
@@ -206,6 +208,7 @@ def evaluate_approval_reuse(
         fresh_local_approval=fresh_local_approval,
         durable_exact_approval=durable_exact_approval,
         guard_home=native_home,
+        deadline_monotonic=deadline_monotonic,
     )
     if native_payload is None:
         return None
@@ -249,11 +252,11 @@ def _decision_from_native_payload(payload: object) -> ApprovalReuseDecision:
     ):
         raise ApprovalReuseMalformedResultError("approval_reuse payload failed decision validation")
     return ApprovalReuseDecision(
-        action=action,  # type: ignore[arg-type]
-        status=status,  # type: ignore[arg-type]
+        action=action,
+        status=cast(ApprovalReuseStatus, status),
         reason_code=reason_code,
-        current_action=current_action,  # type: ignore[arg-type]
-        saved_action=saved_action,
+        current_action=current_action,
+        saved_action=cast("GuardAction | None", saved_action),
         should_claim=should_claim,
         current_normalization_reason_code=_native_str(payload, "current_normalization_reason_code"),
         saved_normalization_reason_code=_native_str(payload, "saved_normalization_reason_code"),

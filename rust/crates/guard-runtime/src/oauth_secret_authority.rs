@@ -22,6 +22,8 @@
 
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 
 /// `store_base.py:333` — current fingerprint prefix.
 pub const FINGERPRINT_PREFIX: &str = "scrypt$";
@@ -44,6 +46,62 @@ const LEGACY_FINGERPRINT_ITERATIONS: u32 = 200_000;
 pub const CREDENTIALS_REF_KEY: &str = "credentials_ref";
 /// `store_base.py:232` — the payload key holding the secret fingerprint.
 pub const CREDENTIALS_HASH_KEY: &str = "credentials_sha256";
+
+/// Fields that only ever come from the secret store; every other field is record
+/// metadata and the record stays authoritative for it.
+const SECRET_MATERIAL_KEYS: &[&str] = &[
+    "refresh_token",
+    "dpop_private_key_pem",
+    "dpop_public_jwk",
+    "dpop_public_jwk_thumbprint",
+    "access_token",
+    "access_token_expires_at",
+];
+
+/// Verdict memo for `secret_matches_fingerprint`.
+///
+/// Verification is memory-hard (scrypt, ~16 MiB) and the resident re-checks the
+/// same credential on every health read and every sync attempt. Results are
+/// memoised by the digest of the exact bytes involved — identical inputs can only
+/// produce the identical verdict, and a rotated secret yields a different key and
+/// is verified again. Memory is bounded by clearing at capacity.
+fn verification_memo() -> &'static Mutex<HashMap<(String, String), bool>> {
+    static CACHE: OnceLock<Mutex<HashMap<(String, String), bool>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+const VERIFICATION_MEMO_CAPACITY: usize = 16;
+
+/// `secret_matches_fingerprint` behind the resident's memo.
+pub fn verified_secret_matches(value: &str, expected: &str) -> Result<bool, String> {
+    let key = (
+        hex::encode(Sha256::digest(value.as_bytes())),
+        expected.to_owned(),
+    );
+    if let Some(verdict) = verification_memo()
+        .lock()
+        .ok()
+        .and_then(|memo| memo.get(&key).copied())
+    {
+        return Ok(verdict);
+    }
+    let verdict = secret_matches_fingerprint(value, expected)?;
+    if let Ok(mut memo) = verification_memo().lock() {
+        if memo.len() >= VERIFICATION_MEMO_CAPACITY {
+            memo.clear();
+        }
+        memo.insert(key, verdict);
+    }
+    Ok(verdict)
+}
+
+#[cfg(test)]
+fn verification_memo_len() -> usize {
+    verification_memo()
+        .lock()
+        .map(|memo| memo.len())
+        .unwrap_or_default()
+}
 
 /// `store_base.py:371 _secret_fingerprint` — `scrypt$` + scrypt hex digest of
 /// the value's UTF-8 bytes.
@@ -123,7 +181,7 @@ pub fn resolve_credentials(
     }
     let expected = expected.ok_or_else(|| "credentials_hash_missing".to_owned())?;
     let raw = read_secret(secret_ref).ok_or_else(|| "credentials_secret_unavailable".to_owned())?;
-    if !secret_matches_fingerprint(&raw, expected)? {
+    if !verified_secret_matches(&raw, expected)? {
         return Err("credentials_secret_fingerprint_mismatch".to_owned());
     }
     let secret: Value = serde_json::from_str(&raw)
@@ -133,7 +191,14 @@ pub fn resolve_credentials(
         .ok_or_else(|| "credentials_secret_not_object".to_owned())?;
     let mut merged: Map<String, Value> = object.clone();
     for (key, value) in secret_object {
-        merged.insert(key.clone(), value.clone());
+        // Secret material always comes from the verified secret; any other field
+        // only fills a gap, so a secret can never override record metadata such
+        // as `issuer` or `client_id`.
+        if SECRET_MATERIAL_KEYS.contains(&key.as_str()) {
+            merged.insert(key.clone(), value.clone());
+        } else {
+            merged.entry(key.clone()).or_insert_with(|| value.clone());
+        }
     }
     Ok(Value::Object(merged))
 }
@@ -314,6 +379,61 @@ mod tests {
         assert_eq!(
             resolved.get("refresh_token").and_then(Value::as_str),
             Some("rt-1")
+        );
+    }
+
+    #[test]
+    fn a_secret_cannot_override_record_metadata() {
+        let secret = serde_json::to_string(&serde_json::json!({
+            "refresh_token": "rt-1",
+            "issuer": "https://evil.example",
+            "client_id": "other-client",
+            "workspace_id": "ws-from-secret",
+        }))
+        .expect("json");
+        let payload = serde_json::json!({
+            "issuer": "https://cloud.example",
+            "client_id": "client-1",
+            CREDENTIALS_REF_KEY: "ref-1",
+            CREDENTIALS_HASH_KEY: secret_fingerprint(&secret).expect("fingerprint"),
+        });
+        let resolved = resolve_credentials(&payload, &|_: Option<&str>| Some(secret.clone()))
+            .expect("resolved");
+        // Material from the verified secret, identity from the record.
+        assert_eq!(
+            resolved.get("refresh_token").and_then(Value::as_str),
+            Some("rt-1")
+        );
+        assert_eq!(
+            resolved.get("issuer").and_then(Value::as_str),
+            Some("https://cloud.example")
+        );
+        assert_eq!(
+            resolved.get("client_id").and_then(Value::as_str),
+            Some("client-1")
+        );
+        // A secret-only field still fills the gap.
+        assert_eq!(
+            resolved.get("workspace_id").and_then(Value::as_str),
+            Some("ws-from-secret")
+        );
+    }
+
+    #[test]
+    fn repeated_verification_keeps_its_verdict_and_the_memo_stays_bounded() {
+        let secret = secret_payload();
+        let expected = secret_fingerprint(&secret).expect("fingerprint");
+        for _ in 0..3 {
+            assert!(verified_secret_matches(&secret, &expected).expect("verdict"));
+        }
+        for index in 0..(VERIFICATION_MEMO_CAPACITY + 2) {
+            let value = format!("value-{index}");
+            assert!(!verified_secret_matches(&value, &expected).expect("verdict"));
+        }
+        // Holds under any interleaving with tests sharing this process's memo.
+        assert!(
+            verification_memo_len() <= VERIFICATION_MEMO_CAPACITY,
+            "the memo must stay bounded"
         );
     }
 }

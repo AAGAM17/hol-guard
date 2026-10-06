@@ -606,7 +606,7 @@ fn load_oauth_secret_raw(guard_home: &Path, payload: &Value) -> Option<String> {
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|v| !v.is_empty())?;
-    crate::oauth_secret_authority::secret_matches_fingerprint(&raw, expected)
+    crate::oauth_secret_authority::verified_secret_matches(&raw, expected)
         .ok()
         .filter(|matches| *matches)?;
     Some(raw)
@@ -1373,14 +1373,28 @@ impl GuardSyncRunnerApi for ResidentGuardSyncRunner {
         // fail-closes to `ask` rather than mislabeling a refresh-needed
         // credential as `NotFound` ("not configured") and falling back to
         // local-only evaluation.
-        let oauth_credentials = match store.get_sync_payload("oauth_local_credentials") {
-            Some(payload) if payload.is_object() => {
-                crate::oauth_secret_authority::resolve_credentials(&payload, &|_| {
-                    load_oauth_secret_raw(store.guard_home(), &payload)
-                })
-                .map_err(EvalError::Validation)?
+        // The writer replaces the secret before it republishes the record's
+        // fingerprint, so a read landing inside that window can see a valid pair
+        // torn apart and must not turn a healthy credential into a denial. One
+        // re-read settles it; anything else fails closed.
+        let mut attempt = 0_u8;
+        let oauth_credentials = loop {
+            attempt += 1;
+            let payload = match store.get_sync_payload("oauth_local_credentials") {
+                Some(payload) if payload.is_object() => payload,
+                _ => return Err(EvalError::NotFound("Guard is not logged in.".to_owned())),
+            };
+            match crate::oauth_secret_authority::resolve_credentials(&payload, &|_| {
+                load_oauth_secret_raw(store.guard_home(), &payload)
+            }) {
+                Ok(credentials) => break credentials,
+                Err(reason)
+                    if reason == "credentials_secret_fingerprint_mismatch" && attempt < 2 =>
+                {
+                    continue;
+                }
+                Err(reason) => return Err(EvalError::Validation(reason)),
             }
-            _ => return Err(EvalError::NotFound("Guard is not logged in.".to_owned())),
         };
         let issuer = oauth_credentials
             .get("issuer")

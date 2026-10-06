@@ -628,8 +628,11 @@ fn spawn_bounded(
 /// `nix::killpg` is the safe-Rust equivalent — a `/bin/kill` spawn silently
 /// no-ops on images that ship no kill binary (e.g. `python:3.12-slim`).
 fn kill_process_group(pgid: i32) -> Result<(), String> {
-    nix::sys::signal::killpg(nix::unistd::Pid::from_raw(pgid), nix::sys::signal::Signal::SIGKILL)
-        .map_err(|error| format!("killpg failed for pgid {pgid}: {error}"))
+    nix::sys::signal::killpg(
+        nix::unistd::Pid::from_raw(pgid),
+        nix::sys::signal::Signal::SIGKILL,
+    )
+    .map_err(|error| format!("killpg failed for pgid {pgid}: {error}"))
 }
 
 /// `tempfile.TemporaryDirectory(prefix=...)` stand-in — RAII removal plus a

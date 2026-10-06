@@ -64,6 +64,28 @@ def test_parse_package_intent_empty_command_returns_none() -> None:
     assert parse_package_intent("   \t\n") is None
 
 
+def test_extract_uses_selected_guard_home_over_ambient_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, package_intent_native: Path
+) -> None:
+    from codex_plugin_scanner.guard import config
+
+    foreign_home = tmp_path / "unenrolled-home"
+    foreign_home.mkdir()
+    request = {"command": "npm install left-pad@1.3.0"}
+
+    assert extract_package_intent_request(
+        "shell", request, action_envelope_command=None, workspace=tmp_path, guard_home=foreign_home
+    ) is None
+
+    monkeypatch.setattr(config, "resolve_guard_home", lambda: foreign_home)
+    selected = extract_package_intent_request(
+        "shell", request, action_envelope_command=None, workspace=tmp_path, guard_home=package_intent_native
+    )
+    assert selected is not None
+    assert selected.targets[0].package_name == "left-pad"
+    assert selected.targets[0].requested_specifier == "1.3.0"
+
+
 def test_parse_package_intent_npm_install_supports_aliases_tags_versions_and_flags(tmp_path: Path) -> None:
     _write_text(tmp_path / "package.json", '{"name":"demo"}\n')
 

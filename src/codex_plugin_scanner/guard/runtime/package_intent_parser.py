@@ -120,13 +120,18 @@ def extract_package_intent_request(
     action_envelope_command: str | None,
     workspace: Path | None = None,
     home_dir: Path | None = None,
+    guard_home: Path | None = None,
 ) -> PackageIntent | None:
     normalized_tool_name = _normalize_tool_name(tool_name)
     if normalized_tool_name in _SHELL_TOOL_NAMES:
         for command_text in _candidate_command_texts(arguments):
-            intent = parse_package_intent(command_text, workspace=workspace, home_dir=home_dir)
+            intent = parse_package_intent(
+                command_text, workspace=workspace, home_dir=home_dir, guard_home=guard_home
+            )
             if intent is not None:
                 return intent
     if action_envelope_command:
-        return parse_package_intent(action_envelope_command, workspace=workspace, home_dir=home_dir)
+        return parse_package_intent(
+            action_envelope_command, workspace=workspace, home_dir=home_dir, guard_home=guard_home
+        )
     return None

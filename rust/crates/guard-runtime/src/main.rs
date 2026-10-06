@@ -12,6 +12,7 @@ mod approval_reuse;
 mod archive_inspect;
 mod archive_inspect_containment;
 mod business_document_compile;
+mod business_source_codec;
 mod claim_approval_reuse_op;
 mod claim_reuse;
 mod command_effect;

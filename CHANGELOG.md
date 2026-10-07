@@ -35,6 +35,21 @@ Older releases are preserved in the [changelog archive](docs/changelog-archive.m
 * **native:** a package-intent parse now sends the caller's `PATH` to the resident. The resident is long-lived, so its own `PATH` is the one it was spawned with; a manager it cannot resolve (`npx` from a test or tool directory) made the TypeScript launch evidence incomplete and sent a contained typecheck back to review even though the caller resolved the manager fine.
 * **native:** a resident that answers a context-digest request with its own error envelope is now reported by that code — and recorded against the resilience breaker — instead of being flattened into `native_context_digest_result_invalid`. An envelope outside the contract keeps its code in the rejection reason, and a rejected result names the contract clause that rejected it with the offending keys, so a foreign frame, a stale frame and a truncated read are no longer indistinguishable.
 
+## [3.29.0](https://github.com/hashgraph-online/hol-guard/compare/v3.28.0...v3.29.0) (2026-10-07)
+
+
+### Features
+
+* **extensions:** add answerLoops command protection extension ([#3478](https://github.com/hashgraph-online/hol-guard/issues/3478)) ([06af212](https://github.com/hashgraph-online/hol-guard/commit/06af21296255accdbf9cd7256b610acf0150a688))
+* **guard:** prepare verified Google send requests for native review ([#3562](https://github.com/hashgraph-online/hol-guard/issues/3562)) ([c25b6dd](https://github.com/hashgraph-online/hol-guard/commit/c25b6dd4f206dedfa482e48aa6a696c869397fdd))
+
+
+### Bug Fixes
+
+* **ci:** sync native approval error allowlists ([924bfea](https://github.com/hashgraph-online/hol-guard/commit/924bfea7df0904aefa57e460bddbe9a6aadc9b13))
+* **extensions:** stage answerloops external trust binding ([#3681](https://github.com/hashgraph-online/hol-guard/issues/3681)) ([442d364](https://github.com/hashgraph-online/hol-guard/commit/442d36498e70285859263ff6f9548c69899e5de8))
+* **guard:** redact cargo local paths in resident package intents ([#3682](https://github.com/hashgraph-online/hol-guard/issues/3682)) ([36358e4](https://github.com/hashgraph-online/hol-guard/commit/36358e42455bb5ff0ac19bc105cc56a3d0579772))
+
 ## [3.28.0](https://github.com/hashgraph-online/hol-guard/compare/v3.27.1...v3.28.0) (2026-10-07)
 
 

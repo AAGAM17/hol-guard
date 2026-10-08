@@ -2,7 +2,7 @@
   "schemaVersion": "guard.extension-listing.v2",
   "extensionId": "mcp.musiccontext",
   "tagline": "Opt-in coverage for MusicContext, an MCP server that plans, generates and mixes soundtracks for video.",
-  "summary": "Reviews MusicContext MCP tool calls: video analysis and soundtrack planning keep inherited policy where they only read media, while plan and artifact writes, offline music generation, and FFmpeg rendering require review because they write new files.",
+  "summary": "Reviews MusicContext MCP tool calls: inspection, video analysis, search, library lookups, providers and artifact reads keep inherited policy, while planning, recommendations, offline generation, sync and FFmpeg artifact writes require review because they plan or write new outputs.",
   "category": "specialized-tools",
   "limitations": [
     "Coverage is limited to the reviewed MusicContext MCP tools and the surrounding Guard policy.",

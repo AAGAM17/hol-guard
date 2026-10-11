@@ -147,6 +147,16 @@ mod guard_store_outbox_reads;
 mod guard_store_outbox_reads_tests;
 mod guard_store_outbox_recover;
 mod guard_store_outbox_requeue;
+mod guard_store_receipt_analytics;
+mod guard_store_receipt_approval;
+mod guard_store_receipt_decision;
+mod guard_store_receipt_envelope;
+mod guard_store_receipt_events;
+mod guard_store_receipt_reads;
+mod guard_store_receipt_rollups;
+mod guard_store_receipt_writes;
+#[cfg(test)]
+mod guard_store_receipts_vectors_tests;
 mod guard_store_sessions;
 #[cfg(test)]
 mod guard_store_sessions_vectors_tests;

@@ -4,7 +4,7 @@
 //! HMACs over those exact bytes, so serialization must match byte for byte:
 //! `ensure_ascii=True`, `sort_keys`, and compact `(",", ":")` separators.
 
-use guard_contracts::write_canonical_json;
+use guard_contracts::{write_canonical_json, write_python_default_json};
 use serde_json::Value;
 
 /// `json.dumps(value, sort_keys=True, separators=(",", ":"))` with
@@ -14,6 +14,14 @@ use serde_json::Value;
 pub(crate) fn dumps_sorted(value: &Value) -> Option<String> {
     let mut out = Vec::new();
     write_canonical_json(value, &mut out).ok()?;
+    String::from_utf8(out).ok()
+}
+
+/// `json.dumps(value, sort_keys=True)` with CPython's default `, ` / `: `
+/// separators and `ensure_ascii`.
+pub(crate) fn dumps_default(value: &Value) -> Option<String> {
+    let mut out = Vec::new();
+    write_python_default_json(value, &mut out).ok()?;
     String::from_utf8(out).ok()
 }
 
@@ -45,6 +53,17 @@ pub(crate) fn add_seconds_isoformat(text: &str, delta_micros: i64) -> Option<Str
 pub(crate) fn epoch_micros(text: &str) -> Option<i128> {
     let parsed = parse_iso(&text.replace('Z', "+00:00"))?;
     Some(parsed.micros_since_epoch - i128::from(parsed.offset_seconds.unwrap_or(0)) * 1_000_000)
+}
+
+/// Whole UTC days since 1970-01-01 of an ISO-8601 instant, offset applied.
+pub(crate) fn epoch_days(text: &str) -> Option<i64> {
+    let micros = epoch_micros(text)?;
+    i64::try_from(micros.div_euclid(86_400_000_000)).ok()
+}
+
+/// `(year, month, day)` of a count of days since 1970-01-01.
+pub(crate) fn civil_date(days: i64) -> (i64, i64, i64) {
+    civil_from_days(days)
 }
 
 /// `repr(text)` for a Python `str`, as it appears inside CPython error messages.

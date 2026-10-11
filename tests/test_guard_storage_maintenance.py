@@ -9,10 +9,6 @@ import pytest
 
 from codex_plugin_scanner.guard import store_connection_schema
 from codex_plugin_scanner.guard.store import GuardStore
-from codex_plugin_scanner.guard.store_receipt_rollups import (
-    backfill_receipt_rollups,
-    receipt_rollups_need_backfill,
-)
 from codex_plugin_scanner.guard.store_storage_maintenance import (
     DEFAULT_GUARD_EVENT_LIMIT,
     DEFAULT_RECEIPT_DETAIL_LIMIT,
@@ -95,10 +91,12 @@ def test_storage_maintenance_bounds_detail_and_preserves_rollups(tmp_path: Path)
         )
         connection.execute(
             """
-            update receipt_aggregate_totals
-            set total = 6, allowed = 6, blocked = 0, reviewed = 0,
-                first_activity_at = ?, last_activity_at = ?
-            where totals_key = 'global'
+            insert into receipt_aggregate_totals (
+              totals_key, total, allowed, blocked, reviewed, first_activity_at, last_activity_at
+            ) values ('global', 6, 6, 0, 0, ?, ?)
+            on conflict(totals_key) do update set
+              total = 6, allowed = 6, blocked = 0, reviewed = 0,
+              first_activity_at = excluded.first_activity_at, last_activity_at = excluded.last_activity_at
             """,
             (old, recent),
         )
@@ -142,7 +140,6 @@ def test_storage_maintenance_bounds_detail_and_preserves_rollups(tmp_path: Path)
             ).fetchone()[0]
             == 3
         )
-        assert receipt_rollups_need_backfill(connection) is False
         assert (
             connection.execute("select total from receipt_aggregate_totals where totals_key = 'global'").fetchone()[0]
             == 6
@@ -156,9 +153,9 @@ def test_storage_maintenance_bounds_detail_and_preserves_rollups(tmp_path: Path)
             """
         )
         connection.execute("delete from receipt_rollup_actions where receipt_id = 'receipt-4'")
-        assert receipt_rollups_need_backfill(connection) is True
-        backfill_receipt_rollups(connection)
-        assert receipt_rollups_need_backfill(connection) is False
+    store.reconcile_receipt_events()
+    with store._connect() as connection:  # pyright: ignore[reportPrivateUsage]
+        assert connection.execute("select count(*) from receipt_rollup_actions").fetchone()[0] == 3
         totals = connection.execute(
             """
             select total, allowed, blocked, reviewed
@@ -169,9 +166,8 @@ def test_storage_maintenance_bounds_detail_and_preserves_rollups(tmp_path: Path)
         assert tuple(totals) == (6, 6, 0, 0)
 
         connection.execute("delete from receipt_aggregate_totals where totals_key = 'global'")
-        assert receipt_rollups_need_backfill(connection) is True
-        backfill_receipt_rollups(connection)
-        assert receipt_rollups_need_backfill(connection) is False
+    store.reconcile_receipt_events()
+    with store._connect() as connection:  # pyright: ignore[reportPrivateUsage]
         assert (
             connection.execute("select total from receipt_aggregate_totals where totals_key = 'global'").fetchone()[0]
             == 6

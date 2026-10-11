@@ -26,19 +26,6 @@ from codex_plugin_scanner.guard.workflow_capabilities import (
     verify_workflow_capability_receipt,
     verify_workflow_capability_signature,
 )
-from codex_plugin_scanner.guard.workflow_capability_authority_state import (
-    SignedAuthorityState,
-    SignedRevocation,
-    decode_signed_authority_state,
-    decode_signed_revocation,
-    verify_authority_state,
-    verify_revocation,
-)
-from codex_plugin_scanner.guard.workflow_capability_transitions import (
-    SignedAuthorityTransition,
-    decode_signed_authority_transition,
-    verify_authority_transition,
-)
 from tests.test_guard_workflow_capabilities import (
     _KEY,
     _KEY_ID,
@@ -47,6 +34,19 @@ from tests.test_guard_workflow_capabilities import (
     _issue,
     _now,
     _store,
+)
+from tests.workflow_capability_authority_state_support import (
+    SignedAuthorityState,
+    SignedRevocation,
+    decode_signed_authority_state,
+    decode_signed_revocation,
+    verify_authority_state,
+    verify_revocation,
+)
+from tests.workflow_capability_transitions_support import (
+    SignedAuthorityTransition,
+    decode_signed_authority_transition,
+    verify_authority_transition,
 )
 
 

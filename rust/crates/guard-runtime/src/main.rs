@@ -113,7 +113,6 @@ mod git_execution_safety_repo_tests;
 #[cfg(test)]
 mod git_execution_safety_tests;
 mod github_cli_classify_op;
-mod github_workflow_runtime_authorization;
 mod guard_store_args;
 mod guard_store_clients;
 mod guard_store_cmd_activity;
@@ -165,6 +164,21 @@ mod guard_store_storage_maintenance;
 mod guard_store_storage_maintenance_vectors_tests;
 #[cfg(test)]
 mod guard_store_vectors_tests;
+mod guard_store_wfcap_authority;
+mod guard_store_wfcap_claim;
+mod guard_store_wfcap_contract;
+mod guard_store_wfcap_control;
+mod guard_store_wfcap_ctx;
+mod guard_store_wfcap_error;
+mod guard_store_wfcap_frame;
+mod guard_store_wfcap_ledger;
+mod guard_store_wfcap_ops;
+mod guard_store_wfcap_schema;
+mod guard_store_wfcap_schema_sql;
+mod guard_store_wfcap_state;
+mod guard_store_wfcap_wire;
+#[cfg(test)]
+mod guard_store_workflow_capability_vectors_tests;
 mod hardening;
 mod hook_adapter_op;
 mod hook_artifact_compose_op;
@@ -305,7 +319,6 @@ mod supply_chain_cloud_vectors_tests;
 mod supply_chain_egress;
 mod supply_chain_eval_seams;
 mod totp;
-mod workflow_capability_store;
 mod workspace_inventory_files;
 mod workspace_inventory_op;
 mod workspace_scan_targets;

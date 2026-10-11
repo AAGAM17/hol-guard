@@ -1,4 +1,4 @@
-"""Authenticated mutable state and append-only revocation contracts."""
+"""Test-side decoders for signed workflow-capability authority state and revocations (the authority runs natively)."""
 
 # pyright: reportAny=false, reportUnnecessaryIsInstance=false, reportUnusedCallResult=false
 
@@ -11,13 +11,13 @@ import re
 from dataclasses import asdict, dataclass
 from typing import Final, cast
 
-from .workflow_capabilities import (
+from codex_plugin_scanner.guard.workflow_capabilities import (
     WorkflowCapabilityError,
     canonical_framed_payload,
     parse_utc_timestamp,
     validate_workflow_capability_identifier,
 )
-from .workflow_capability_transitions import _integer, _optional_string, _string
+from tests.workflow_capability_transitions_support import _integer, _optional_string, _string
 
 AUTHORITY_STATE_SCHEMA: Final = "hol-guard.workflow-capability-authority-state.v1"
 REVOCATION_SCHEMA: Final = "hol-guard.workflow-capability-revocation.v1"

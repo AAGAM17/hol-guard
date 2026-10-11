@@ -43,6 +43,7 @@ use crate::guard_store_receipt_rollups as receipt_rollups;
 use crate::guard_store_receipt_writes as receipt_writes;
 use crate::guard_store_sessions as sessions;
 use crate::guard_store_storage_maintenance as storage_maintenance;
+use crate::guard_store_wfcap_wire as wfcap;
 
 const MAX_BUSY_TIMEOUT_MS: u64 = 600_000;
 const CACHE_SIZE_KIB: i64 = 256 * 1024;
@@ -267,7 +268,9 @@ fn method_kind(method: &str) -> Option<Kind> {
         | "command_activity_analytics"
         | "list_command_activity_invalidations"
         | "command_activity_diagnostics"
-        | "list_command_shadow_observations" => Kind::Snapshot,
+        | "list_command_shadow_observations"
+        | "workflow_capability_plan" => Kind::Snapshot,
+        "workflow_capability_commit" => Kind::Write,
         "refresh_review_event_outbox_binding_for_identity"
         | "refresh_review_event_outbox_binding"
         | "reassign_quarantined_review_events"
@@ -403,6 +406,8 @@ fn dispatch(
         "command_activity_diagnostics" => privacy::diagnostics(connection, args),
         "count_command_shadow_observations" => privacy::count_shadow(connection),
         "list_command_shadow_observations" => privacy::list_shadow(connection, args),
+        "workflow_capability_plan" => wfcap::plan(connection, args),
+        "workflow_capability_commit" => wfcap::commit(connection, args),
         "upsert_guard_session" => sessions::upsert_session(connection, args),
         "get_guard_session" => sessions::get_session(connection, args),
         "list_guard_sessions" => sessions::list_sessions(connection, args),

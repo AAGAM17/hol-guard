@@ -1,4 +1,4 @@
-"""Signed workflow-capability authority transition contracts."""
+"""Test-side decoders for signed workflow-capability authority transitions (the authority runs natively)."""
 
 # pyright: reportAny=false, reportUnusedCallResult=false
 
@@ -10,7 +10,7 @@ import json
 from dataclasses import asdict, dataclass
 from typing import Final, cast
 
-from .workflow_capabilities import (
+from codex_plugin_scanner.guard.workflow_capabilities import (
     WorkflowCapabilityError,
     canonical_framed_payload,
     parse_utc_timestamp,

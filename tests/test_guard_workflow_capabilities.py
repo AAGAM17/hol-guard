@@ -19,7 +19,6 @@ from typing import cast
 import pytest
 
 from codex_plugin_scanner.guard.store import GuardStore
-from codex_plugin_scanner.guard.store_workflow_capabilities import StoreWorkflowCapabilitiesMixin
 from codex_plugin_scanner.guard.store_workflow_capability_common import WORKFLOW_CAPABILITY_STORE_CLOCK
 from codex_plugin_scanner.guard.workflow_capabilities import (
     WORKFLOW_CAPABILITY_ALGORITHM,
@@ -351,30 +350,6 @@ def test_concurrent_claims_never_exceed_exact_use_limit(tmp_path) -> None:
     assert use_row == (8,)
     assert receipt_row == (8,)
     assert transition_rows == [(index,) for index in range(1, 10)]
-
-
-def test_claim_rolls_back_use_and_event_when_audit_link_fails(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    store = _store(tmp_path)
-    claim = _claim(capability_id="wc-rollback")
-    _issue(store, claim)
-
-    def fail_event(*args: object, **kwargs: object) -> int:
-        raise RuntimeError("forced_event_failure")
-
-    monkeypatch.setattr(StoreWorkflowCapabilitiesMixin, "_insert_workflow_capability_event", fail_event)
-    with pytest.raises(RuntimeError, match="forced_event_failure"):
-        _claim_capability(
-            store,
-            claim,
-            invocation_id="invocation-rollback",
-        )
-    with sqlite3.connect(store.path) as connection:
-        used_count = connection.execute(
-            "select used_count from guard_workflow_capabilities where capability_id = ?", (claim.capability_id,)
-        ).fetchone()
-        receipt_count = connection.execute("select count(*) from guard_workflow_capability_receipts").fetchone()
-    assert used_count == (0,)
-    assert receipt_count == (0,)
 
 
 def test_revocation_blocks_claim_and_is_idempotent(tmp_path) -> None:

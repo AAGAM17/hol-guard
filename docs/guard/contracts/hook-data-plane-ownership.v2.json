@@ -370,6 +370,7 @@
     "src/codex_plugin_scanner/guard/native_hook_adapter_wire.py",
     "src/codex_plugin_scanner/guard/native_github_cli.py",
     "src/codex_plugin_scanner/guard/native_mcp_tool_policy.py",
+    "src/codex_plugin_scanner/guard/native_mcp_extension_input.py",
     "src/codex_plugin_scanner/guard/native_git_execution_safety.py",
     "src/codex_plugin_scanner/guard/native_compound_git_inspection.py",
     "src/codex_plugin_scanner/guard/native_codex_tool_output.py",
@@ -402,10 +403,6 @@
     "src/codex_plugin_scanner/guard/native_skill_directory_identity.py",
     "src/codex_plugin_scanner/guard/native_path_anchor.py",
     "src/codex_plugin_scanner/guard/local_cli_grant_decision.py",
-    "src/codex_plugin_scanner/guard/native_local_mcp_grant.py",
-    "src/codex_plugin_scanner/guard/local_mcp_grant_decision.py",
-    "src/codex_plugin_scanner/guard/native_contributed_mcp_decision.py",
-    "src/codex_plugin_scanner/guard/runtime/mcp_server_grants.py",
     "src/codex_plugin_scanner/guard/native_request_context.py"
    ],
    "current": "mechanical bounded guard-hook-envelope.v2 and guard-archive-inspection.v1 serialization, package-bound native invocation, typed result decoding, and harness response projection; the archive-inspection lease is owned inside the native worker",

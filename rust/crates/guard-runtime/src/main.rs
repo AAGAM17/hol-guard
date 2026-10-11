@@ -243,6 +243,7 @@ mod mcp_tool_evidence_op;
 mod mcp_tool_policy_composio;
 mod mcp_tool_policy_decide_op;
 mod mcp_tool_policy_decision;
+mod mcp_tool_policy_extension;
 mod mcp_tool_policy_flow;
 mod mcp_tool_policy_grants;
 mod mcp_tool_policy_revalidate;

@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 #[path = "git_config_filters.rs"]
 mod filters;
@@ -26,18 +26,27 @@ pub(super) fn execution_free(
     ) {
         return None;
     }
-    Some(
-        probe(
-            executable,
-            arguments,
-            remaining,
-            context,
-            deadline,
-            execution_environment,
-            stdout_piped,
+    let key = (
+        executable.to_owned(),
+        arguments.to_vec(),
+        context.home_dir.map(str::to_owned),
+        context.cwd.map(str::to_owned),
+        stdout_piped,
+    );
+    super::git_probe::memoized(key, || {
+        Some(
+            probe(
+                executable,
+                arguments,
+                remaining,
+                context,
+                deadline,
+                execution_environment,
+                stdout_piped,
+            )
+            .unwrap_or(false),
         )
-        .unwrap_or(false),
-    )
+    })
 }
 
 fn probe(
@@ -52,7 +61,7 @@ fn probe(
     let operation = remaining.first()?.as_str();
     // Configuration plus root, path and attribute inspection share this budget.
     // The caller's overall deadline remains the upper bound.
-    let inspection_deadline = Instant::now() + Duration::from_secs(2);
+    let inspection_deadline = Instant::now() + super::git_probe::PROBE_BUDGET;
     let deadline = deadline
         .unwrap_or(inspection_deadline)
         .min(inspection_deadline);

@@ -188,6 +188,7 @@ mod hardening;
 mod hook_adapter_op;
 mod hook_artifact_compose_op;
 mod hook_artifact_compose_reuse;
+mod hook_authority_state_op;
 mod hook_decision_compose;
 mod hook_decision_directive;
 mod hook_decision_finalize;

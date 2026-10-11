@@ -174,6 +174,7 @@ def _resident_request(
             "codex_thread_continue",
             "daemon_route",
             "daemon_handler",
+            "hook_authority_state",
         }:
             accepted = frozenset({"ok", "error"})
         elif operation == "mcp_tool_policy_decide":

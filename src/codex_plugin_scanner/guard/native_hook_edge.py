@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 
-from .native_approval_errors import FINITE_FAILURE_CODES
+from .native_approval_errors import resident_refusal_code
 from .native_decision_receipt import receipt_matches_edge, valid_prompt_risk_classes
 from .native_resident_client import (
     native_resident_client_request,
@@ -200,12 +200,7 @@ def _decode_pre_tool_result(result: object, *, harness: str, event: str = "PreTo
 
 def _native_error_code(payload: object) -> str | None:
     """Accept only the resident's finite error envelope for local diagnostics."""
-    if not isinstance(payload, dict) or set(payload) != {"error", "retryable"}:
-        return None
-    code = payload.get("error")
-    if type(payload.get("retryable")) is not bool or not isinstance(code, str):
-        return None
-    return code if code in FINITE_FAILURE_CODES else None
+    return resident_refusal_code(payload)
 
 
 def _decode_edge(payload: object) -> dict[str, Any] | None:

@@ -36,6 +36,8 @@ mod cisco_preflight_op;
 #[cfg(test)]
 mod cisco_preflight_vectors_tests;
 mod claim_approval_reuse_op;
+#[cfg(test)]
+mod claim_consume_local_once_tests;
 mod claim_reuse;
 mod claim_reuse_binding;
 #[cfg(test)]

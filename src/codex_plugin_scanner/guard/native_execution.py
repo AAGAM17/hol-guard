@@ -171,7 +171,7 @@ def _resident_request(
             "approval_resolution_plan",
             "approval_queue_identity",
             "approval_bulk_eligibility",
-            "codex_thread_continue",
+            "codex_request_resume",
             "daemon_route",
             "daemon_handler",
             "hook_authority_state",

@@ -228,8 +228,8 @@ pub(crate) fn evaluate_resident_bytes(
                     &request,
                 )
             }
-            ResidentOperationV1::CodexThreadContinue(request) => {
-                crate::codex_thread_continue_op::evaluate_codex_thread_continue_request(&request)
+            ResidentOperationV1::CodexRequestResume(request) => {
+                crate::codex_request_resume_op::evaluate_codex_request_resume_request(&request)
             }
             ResidentOperationV1::ApprovalQueueIdentity(request) => {
                 crate::approval_queue_identity_op::evaluate_approval_queue_identity_request(
@@ -500,6 +500,7 @@ fn operation_guard_home(operation: &ResidentOperationV1) -> Option<&str> {
         ResidentOperationV1::ContributedMcpDecide(request) => Some(&request.guard_home),
         ResidentOperationV1::RequestContextBuild(request) => Some(&request.guard_home),
         ResidentOperationV1::SkillDirectoryIdentity(request) => Some(&request.guard_home),
+        ResidentOperationV1::CodexRequestResume(request) => Some(&request.guard_home),
         _ => None,
     }
 }
@@ -525,6 +526,7 @@ fn operation_store_path(operation: &ResidentOperationV1) -> Option<&str> {
         ResidentOperationV1::LocalMcpGrantDecide(request) => Some(&request.store_path),
         ResidentOperationV1::ContributedMcpDecide(request) => Some(&request.store_path),
         ResidentOperationV1::HookAuthorityState(request) => Some(&request.store_path),
+        ResidentOperationV1::CodexRequestResume(request) => Some(&request.store_path),
         _ => None,
     }
 }

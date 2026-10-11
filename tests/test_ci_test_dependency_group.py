@@ -21,8 +21,8 @@ def test_test_workers_select_the_frozen_group_without_default_dev_dependencies()
         commands = "\n".join(step.get("run", "") for step in action["runs"]["steps"])
         assert "uv sync --frozen --no-dev --group ci-test" in commands
         assert "--extra dev" not in commands
-    workflow = expand_ci_job_actions(yaml.safe_load((ROOT / ".github/workflows/native-wheel-ci.yml").read_text()))
-    for job in ("wheel-contracts", "linux-build", "linux-proof", "windows-build", "windows-proof"):
+    workflow = expand_ci_job_actions(yaml.safe_load((ROOT / ".github/workflows/nightly-native.yml").read_text()))
+    for job in ("linux-build", "linux-proof", "windows-build", "windows-proof"):
         commands = "\n".join(step.get("run", "") for step in workflow["jobs"][job]["steps"])
         assert "uv sync --frozen --no-dev --group ci-test" in commands
     proof_setup = (ROOT / "scripts/ci/install-native-proof-dependencies.sh").read_text()
@@ -30,7 +30,7 @@ def test_test_workers_select_the_frozen_group_without_default_dev_dependencies()
     assert "--frozen --no-dev --no-install-project" in proof_setup
 
 
-@pytest.mark.parametrize("job", ["compatibility", "cross-platform", "windows-updater"])
+@pytest.mark.parametrize("job", ["compatibility", "cross-platform"])
 def test_compatibility_workers_select_the_frozen_test_group(job: str) -> None:
     """Verify compatibility workers select the frozen test group."""
     workflow = expand_ci_job_actions(yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text()))

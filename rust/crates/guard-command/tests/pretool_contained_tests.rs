@@ -78,21 +78,23 @@ fn direct_pytest_requires_real_containment_never_direct_allow() {
         "./.venv/bin/python3 -m pytest -q",
         "/usr/bin/python3 -m pytest tests/unit -q",
     ] {
-        let result = classify("omp", command);
-        let expected = if cfg!(target_os = "macos") {
-            "sandbox-required"
-        } else {
-            "review"
-        };
-        assert_eq!(result.minimum_action, expected, "{command}");
-        assert_eq!(result.decision, "deny", "{command}");
-        assert!(!result.explicitly_benign, "{command}");
-        let reason = if cfg!(target_os = "macos") {
-            "native_pytest_readonly_containment_required"
-        } else {
-            "native_command_review_required"
-        };
-        assert_eq!(result.reason_code, reason, "{command}");
+        for harness in ["omp", "claude-code"] {
+            let result = classify(harness, command);
+            let expected = if cfg!(target_os = "macos") {
+                "sandbox-required"
+            } else {
+                "review"
+            };
+            assert_eq!(result.minimum_action, expected, "{command}");
+            assert_eq!(result.decision, "deny", "{command}");
+            assert!(!result.explicitly_benign, "{command}");
+            let reason = if cfg!(target_os = "macos") {
+                "native_pytest_readonly_containment_required"
+            } else {
+                "native_command_review_required"
+            };
+            assert_eq!(result.reason_code, reason, "{command}");
+        }
     }
 }
 
@@ -122,7 +124,7 @@ fn unrelated_execution_and_shell_effects_do_not_inherit_test_delegation() {
         assert_ne!(result.decision, "allow", "{command}");
     }
     assert_ne!(
-        classify("claude-code", "pytest -q").reason_code,
+        classify("codex", "pytest -q").reason_code,
         "native_pytest_readonly_containment_required"
     );
     let without_cwd = evaluate_pre_tool_envelope_with_context(
@@ -180,7 +182,7 @@ fn direct_node_tests_require_containment_without_weakening_other_execution() {
 
 #[test]
 fn vitest_wrapper_and_resolved_script_require_the_same_protected_profile() {
-    for harness in ["omp", "zcode"] {
+    for harness in ["omp", "zcode", "claude-code"] {
         for command in [
             "bunx vitest run tests/example.test.ts",
             "bun x vitest run tests/example.test.ts",

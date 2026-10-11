@@ -86,7 +86,7 @@ pub(super) fn receipt(
     reason_code: &str,
 ) -> Option<Map<String, Value>> {
     let text = |key: &str| response.get(key).and_then(Value::as_str);
-    if !matches!(canonical, "omp" | "zcode")
+    if !matches!(canonical, "omp" | "zcode" | "claude-code")
         || text("minimum_action") != Some("sandbox-required")
         || text("policy_action") != Some("sandbox-required")
         || text("decision") != Some("deny")
@@ -114,7 +114,7 @@ pub(super) fn receipt(
     receipt.insert("reason_code".into(), json!(reason_code));
     receipt.insert("reason".into(), json!(reason));
     receipt.insert("required_execution_profile".into(), json!(profile));
-    if canonical == "zcode" {
+    if matches!(canonical, "zcode" | "claude-code") {
         receipt.insert(
             "hookSpecificOutput".into(),
             json!({

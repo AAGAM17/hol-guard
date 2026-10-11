@@ -110,12 +110,13 @@ def test_missing_or_independent_extension_control_decisions_cannot_delegate(brok
 
 
 def test_unsupported_harness_never_receives_a_delegation_hint() -> None:
-    for harness in ("pi", "claude-code"):
+    for harness in ("pi", "codex"):
         assert "required_execution_profile" not in render_pre_tool(harness, result())
 
 
-def test_zcode_receipt_stays_denied_until_bridge_rewrites_input() -> None:
-    response = render_pre_tool("zcode", result())
-    assert response["decision"] == "deny"
-    assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert response["required_execution_profile"] == "pytest-readonly-v2"
+def test_hook_rewrite_receipts_stay_denied_until_bridge_rewrites_input() -> None:
+    for harness in ("zcode", "claude-code"):
+        response = render_pre_tool(harness, result())
+        assert response["decision"] == "deny"
+        assert response["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert response["required_execution_profile"] == "pytest-readonly-v2"

@@ -33,6 +33,7 @@ from .commands_hook_native_claude import (
     run_native_claude_permission_request,
 )
 from .commands_hook_native_compat import handle_native_cursor_post_tool, prepare_native_hook_payload
+from .commands_hook_native_containment import emit_native_containment_route
 from .commands_hook_native_copilot import (
     run_native_copilot_permission_request,
     run_native_copilot_pretool,
@@ -153,6 +154,9 @@ def run_native_hook_pipeline(
             worker=worker,
             recording_only=bool(edge.get("recording_only")) if isinstance(edge, Mapping) else False,
         )
+    contained = emit_native_containment_route(edge, payload, context, runtime_workspace, output_stream, store)
+    if contained is not None:
+        return contained
 
     def fresh_copilot_tool_call_authority():
         fresh_config = overlay_synced_guard_policy(

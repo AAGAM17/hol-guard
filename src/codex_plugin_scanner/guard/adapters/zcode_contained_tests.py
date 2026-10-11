@@ -1,4 +1,8 @@
-"""Route ZCode's native containment receipt through its updatedInput contract."""
+"""Route native containment receipts through the PreToolUse updatedInput contract.
+
+ZCode and Claude Code both apply a hook's ``updatedInput``, so a contained test run is
+rewritten into Guard's execution sink instead of stopping for review.
+"""
 
 from __future__ import annotations
 
@@ -26,6 +30,7 @@ _PROFILES = {
     "native_node_tool_readonly_containment_required": "node-tool-readonly-v1",
     "native_node_build_output_containment_required": "node-build-output-v1",
 }
+_ROUTED_HARNESSES = frozenset({"zcode", "claude-code"})
 
 
 def cleanup_stale_zcode_requests() -> None:
@@ -81,10 +86,10 @@ def route_zcode_containment(
     """Rewrite at the authority edge so frozen/stdlib hook clients also work."""
     # The execution sink needs the denial/profile receipt, not another rewrite.
     # An untrusted caller setting this flag only keeps its original call denied.
-    if harness != "zcode" or workspace is None or payload.get("guard_containment_receipt_only") is True:
+    if harness not in _ROUTED_HARNESSES or workspace is None or payload.get("guard_containment_receipt_only") is True:
         return response
     config = {
-        "harness": "zcode",
+        "harness": harness,
         "guard_home": str(guard_home),
         "python_executable": sys.executable,
         "package_root": str(Path(__file__).resolve().parents[3]),
@@ -109,7 +114,7 @@ def contained_zcode_response(
     reason = response.get("reason_code")
     if (
         sys.platform != "darwin"
-        or config.get("harness") != "zcode"
+        or config.get("harness") not in _ROUTED_HARNESSES
         or response.get("decision") != "deny"
         or response.get("policy_action") != "sandbox-required"
         or response.get("observe_mode") is True
@@ -171,7 +176,7 @@ def contained_zcode_response(
             "guard",
             "execute-contained-test",
             "--harness",
-            "zcode",
+            str(config["harness"]),
             "--guard-home",
             str(config["guard_home"]),
             "--workspace",

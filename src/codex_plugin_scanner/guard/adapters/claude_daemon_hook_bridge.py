@@ -24,6 +24,7 @@ from .claude_daemon_hook_transport import authenticated_claude_hook_response
 from .claude_daemon_state import daemon_port_from_state, state_path_for_query
 from .claude_hook_config import CLAUDE_GUARD_PERMISSION_PASSTHROUGH_KEY as PERMISSION_PASSTHROUGH_KEY
 from .codex_daemon_hook_auth import _DaemonResponseError
+from .hook_input_reader import read_stdin_text
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 _DEGRADED_DAEMON_MESSAGE = "HOL Guard could not complete native review ({reason}) and denied this action."
@@ -69,8 +70,8 @@ def main(
 
     _ = CLAUDE_GUARD_DAEMON_HOOK_MARKER
     deadline = time.monotonic() + _HOOK_DEADLINE_SECONDS
-    body = sys.stdin.read(_MAX_HOOK_INPUT_BYTES + 1)
-    if len(body.encode("utf-8", errors="replace")) > _MAX_HOOK_INPUT_BYTES:
+    body, oversized = read_stdin_text(_MAX_HOOK_INPUT_BYTES)
+    if oversized:
         event = _event_name(body)
         if not (event.startswith("Permission") or event in {"UserPromptSubmit", "PostToolUse", "Stop"}):
             event = "PreToolUse"

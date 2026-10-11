@@ -746,6 +746,28 @@
           "src/codex_plugin_scanner/json_comment_stripping.py"
         ],
         "reason": "Reviewed: adapter implementations behind the harness registry. Adapters normalize harness payloads into hook requests, so they sit on the hook path, and hook-path authority is never excluded. Install and setup methods that have a function_exclusions entry are excluded as install_config, not hook path; install helpers without an entry (for example in the Cline, OpenCode and OpenClaw support modules) stay counted, which understates the Rust share."
+      },
+      {
+        "path": [
+          "src/codex_plugin_scanner/guard/adapters/claude_code.py",
+          "src/codex_plugin_scanner/guard/aibom_detection.py",
+          "src/codex_plugin_scanner/guard/codex_config.py",
+          "src/codex_plugin_scanner/guard/codex_skill_config.py",
+          "src/codex_plugin_scanner/guard/inventory_agent_types.py",
+          "src/codex_plugin_scanner/guard/inventory_contract_constants.py",
+          "src/codex_plugin_scanner/guard/inventory_contract_fingerprints.py",
+          "src/codex_plugin_scanner/guard/inventory_contract_models.py",
+          "src/codex_plugin_scanner/guard/inventory_contract_redaction.py",
+          "src/codex_plugin_scanner/guard/path_security.py",
+          "src/codex_plugin_scanner/guard/portable_skill_directory_discovery.py",
+          "src/codex_plugin_scanner/guard/portable_skill_directory_identity.py",
+          "src/codex_plugin_scanner/guard/portable_skill_directory_support.py",
+          "src/codex_plugin_scanner/guard/skill_directory_discovery.py",
+          "src/codex_plugin_scanner/guard/skill_directory_identity.py",
+          "src/codex_plugin_scanner/guard/skill_directory_identity_contract.py",
+          "src/codex_plugin_scanner/marketplace_support.py"
+        ],
+        "reason": "Reviewed: claude_code adapter and its inventory/skill-directory and aibom detection helpers. The Claude hook client no longer imports them; they load lazily from the frozen hook and the adapter registry for install, inventory and approval flows, not per tool call."
       }
     ],
     "tests": {

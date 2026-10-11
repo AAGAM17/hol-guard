@@ -19,7 +19,6 @@ from ..codex_hook_launch_runtime import (
     run_isolated_hook_process,
 )
 from ..hook_execution_environment import stamp_hook_input_text
-from .claude_code import CLAUDE_GUARD_DAEMON_HOOK_MARKER
 from .claude_daemon_hook_transport import authenticated_claude_hook_response
 from .claude_daemon_state import daemon_port_from_state, state_path_for_query
 from .claude_hook_config import CLAUDE_GUARD_PERMISSION_PASSTHROUGH_KEY as PERMISSION_PASSTHROUGH_KEY
@@ -78,7 +77,6 @@ def main(
 ) -> int:
     """Proxy Claude hook stdin to the Guard daemon, falling back to the Python hook."""
 
-    _ = CLAUDE_GUARD_DAEMON_HOOK_MARKER
     deadline = time.monotonic() + _HOOK_DEADLINE_SECONDS
     body, oversized = read_stdin_text(_MAX_HOOK_INPUT_BYTES)
     if oversized:

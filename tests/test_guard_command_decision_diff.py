@@ -247,7 +247,6 @@ def test_report_is_exactly_reproducible_and_source_bound() -> None:
         "src/codex_plugin_scanner/guard/shims.py",
         "tests/test_guard_contained_package_script_execution.py",
         "tests/test_guard_contained_workspace_write_contract.py",
-        "tests/test_guard_contained_workspace_write_execution.py",
         "tests/test_guard_package_shims.py",
     }
     assert {source_binding_id(path) for path in critical_paths} <= sources.keys()

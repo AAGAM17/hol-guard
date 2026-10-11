@@ -637,7 +637,7 @@ pub fn validate_containment_policy(policy: &ContainmentPolicy) -> Result<(), Str
         _reject(path.is_empty() || path.len() > MAX_PATH_ITEM, "policy_path")?;
     }
     _reject(
-        policy.workspace_write_paths.is_empty(),
+        policy.workspace_write_paths.is_empty() && policy.action != ContainmentAction::Read,
         "policy_write_paths",
     )?;
     _reject(
@@ -2579,18 +2579,7 @@ pub(crate) fn _promote_output(
             if let Some(parent) = target.parent() {
                 fs::create_dir_all(parent).map_err(|_| "write_parent".to_owned())?;
             }
-            let tmp = target.with_extension("contained.tmp");
-            {
-                let mut file = File::create(&tmp).map_err(|_| "write_failed".to_owned())?;
-                file.write_all(content)
-                    .map_err(|_| "write_failed".to_owned())?;
-                file.sync_all().map_err(|_| "write_failed".to_owned())?;
-            }
-            if let Some(mode) = operation.mode {
-                fs::set_permissions(&tmp, fs::Permissions::from_mode(mode))
-                    .map_err(|_| "write_failed".to_owned())?;
-            }
-            fs::rename(&tmp, &target).map_err(|_| "write_failed".to_owned())?;
+            crate::semantic_workspace::write_atomic(&target, content, operation.mode)?;
             Ok(operation.path.clone())
         }
         "copy" => {
@@ -3637,6 +3626,10 @@ fn _semantic_safe_relative(
     {
         return Err("workspace_path_protected".to_owned());
     }
+    if crate::shell_secret_read_support::classify_secret_path(raw, Some(workspace), None).is_some()
+    {
+        return Err("workspace_path_secret".to_owned());
+    }
     let candidate = workspace.join(rel);
     let parent = candidate
         .parent()
@@ -3657,6 +3650,9 @@ fn _semantic_safe_relative(
             if must_exist && (!metadata.is_file() || metadata.nlink() != 1) {
                 return Err("workspace_input_not_regular".to_owned());
             }
+            if must_exist && canonical != candidate {
+                return Err("workspace_path_alias".to_owned());
+            }
             if !must_exist && !metadata.is_file() {
                 return Err("workspace_output_not_regular".to_owned());
             }
@@ -3665,79 +3661,6 @@ fn _semantic_safe_relative(
         Err(_) => return Err("workspace_input_not_regular".to_owned()),
     }
     Ok(candidate)
-}
-
-struct SemanticWorkspaceStage(PathBuf);
-
-impl Drop for SemanticWorkspaceStage {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-fn _copy_semantic_workspace(
-    root: &Path,
-    source: &Path,
-    target: &Path,
-    total_bytes: &mut u64,
-) -> Result<(), String> {
-    fs::create_dir(target).map_err(|_| "workspace_stage_create_failed".to_owned())?;
-    for entry in fs::read_dir(source).map_err(|_| "workspace_stage_read_failed".to_owned())? {
-        let entry = entry.map_err(|_| "workspace_stage_read_failed".to_owned())?;
-        let source_path = entry.path();
-        let target_path = target.join(entry.file_name());
-        let file_type = entry
-            .file_type()
-            .map_err(|_| "workspace_stage_read_failed".to_owned())?;
-        if file_type.is_dir() {
-            _copy_semantic_workspace(root, &source_path, &target_path, total_bytes)?;
-        } else if file_type.is_file() {
-            let source_file =
-                File::open(&source_path).map_err(|_| "workspace_stage_copy_failed".to_owned())?;
-            let mut target_file =
-                File::create(&target_path).map_err(|_| "workspace_stage_copy_failed".to_owned())?;
-            let remaining = MAX_TOTAL_CAPTURED_OUTPUT_BYTES - *total_bytes;
-            let copied = std::io::copy(&mut source_file.take(remaining + 1), &mut target_file)
-                .map_err(|_| "workspace_stage_copy_failed".to_owned())?;
-            if copied > remaining {
-                return Err("workspace_stage_too_large".to_owned());
-            }
-            *total_bytes += copied;
-        } else if file_type.is_symlink() {
-            let link = fs::read_link(&source_path)
-                .map_err(|_| "workspace_stage_read_failed".to_owned())?;
-            if link.is_absolute() || !weak_canonicalize(&source_path).starts_with(root) {
-                return Err("workspace_stage_symlink_unsafe".to_owned());
-            }
-            std::os::unix::fs::symlink(link, &target_path)
-                .map_err(|_| "workspace_stage_copy_failed".to_owned())?;
-        } else {
-            return Err("workspace_stage_entry_unsupported".to_owned());
-        }
-    }
-    Ok(())
-}
-
-fn _stage_semantic_workspace(
-    workspace: &Path,
-    guard_home: &Path,
-    run_id: &str,
-) -> Result<SemanticWorkspaceStage, String> {
-    let parent = guard_home.join("containment");
-    fs::create_dir_all(&parent).map_err(|_| "workspace_stage_create_failed".to_owned())?;
-    let parent = parent
-        .canonicalize()
-        .map_err(|_| "workspace_stage_create_failed".to_owned())?;
-    if parent.starts_with(workspace) {
-        return Err("workspace_stage_inside_workspace".to_owned());
-    }
-    let stage = parent.join(format!("{run_id}-workspace"));
-    let mut total_bytes = 0;
-    if let Err(error) = _copy_semantic_workspace(workspace, workspace, &stage, &mut total_bytes) {
-        let _ = fs::remove_dir_all(&stage);
-        return Err(error);
-    }
-    Ok(SemanticWorkspaceStage(stage))
 }
 
 /// Build the tool argv the Python `_invocation()` produces per semantic op
@@ -3835,17 +3758,19 @@ pub fn try_execute_contained_workspace_write_semantic(
     if let Some(raw_target) = target {
         _semantic_safe_relative(&workspace, raw_target, false).ok()?;
     }
-    let env = environment.cloned().unwrap_or_default();
     let run_id = format!("ww-semantic-{}", _now_epoch_ms());
-    let stage = if operation == "patch-check" {
-        None
-    } else {
-        Some(_stage_semantic_workspace(&workspace, guard_home, &run_id).ok()?)
-    };
-    let execution_workspace = match &stage {
-        Some(staged) => staged.0.canonicalize().ok()?,
-        None => workspace.clone(),
-    };
+    // Every operation, `patch-check` included, runs against a private stage that
+    // holds only eligible files: protected content, symlinks and `.git` state
+    // never reach the tool, and an ineligible workspace returns to review.
+    let (stage, captured_workspace) =
+        crate::semantic_workspace::stage_workspace(&workspace, guard_home, &run_id).ok()?;
+    let execution_workspace = stage.0.canonicalize().ok()?;
+    let mut env = environment.cloned().unwrap_or_default();
+    let tool_path = crate::semantic_workspace::sanitize_tool_path(
+        env.get("PATH").map(String::as_str),
+        &[workspace.as_path(), execution_workspace.as_path()],
+    );
+    env.insert("PATH".to_owned(), tool_path);
     let (argv, target) =
         _semantic_tool_argv(operation, source, target, &execution_workspace, &env).ok()?;
     // A "write" op describing the declared target drives requirements + promote.
@@ -3892,7 +3817,12 @@ pub fn try_execute_contained_workspace_write_semantic(
     validate_containment_request(&request).ok()?;
     let policy = ContainmentPolicy {
         schema_version: CONTAINMENT_SCHEMA_VERSION.to_owned(),
-        action: ContainmentAction::Write,
+        // `patch-check` is a dry run: a read-only policy with no write scope.
+        action: if write_paths.is_empty() {
+            ContainmentAction::Read
+        } else {
+            ContainmentAction::Write
+        },
         workspace_read_paths: vec![execution_workspace.to_string_lossy().into_owned()],
         workspace_write_paths: write_paths,
         env_allowlist: request.env_allowlist.clone(),
@@ -3968,6 +3898,14 @@ pub fn try_execute_contained_workspace_write_semantic(
     let Some(proof) = proof else {
         return Some(_result_without_promotion(attestation, outputs, captured));
     };
+    // Promotion requires the real workspace, target included, to be exactly what
+    // was staged: a concurrent edit while the tool ran returns to review.
+    if !ops.is_empty()
+        && crate::semantic_workspace::capture_workspace(&workspace)
+            .map_or(true, |current| current.digest != captured_workspace.digest)
+    {
+        return Some(_result_without_promotion(attestation, outputs, captured));
+    }
     let mut applied: Vec<String> = Vec::new();
     for op in &ops {
         let Some((staged_output_path, expected_digest)) = staged_output.as_ref() else {
@@ -4013,3 +3951,7 @@ pub fn try_execute_contained_workspace_write_semantic(
         output_digest: staged_output.map(|(_, digest)| digest),
     })
 }
+
+#[cfg(test)]
+#[path = "contained_safe_relative_tests.rs"]
+mod safe_relative_tests;

@@ -533,6 +533,8 @@ pub mod restricted_pytest;
 pub mod resume_template;
 #[cfg(unix)]
 pub mod sandbox;
+#[cfg(unix)]
+pub(crate) mod semantic_workspace;
 pub mod shims;
 pub mod signals;
 pub mod supply_chain_bundle;

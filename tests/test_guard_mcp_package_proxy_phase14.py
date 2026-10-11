@@ -41,7 +41,7 @@ def _native_package_proxy_home(tmp_path: Path, native_mcp_probe) -> None:
     native_mcp_probe(tmp_path / "guard-home")
 
 
-def test_package_decision_v2_ignores_malformed_reason_items() -> None:
+def test_package_decision_v2_ignores_malformed_reason_items(tmp_path: Path) -> None:
     evaluation = SimpleNamespace(
         reasons=("malformed", {"code": "cloud_timeout", "message": "Cloud timed out."}),
         user_copy=SimpleNamespace(
@@ -51,7 +51,9 @@ def test_package_decision_v2_ignores_malformed_reason_items() -> None:
         ),
     )
 
-    decision = RuntimeMcpGuardProxy._package_decision_v2(evaluation, "require-reapproval")
+    decision = RuntimeMcpGuardProxy._package_decision_v2(
+        evaluation, "require-reapproval", guard_home=tmp_path / "guard-home"
+    )
 
     assert [signal["signal_id"] for signal in decision["signals"]] == ["supply-chain.cloud_timeout"]
 

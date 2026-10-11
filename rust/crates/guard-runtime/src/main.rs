@@ -183,6 +183,9 @@ mod local_store_read;
 mod managed_resident;
 mod mcp_probe_op;
 mod mcp_proxy_actions;
+mod mcp_proxy_archive;
+#[cfg(test)]
+mod mcp_proxy_archive_vectors_tests;
 mod mcp_proxy_catalog;
 mod mcp_proxy_decision_op;
 #[cfg(test)]
@@ -192,6 +195,8 @@ mod mcp_proxy_decision_vectors_tests;
 mod mcp_proxy_package;
 mod mcp_proxy_postclaim;
 mod mcp_proxy_route;
+mod mcp_proxy_shlex;
+mod mcp_proxy_signals;
 mod mcp_runtime_evidence_op;
 mod mcp_sensitive_read;
 #[cfg(test)]

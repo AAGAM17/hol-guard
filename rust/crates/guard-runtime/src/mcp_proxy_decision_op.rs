@@ -15,6 +15,7 @@ use guard_policy_snapshot::digest_bytes;
 use serde_json::Value;
 
 use super::context_digest_json::write_canonical_json_with_limit;
+use crate::{mcp_proxy_archive as archive, mcp_proxy_signals as signals};
 use crate::{mcp_proxy_catalog as catalog, mcp_proxy_package as package};
 use crate::{
     mcp_proxy_postclaim as postclaim, mcp_proxy_route as route, mcp_sensitive_read as sensitive,
@@ -46,6 +47,8 @@ pub(crate) fn decide(query: &McpProxyQueryV1) -> Value {
         McpProxyQueryV1::SensitiveReadContext(query) => sensitive::context(query),
         McpProxyQueryV1::SensitiveReadReuse(query) => sensitive::reuse(query),
         McpProxyQueryV1::SensitiveReadHint(query) => sensitive::hint(query),
+        McpProxyQueryV1::ExternalArchiveBind(query) => archive::bind(query),
+        McpProxyQueryV1::PackageReasonSignals(query) => signals::reason_signals(query),
     }
 }
 

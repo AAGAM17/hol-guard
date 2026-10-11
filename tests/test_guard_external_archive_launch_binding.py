@@ -226,7 +226,9 @@ def test_mcp_package_forward_replaces_external_url_with_verified_blob(tmp_path: 
     }
     message = {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": params}
 
-    bound = _bound_external_archive_mcp_request(message, params, evaluation=evaluation)
+    bound = _bound_external_archive_mcp_request(
+        message, params, evaluation=evaluation, guard_home=tmp_path / "guard-home"
+    )
 
     assert bound is not None
     bound_message, bound_params = bound
@@ -259,7 +261,9 @@ def test_mcp_package_forward_shell_quotes_digest_bound_path(tmp_path: Path) -> N
     params = {"name": "shell", "arguments": {"command": f"npm install demo@{source_url}"}}
     message = {"jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": params}
 
-    bound = _bound_external_archive_mcp_request(message, params, evaluation=evaluation)
+    bound = _bound_external_archive_mcp_request(
+        message, params, evaluation=evaluation, guard_home=tmp_path / "guard-home"
+    )
 
     assert bound is not None
     _bound_message, bound_params = bound

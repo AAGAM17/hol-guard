@@ -6,7 +6,6 @@ import io
 import json
 import os
 import queue
-import shlex
 import sys
 import threading
 from collections import deque
@@ -63,7 +62,9 @@ from ..native_execution import (
 from ..native_mcp_proxy_decision import (
     NativeMcpProxyDecisionError,
     cursor_fact,
+    native_external_archive_bind,
     native_mcp_proxy_decide,
+    native_package_reason_signals,
     package_facts,
     tool_facts,
 )
@@ -81,7 +82,7 @@ from ..runtime.harness_attribution import origin_harness_env
 from ..runtime.mcp_protection import McpServerIdentity, build_mcp_server_identity
 from ..runtime.package_intent_common import build_package_request_artifact
 from ..runtime.package_intent_parser import extract_package_intent_request
-from ..runtime.signals import RiskSeverityLabel, RiskSignalV2
+from ..runtime.signals import RiskSignalV2
 from ..runtime.surface_server import GuardSurfaceRuntime
 from ..store import GuardStore
 from ..tool_decision_evidence import tool_decision_scanner_evidence as _tool_decision_scanner_evidence
@@ -95,119 +96,35 @@ from .stdio import (
     _timeout_response,
 )
 
-_SHELL_COMMAND_ARGUMENT_KEYS = frozenset({"cmd", "command", "shellCommand", "shell_command"})
-
-
-class _ExternalArchiveBindingError(ValueError):
-    pass
-
-
-def _replace_external_archive_shell_command(
-    command: str,
-    *,
-    replacements: Mapping[str, str],
-    matched_sources: set[str],
-) -> str:
-    if not any(source_url in command for source_url in replacements):
-        return command
-    if sys.platform == "win32":
-        raise _ExternalArchiveBindingError("opaque Windows shell command cannot safely bind archive path")
-    if "`" in command or "$(" in command or "\n" in command or "\r" in command:
-        raise _ExternalArchiveBindingError("compound shell expression cannot safely bind archive path")
-    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
-    lexer.whitespace_split = True
-    lexer.commenters = ""
-    try:
-        tokens = list(lexer)
-    except ValueError as error:
-        raise _ExternalArchiveBindingError("shell command could not be parsed for archive binding") from error
-    if any(token and all(character in "();<>|&" for character in token) for token in tokens):
-        raise _ExternalArchiveBindingError("compound shell command cannot safely bind archive path")
-    bound_tokens: list[str] = []
-    for token in tokens:
-        bound_token = token
-        for source_url, local_path in replacements.items():
-            if source_url not in bound_token:
-                continue
-            bound_token = bound_token.replace(source_url, local_path)
-            matched_sources.add(source_url)
-        bound_tokens.append(bound_token)
-    return shlex.join(bound_tokens)
-
-
-def _replace_external_archive_values(
-    value: object,
-    *,
-    replacements: Mapping[str, str],
-    matched_sources: set[str],
-    shell_command: bool = False,
-) -> object:
-    if isinstance(value, str):
-        if shell_command:
-            return _replace_external_archive_shell_command(
-                value,
-                replacements=replacements,
-                matched_sources=matched_sources,
-            )
-        replaced = value
-        for source_url, local_path in replacements.items():
-            if source_url not in replaced:
-                continue
-            replaced = replaced.replace(source_url, local_path)
-            matched_sources.add(source_url)
-        return replaced
-    if isinstance(value, list):
-        return [
-            _replace_external_archive_values(
-                item,
-                replacements=replacements,
-                matched_sources=matched_sources,
-                shell_command=False,
-            )
-            for item in value
-        ]
-    if isinstance(value, dict):
-        return {
-            key: _replace_external_archive_values(
-                item,
-                replacements=replacements,
-                matched_sources=matched_sources,
-                shell_command=key in _SHELL_COMMAND_ARGUMENT_KEYS and isinstance(item, str),
-            )
-            for key, item in value.items()
-        }
-    return value
-
 
 def _bound_external_archive_mcp_request(
     message: dict[str, Any],
     params: dict[str, Any],
     *,
     evaluation: object,
+    guard_home: Path,
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
     replacements = _verified_external_archive_replacements(evaluation)
     if replacements is None:
         return None
     requires_binding = _package_evaluation_requires_external_archive_binding(evaluation)
-    if not replacements:
-        return None if requires_binding else (message, params)
-    matched_sources: set[str] = set()
+    if not replacements and not requires_binding:
+        return message, params
     try:
-        bound_params = cast(
-            dict[str, Any],
-            _replace_external_archive_values(
-                deepcopy(params),
-                replacements=replacements,
-                matched_sources=matched_sources,
-            ),
+        # With no replacements the resident does not inspect params, so keep the request small.
+        bound_params = native_external_archive_bind(
+            params if replacements else {},
+            replacements,
+            requires_binding=requires_binding,
+            guard_home=guard_home,
         )
-    except _ExternalArchiveBindingError:
+    except NativeMcpProxyDecisionError:
         return None
-    if matched_sources != set(replacements):
+    if bound_params is None:
         return None
-    bound_message = deepcopy(message)
-    bound_message["params"] = bound_params
-    return bound_message, bound_params
+    if not replacements:
+        return message, params
+    return {**message, "params": bound_params}, bound_params
 
 
 def _approval_surface_policy_for_browser(configured_policy: object, approval_flow: Mapping[str, object]) -> str:
@@ -2000,6 +1917,7 @@ class RuntimeMcpGuardProxy:
             message,
             params,
             evaluation=fresh_package_resolution.evaluation,
+            guard_home=Path(self.store.guard_home),
         )
         if bound_request is None:
             try:
@@ -2371,7 +2289,9 @@ class RuntimeMcpGuardProxy:
         policy_action: GuardAction,
         scanner_evidence: tuple[dict[str, object], ...],
     ) -> None:
-        decision_v2_payload = self._package_decision_v2(package_evaluation, policy_action)
+        decision_v2_payload = self._package_decision_v2(
+            package_evaluation, policy_action, guard_home=Path(self.store.guard_home)
+        )
         self._queue_observed_approval_requests(
             artifact=artifact,
             artifact_hash=artifact_hash,
@@ -2389,12 +2309,14 @@ class RuntimeMcpGuardProxy:
         )
 
     @staticmethod
-    def _package_decision_v2(package_evaluation: Any, policy_action: GuardAction) -> dict[str, Any]:
-        payload = build_decision_v2(
-            policy_action,
-            reason=policy_action,
-            signals=_package_reason_signals(package_evaluation.reasons),
-        ).to_dict()
+    def _package_decision_v2(
+        package_evaluation: Any, policy_action: GuardAction, *, guard_home: Path
+    ) -> dict[str, Any]:
+        signals = tuple(
+            RiskSignalV2(**fields)
+            for fields in native_package_reason_signals(package_evaluation.reasons, guard_home=guard_home)
+        )
+        payload = build_decision_v2(policy_action, reason=policy_action, signals=signals).to_dict()
         payload["user_title"] = package_evaluation.user_copy.title
         payload["user_body"] = package_evaluation.user_copy.summary
         payload["harness_message"] = package_evaluation.user_copy.harness_message
@@ -2413,7 +2335,9 @@ class RuntimeMcpGuardProxy:
         policy_action: GuardAction,
         scanner_evidence: tuple[dict[str, object], ...],
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        decision_v2_payload = self._package_decision_v2(package_evaluation, policy_action)
+        decision_v2_payload = self._package_decision_v2(
+            package_evaluation, policy_action, guard_home=Path(self.store.guard_home)
+        )
         risk_signals = tuple(str(item.get("message") or item.get("code") or "") for item in package_evaluation.reasons)
         if not asks_for_approval(self.config):
             response, event = self._queue_approval_center_response(
@@ -3916,57 +3840,6 @@ def _command_argument(arguments: object) -> str | None:
 
 def _has_saved_package_block(reasons: Sequence[object]) -> bool:
     return any(isinstance(reason, Mapping) and reason.get("code") == "saved_package_block" for reason in reasons)
-
-
-def _package_reason_signals(reasons: Sequence[object]) -> tuple[RiskSignalV2, ...]:
-    signals: list[RiskSignalV2] = []
-    for reason in reasons:
-        if not isinstance(reason, Mapping):
-            continue
-        code = _optional_text(reason.get("code")) or "package-risk"
-        message = _optional_text(reason.get("message")) or code.replace("_", " ")
-        severity = _package_signal_severity(_optional_text(reason.get("severity")))
-        signals.append(
-            RiskSignalV2(
-                signal_id=f"supply-chain.{code}",
-                category="supply_chain",
-                severity=severity,
-                confidence="strong" if severity in {"high", "critical"} else "likely",
-                detector=_optional_text(reason.get("source")) or "guard.supply-chain",
-                title=message,
-                plain_reason=message,
-                technical_detail=message,
-                evidence_ref=None,
-                redaction_level="summary",
-                false_positive_hint=(
-                    "Review the package request or add a scoped exception only for a verified false positive."
-                ),
-                advisory_id=None,
-            )
-        )
-    return tuple(signals)
-
-
-def _package_signal_severity(value: str | None) -> RiskSeverityLabel:
-    match value:
-        case "info":
-            return "info"
-        case "low":
-            return "low"
-        case "medium":
-            return "medium"
-        case "high":
-            return "high"
-        case "critical":
-            return "critical"
-        case _:
-            return "medium"
-
-
-def _optional_text(value: object) -> str | None:
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return None
 
 
 def _now() -> str:

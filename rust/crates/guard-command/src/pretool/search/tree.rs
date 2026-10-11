@@ -37,11 +37,40 @@ pub(in crate::pretool) const SECRET_EXTENSIONS: &[&str] = &[
     "pem", "p12", "pfx", "jks", "keystore", "asc", "gpg", "kdbx", "ppk",
 ];
 
+/// Names-only recursive listing (`ls -R`).
 pub(in crate::pretool) fn safe_recursive_target(value: &str, context: ReadContext<'_>) -> bool {
+    safe_walk_target(value, context, &[], &[])
+}
+
+/// Recursive content search (`grep -r`, `rg`). Oh My Pi agent-state trees are
+/// excluded: the per-file exclusions that deny direct reads there do not
+/// apply to a walk, so a search could return a file a direct read denies.
+pub(in crate::pretool) fn safe_recursive_search_target(
+    value: &str,
+    context: ReadContext<'_>,
+) -> bool {
     safe_recursive_target_excluding(value, context, &[], &[])
 }
 
 pub(super) fn safe_recursive_target_excluding(
+    value: &str,
+    context: ReadContext<'_>,
+    excluded_files: &[&str],
+    excluded_directories: &[&str],
+) -> bool {
+    if expanded_operand(value, context).is_some_and(|root| inside_agent_state(&root, context)) {
+        return false;
+    }
+    safe_walk_target(value, context, excluded_files, excluded_directories)
+}
+
+fn inside_agent_state(path: &std::path::Path, context: ReadContext<'_>) -> bool {
+    std::fs::canonicalize(path).is_ok_and(|canonical| {
+        super::super::read_paths::inside_agent_state_tree(&canonical, context.home_dir)
+    })
+}
+
+fn safe_walk_target(
     value: &str,
     context: ReadContext<'_>,
     excluded_files: &[&str],
@@ -92,6 +121,16 @@ pub(in crate::pretool) fn safe_glob_operand(
         } else {
             true
         }
+    })
+}
+
+/// Content-search glob operand: every match is walked, and matches inside an
+/// Oh My Pi agent-state tree are refused as for a literal search root.
+pub(in crate::pretool) fn safe_glob_search_operand(value: &str, context: ReadContext<'_>) -> bool {
+    expand_glob(value, context).is_some_and(|matches| {
+        matches
+            .into_iter()
+            .all(|path| !inside_agent_state(&path, context) && walk(path, &[], &[]))
     })
 }
 

@@ -133,6 +133,55 @@ pub(in crate::pretool) fn agent_skill_document(
     false
 }
 
+/// Oh My Pi keeps session artifacts and user skills under `~/.agent`. Reads
+/// below `artifacts/` and listings of the `skills/` or `artifacts/` trees are
+/// routine agent state. The state root must resolve to itself (no link can
+/// redirect it), every component below it must be visible, artifact files
+/// are documents (`.md`), and the caller has already screened credential
+/// names and sensitive families.
+pub(in crate::pretool) fn agent_home_state(
+    canonical: &std::path::Path,
+    home_dir: Option<&str>,
+) -> bool {
+    let Some(home) = home_dir.and_then(|root| std::fs::canonicalize(root).ok()) else {
+        return false;
+    };
+    ["skills", "artifacts"].into_iter().any(|name| {
+        let root = home.join(".agent").join(name);
+        std::fs::canonicalize(&root).is_ok_and(|resolved| resolved == root)
+            && canonical.strip_prefix(&root).is_ok_and(|relative| {
+                let Some(parts) = visible_components(relative) else {
+                    return false;
+                };
+                if canonical.is_dir() {
+                    return true;
+                }
+                name == "artifacts"
+                    && !parts.is_empty()
+                    && canonical
+                        .extension()
+                        .is_some_and(|extension| extension == "md")
+            })
+    })
+}
+
+/// True when `canonical` is, or lies inside, an Oh My Pi agent-state tree
+/// (`~/.agent/skills`, `~/.agent/artifacts`). Content searches must not walk
+/// these trees: the per-file exclusions that deny direct reads of non-document
+/// files there (for example `artifacts/data.json`) do not apply to a walk.
+pub(in crate::pretool) fn inside_agent_state_tree(
+    canonical: &std::path::Path,
+    home_dir: Option<&str>,
+) -> bool {
+    let Some(home) = home_dir.and_then(|root| std::fs::canonicalize(root).ok()) else {
+        return false;
+    };
+    let agent = home.join(".agent");
+    ["skills", "artifacts"]
+        .into_iter()
+        .any(|name| canonical.starts_with(agent.join(name)))
+}
+
 /// `~/.hol-support/SAFETY.md` is the harness-facing safety guide that agents
 /// are instructed to read before acting; it gets the same explicit allowance
 /// the Python source-path classifier grants.

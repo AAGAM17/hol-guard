@@ -288,7 +288,7 @@ fn grep_scope(
     }
     let target = input_path(input, signals)?.unwrap_or(".");
     // A single file is proven by the ordinary bounded file-read path.
-    super::super::search_scope::unfiltered_directory_scope_proven(
+    super::super::search_scope::content_search_scope_proven(
         target,
         context.path.home_dir,
         context.path.cwd,

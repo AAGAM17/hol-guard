@@ -5,8 +5,7 @@
     "pytest-quiet@claude-code": "native_command_review_required",
     "pytest-quiet@codex": "native_command_review_required",
     "pytest-quiet@omp": "native_command_review_required",
-    "pytest-quiet@zcode": "native_command_review_required",
-    "zcode-mcp-js@zcode": "native_policy_review_required"
+    "pytest-quiet@zcode": "native_command_review_required"
   },
   "cases": [
     {
@@ -2048,8 +2047,7 @@
     "pytest-quiet@claude-code": "unassigned",
     "pytest-quiet@codex": "unassigned",
     "pytest-quiet@omp": "unassigned",
-    "pytest-quiet@zcode": "unassigned",
-    "zcode-mcp-js@zcode": "unassigned"
+    "pytest-quiet@zcode": "unassigned"
   },
   "pending_always": {}
 }

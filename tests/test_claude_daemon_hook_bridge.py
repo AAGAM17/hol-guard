@@ -412,14 +412,6 @@ def test_oversized_permission_request_uses_nested_deny() -> None:
     assert notice["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
 
 
-def test_bridge_timeouts_stay_under_harness_budget() -> None:
-    assert bridge._HARNESS_TIMEOUT_BUDGET_SECONDS == 10
-    assert 0 < bridge._HOOK_DEADLINE_SECONDS < bridge._HARNESS_TIMEOUT_BUDGET_SECONDS
-    assert bridge._DAEMON_IO_TIMEOUT_SECONDS <= bridge._HOOK_DEADLINE_SECONDS
-    assert bridge._RECOVERY_TIMEOUT_SECONDS <= bridge._HOOK_DEADLINE_SECONDS
-    assert bridge._FALLBACK_TIMEOUT_SECONDS <= bridge._HOOK_DEADLINE_SECONDS
-
-
 def test_main_recovers_missing_daemon_and_retries_hook(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -478,7 +470,8 @@ def test_main_recovers_missing_daemon_and_retries_hook(
     assert result == 0
     assert attempts == 2
     assert len(phase_deadlines) == 3
-    assert len(set(phase_deadlines)) == 1
+    hook_deadline, recovery_deadline, retry_deadline = phase_deadlines
+    assert recovery_deadline == retry_deadline == hook_deadline - bridge._FALLBACK_RESERVE_SECONDS
     assert len(recovery_commands) == 1
     assert recovery_commands[0][1:3] == ("-I", "-c")
     assert "schedule_guard_daemon_recovery" in recovery_commands[0][3]

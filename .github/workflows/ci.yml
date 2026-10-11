@@ -557,7 +557,9 @@ jobs:
     # authoritative instrumented main run and stays off the contributor path.
     if: vars.SONAR_CI_ENABLED == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # A cold Rust coverage build alone takes about 16 minutes; leave room for
+    # the scan and the five-minute quality gate check so the cache can seed.
+    timeout-minutes: 35
     permissions:
       contents: read
       actions: read

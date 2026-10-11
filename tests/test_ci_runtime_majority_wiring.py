@@ -174,7 +174,7 @@ def test_shipped_scope_declares_every_dynamic_import_with_the_registry_decision(
     scope = load_scope(REPO_ROOT / DEFAULT_SCOPE)
     entries = {entry["path"]: entry for entry in scope["python"]["dynamic_imports"]}
     registry = entries["src/codex_plugin_scanner/guard/adapters/__init__.py"]
-    assert registry["resolution"] == "unfollowed"
+    assert registry["resolution"] == "follow"
     assert ".cursor" in registry["targets"]
     assert "Decision" in registry["evidence"]
     assert all(entry["evidence"].strip() for entry in entries.values())

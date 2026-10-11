@@ -34,7 +34,8 @@
   "src/codex_plugin_scanner/guard/runtime/offline_archive_inspection.py",
   "src/codex_plugin_scanner/guard/runtime/offline_archive_policy.py",
   "src/codex_plugin_scanner/guard/runtime/offline_archive_sandbox.py",
-  "src/codex_plugin_scanner/guard/runtime/offline_archive_worker.py"
+  "src/codex_plugin_scanner/guard/runtime/offline_archive_worker.py",
+  "src/codex_plugin_scanner/guard/runtime/direct_typescript_diagnostics.py"
  ],
  "retired_tests": [
   {
@@ -2511,6 +2512,294 @@
    ],
    "status": "native_behavior_ported_requires_ci",
    "rationale": "Split the mixed regex suite: retained Python service patterns keep their checks; deleted prompt patterns are verified by fixed language-neutral span vectors against the native owner."
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_verified_direct_typescript_count_is_explicitly_benign",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_typescript_count_rejects_widened_segments",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_typescript_count_requires_locked_installed_version",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_typescript_count_rejects_compiler_byte_drift",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_typescript_count_rejects_forged_lock_integrity",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_typescript_count_allows_install_only_bun_config",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_typescript_count_rejects_bun_auto_install_config",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_typescript_count_rejects_bun_preload_config",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_typescript_count_rejects_unbounded_or_indirect_bun_lock",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_typescript_count_rejects_inherited_bun_options",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_typescript_count_rejects_untrusted_path_command",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_trusted_path_command_accepts_only_authenticated_active_bun_shims",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_trusted_path_command_fails_closed_for_shim_status_failures",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_npx_vitest_rejects_unbounded_runner_arguments",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_npx_vitest_rejects_retargeted_bin_entry",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_npx_vitest_requires_installed_local_runner",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_vitest_rejects_unsafe_options_and_shell_behavior",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_vitest_requires_manifest_and_lock_evidence",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_vitest_requires_bound_lock_version",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_vitest_rejects_symlinked_evidence",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_vitest_rejects_retargeted_runner_package",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_vitest_rejects_symlinked_runner",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_vitest_rejects_missing_escaping_and_non_test_targets",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_vitest_rejects_arbitrary_javascript_runner",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_vitest.py::test_direct_vitest_rejects_shadowed_runtime_commands",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_typescript_diagnostic_filter.py::test_routine_typescript_pipeline_rejects_effect_widening",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_typescript_diagnostic_filter.py::test_routine_typescript_pipeline_requires_trusted_observers",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_typescript_diagnostic_filter.py::test_routine_typescript_pipeline_rejects_bare_symlink_escape",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_typescript_diagnostic_filter.py::test_typescript_diagnostic_filter_rejects_widened_commands",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_typescript_diagnostic_filter.py::test_typescript_diagnostic_filter_requires_bound_local_runner",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_typescript_diagnostic_filter.py::test_typescript_diagnostic_filter_rejects_node_code_loading_environment",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_typescript_diagnostic_filter.py::test_typescript_diagnostic_filter_rejects_shell_code_loading_environment",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_typescript_diagnostic_filter.py::test_typescript_diagnostic_filter_rejects_npm_configuration_files",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_typescript_diagnostic_filter.py::test_typescript_diagnostic_filter_rejects_npm_exec_controls",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_typescript_diagnostic_filter.py::test_typescript_diagnostic_filter_accepts_benign_npm_configuration",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
+  },
+  {
+   "old_node": "tests/test_guard_direct_typescript_diagnostic_filter.py::test_typescript_diagnostic_filter_requires_trusted_node_interpreter",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/direct_tool_parity_tests.rs::direct_tool_recorded_python_leaf_parity",
+    "rust/crates/guard-command/src/direct_tool_public_tests.rs::direct_tool_recorded_python_public_parity"
+   ],
+   "status": "native_behavior_ported_requires_ci"
   }
  ],
  "preserved_tests": [
@@ -2543,5 +2832,20 @@
   "installed_product": "required before acceptance",
   "all_prd_tasks": "not_complete"
  },
- "implementation_base_sha": "1dc81dd4319cdf18e4b1c0fd3d061f732601b188"
+ "implementation_base_sha": "1dc81dd4319cdf18e4b1c0fd3d061f732601b188",
+ "replaced_implementations": [
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/direct_vitest.py",
+   "base_commit": "8d96ae755a1d4906394d387cd3af4068c533a848",
+   "source_sha256": "811b2826b08f1ebb7dd1767b98ac0b28b357bb412ee4fe81387c47c9798644d7",
+   "remaining_role": "Mechanical resident transport and context presentation through the existing API; metadata, configuration, package identity, tree hashing and command verdict bodies removed.",
+   "native_replacements": [
+    "rust/crates/guard-command/src/direct_vitest.rs",
+    "rust/crates/guard-command/src/direct_tool_metadata.rs",
+    "rust/crates/guard-command/src/direct_tool_paths.rs",
+    "rust/crates/guard-runtime/src/direct_tool_context_op.rs"
+   ],
+   "parity_fixture": "tests/fixtures/direct-tool-python.v1.json"
+  }
+ ]
 }

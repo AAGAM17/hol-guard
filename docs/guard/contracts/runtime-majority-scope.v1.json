@@ -1495,12 +1495,6 @@
         "evidence": "Selects the stdlib tomllib module (Python 3.11+) or the third-party tomli backport by interpreter version; both are external to the package, so the call adds no in-package module."
       },
       {
-        "path": "src/codex_plugin_scanner/guard/runtime/direct_vitest.py",
-        "count": 1,
-        "resolution": "external",
-        "evidence": "Selects the stdlib tomllib module (Python 3.11+) or the third-party tomli backport by interpreter version; both are external to the package, so the call adds no in-package module."
-      },
-      {
         "path": "src/codex_plugin_scanner/guard/runtime/__init__.py",
         "count": 1,
         "resolution": "follow",

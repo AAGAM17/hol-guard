@@ -1,4 +1,4 @@
-"""Regressions for verified TypeScript diagnostic filtering."""
+"""Caller regressions after direct-tool authority moved into the resident."""
 
 from __future__ import annotations
 
@@ -15,6 +15,24 @@ from codex_plugin_scanner.guard.runtime.secret_file_requests import (
     extract_sensitive_tool_action_request,
     is_explicitly_benign_tool_action_request,
 )
+from codex_plugin_scanner.guard.runtime.shell_execution_context import (
+    ShellExecutionContext,
+    model_shell_execution_context,
+)
+
+
+def _accepted_native_context(
+    tool: str, command_text: str, *, cwd: Path | None, home_dir: Path
+) -> ShellExecutionContext | None:
+    # The recognizer's positive service fact is covered by the frozen native
+    # vectors. Here the real native shell model supplies filesystem proofs so
+    # consumer regressions still exercise their independent execution gates.
+    if tool != "typescript":
+        return None
+    workspace = Path(command_text.split(" && ", 1)[0].removeprefix("cd "))
+    context = model_shell_execution_context(command_text, cwd=workspace, workspace_root=workspace, home_dir=home_dir)
+    assert context.complete, context.reason_code
+    return context
 
 
 @pytest.fixture(autouse=True)
@@ -26,12 +44,9 @@ def _native_typescript_intents(
     native_mcp_probe(tmp_path / "home" / ".guard")
 
 
-def _trusted_command(_command: str, *, cwd: Path, home_dir: Path) -> bool:
-    del cwd, home_dir
-    return True
-
-
-def _fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, str]:
+def _fixture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, native_context_accepted: bool = True
+) -> tuple[Path, Path, str]:
     for key in tuple(os.environ):
         normalized_key = key.casefold()
         if (
@@ -77,11 +92,10 @@ def _fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Pat
         ),
         encoding="utf-8",
     )
-    identities = dict(direct_vitest._TRUSTED_TYPESCRIPT_PACKAGES)  # pyright: ignore[reportPrivateUsage]
-    identity = next(iter(identities))
-    identities[identity] = direct_vitest._package_tree_digest(package_dir)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(direct_vitest, "_TRUSTED_TYPESCRIPT_PACKAGES", identities)
-    monkeypatch.setattr(direct_vitest, "_trusted_path_command", _trusted_command)
+    if native_context_accepted:
+        monkeypatch.setattr(direct_vitest, "native_direct_tool_context", _accepted_native_context)
+    else:
+        monkeypatch.setattr(direct_vitest, "native_direct_tool_context", lambda *_args, **_kwargs: None)
     command = (
         f"cd {workspace} && npx tsc --noEmit 2>&1 "
         '| grep -E "harnesses/page|enterprises/page" || echo "NO_ERRORS_IN_TOUCHED_FILES"'
@@ -226,284 +240,4 @@ def test_verified_direct_typescript_diagnostic_is_benign(
             workspace=caller,
         )
         is None
-    )
-
-
-@pytest.mark.parametrize(
-    ("original", "replacement"),
-    (
-        ("--noEmit", "--outDir build"),
-        ("--noEmit", "--noEmit false"),
-        ("--noEmit", "--noEmit @compiler.args"),
-        ("@cloudflare/workers-types", '"$(touch marker)"'),
-        ("@cloudflare/workers-types", "../../outside"),
-        ("--skipLibCheck", "--generateTrace traces"),
-        ("--skipLibCheck", "--watch"),
-        ("--skipLibCheck", "--project=../outside/tsconfig.json"),
-        ("src/index.ts", "src/index.ts > package.json"),
-        ("src/index.ts", "src/index.ts > ~/.ssh/authorized_keys"),
-        ("src/index.ts", "src/index.ts>package.json"),
-        ("src/index.ts", "src/index.ts 2>package.json"),
-        ("npx tsc", 'NODE_OPTIONS="--require=payload" npx tsc'),
-        ("src/index.ts", "../outside.ts"),
-        ('grep -v "npm warn"', "grep -f patterns.txt"),
-        ('grep -v "npm warn"', "grep -v --file=patterns.txt"),
-        ('grep -v "npm warn"', 'grep -v "$(touch marker)"'),
-        ('grep -v "npm warn" | head -8', 'grep -v "npm warn"'),
-        ("head -8", "head -10000"),
-        ('echo "TSC_DONE"', "touch marker"),
-    ),
-)
-def test_routine_typescript_pipeline_rejects_effect_widening(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    original: str,
-    replacement: str,
-) -> None:
-    home, caller, command = _fixture(tmp_path, monkeypatch)
-    workspace = Path(command.split(" && ", 1)[0].removeprefix("cd "))
-    source = workspace / "src" / "index.ts"
-    source.parent.mkdir()
-    _ = source.write_text("export const value = 1;\n", encoding="utf-8")
-    command = (
-        f"cd {workspace} && npx tsc --noEmit --types @cloudflare/workers-types "
-        "--lib es2022 --target es2022 --module esnext --moduleResolution bundler "
-        '--skipLibCheck src/index.ts 2>&1 | grep -v "npm warn" | head -8; echo "TSC_DONE"'
-    )
-
-    assert not is_explicitly_benign_tool_action_request(
-        "bash",
-        {"command": command.replace(original, replacement)},
-        cwd=caller,
-        home_dir=home,
-    )
-
-
-@pytest.mark.parametrize("shadowed_command", ("grep", "head"))
-def test_routine_typescript_pipeline_requires_trusted_observers(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    shadowed_command: str,
-) -> None:
-    home, caller, command = _fixture(tmp_path, monkeypatch)
-    workspace = Path(command.split(" && ", 1)[0].removeprefix("cd "))
-    source = workspace / "src" / "index.ts"
-    source.parent.mkdir()
-    _ = source.write_text("export const value = 1;\n", encoding="utf-8")
-    command = f'cd {workspace} && npx tsc --noEmit src/index.ts 2>&1 | grep -v "npm warn" | head -8; echo "TSC_DONE"'
-
-    def selectively_trusted(candidate: str, *, cwd: Path, home_dir: Path) -> bool:
-        del cwd, home_dir
-        return candidate != shadowed_command
-
-    monkeypatch.setattr(direct_vitest, "_trusted_path_command", selectively_trusted)
-
-    assert not is_explicitly_benign_tool_action_request(
-        "bash",
-        {"command": command},
-        cwd=caller,
-        home_dir=home,
-    )
-
-
-def test_routine_typescript_pipeline_rejects_bare_symlink_escape(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    home, caller, command = _fixture(tmp_path, monkeypatch)
-    workspace = Path(command.split(" && ", 1)[0].removeprefix("cd "))
-    outside = tmp_path / "outside.js"
-    _ = outside.write_text("export const secret = 1;\n", encoding="utf-8")
-    _ = (workspace / "linked.js").symlink_to(outside)
-    command = f'cd {workspace} && npx tsc --noEmit linked.js 2>&1 | grep -v "npm warn" | head -8; echo "TSC_DONE"'
-
-    assert not is_explicitly_benign_tool_action_request(
-        "bash",
-        {"command": command},
-        cwd=caller,
-        home_dir=home,
-    )
-
-
-@pytest.mark.parametrize(
-    ("original", "replacement"),
-    (
-        ("npx tsc --noEmit", "npx tsc --outDir build"),
-        ("npx tsc --noEmit", "npx --package typescript tsc --noEmit"),
-        ("2>&1", "> diagnostics.txt 2>&1"),
-        ('grep -E "harnesses/page|enterprises/page"', 'grep -E ".*"'),
-        (
-            'grep -E "harnesses/page|enterprises/page"',
-            'grep -E "harnesses/.|enterprises/page"',
-        ),
-        ('grep -E "harnesses/page|enterprises/page"', "grep harnesses/page"),
-        ('echo "NO_ERRORS_IN_TOUCHED_FILES"', "touch marker"),
-    ),
-)
-def test_typescript_diagnostic_filter_rejects_widened_commands(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    original: str,
-    replacement: str,
-) -> None:
-    home, caller, command = _fixture(tmp_path, monkeypatch)
-
-    assert not is_explicitly_benign_tool_action_request(
-        "bash",
-        {"command": command.replace(original, replacement)},
-        cwd=caller,
-        home_dir=home,
-    )
-
-
-def test_typescript_diagnostic_filter_requires_bound_local_runner(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    home, caller, command = _fixture(tmp_path, monkeypatch)
-    workspace = Path(command.split(" && ", 1)[0].removeprefix("cd "))
-    (workspace / "node_modules" / ".bin" / "tsc").unlink()
-
-    assert not is_explicitly_benign_tool_action_request(
-        "bash",
-        {"command": command},
-        cwd=caller,
-        home_dir=home,
-    )
-
-
-@pytest.mark.parametrize(
-    "key",
-    ("NODE_OPTIONS", "NODE_PATH", "npm_config_node_options", "NPM_CONFIG_SCRIPT_SHELL"),
-)
-def test_typescript_diagnostic_filter_rejects_node_code_loading_environment(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    key: str,
-) -> None:
-    home, caller, command = _fixture(tmp_path, monkeypatch)
-    monkeypatch.setenv(key, "attacker-module")
-
-    assert not is_explicitly_benign_tool_action_request(
-        "bash",
-        {"command": command},
-        cwd=caller,
-        home_dir=home,
-    )
-
-
-@pytest.mark.parametrize(
-    "key",
-    ("BASH_ENV", "BASH_FUNC_injected%%", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES"),
-)
-def test_typescript_diagnostic_filter_rejects_shell_code_loading_environment(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    key: str,
-) -> None:
-    home, caller, command = _fixture(tmp_path, monkeypatch)
-    monkeypatch.setenv(key, str(tmp_path / "payload"))
-
-    assert not is_explicitly_benign_tool_action_request(
-        "bash",
-        {"command": command},
-        cwd=caller,
-        home_dir=home,
-    )
-
-
-@pytest.mark.parametrize("location", ("workspace", "home"))
-def test_typescript_diagnostic_filter_rejects_npm_configuration_files(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    location: str,
-) -> None:
-    home, caller, command = _fixture(tmp_path, monkeypatch)
-    workspace = Path(command.split(" && ", 1)[0].removeprefix("cd "))
-    config_root = workspace if location == "workspace" else home
-    _ = (config_root / ".npmrc").write_text("node-options=--require=payload.js\n", encoding="utf-8")
-
-    assert not is_explicitly_benign_tool_action_request(
-        "bash",
-        {"command": command},
-        cwd=caller,
-        home_dir=home,
-    )
-
-
-@pytest.mark.parametrize(
-    "setting",
-    (
-        "call=payload.js",
-        "foreground-scripts=true",
-        "global=true",
-        "ignore-scripts=false",
-        "include-workspace-root=true",
-        "location=global",
-        "package=attacker-package",
-        "prefix=/unverified",
-        "scripts-prepend-node-path=true",
-        "workspace=unverified",
-        "workspaces=true",
-    ),
-)
-def test_typescript_diagnostic_filter_rejects_npm_exec_controls(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    setting: str,
-) -> None:
-    home, caller, command = _fixture(tmp_path, monkeypatch)
-    workspace = Path(command.split(" && ", 1)[0].removeprefix("cd "))
-    _ = (workspace / ".npmrc").write_text(f"{setting}\n", encoding="utf-8")
-
-    assert not is_explicitly_benign_tool_action_request(
-        "bash",
-        {"command": command},
-        cwd=caller,
-        home_dir=home,
-    )
-
-
-@pytest.mark.parametrize(
-    "content",
-    (
-        "registry=https://registry.npmjs.org/\n",
-        "@example:registry=https://registry.example/\n",
-        "//registry.example/:_authToken=${TOKEN}\n",
-        "fund=false\n",
-    ),
-)
-def test_typescript_diagnostic_filter_accepts_benign_npm_configuration(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    content: str,
-) -> None:
-    home, caller, command = _fixture(tmp_path, monkeypatch)
-    workspace = Path(command.split(" && ", 1)[0].removeprefix("cd "))
-    _ = (workspace / ".npmrc").write_text(content, encoding="utf-8")
-
-    assert is_explicitly_benign_tool_action_request(
-        "bash",
-        {"command": command},
-        cwd=caller,
-        home_dir=home,
-    )
-
-
-def test_typescript_diagnostic_filter_requires_trusted_node_interpreter(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    home, caller, command = _fixture(tmp_path, monkeypatch)
-    monkeypatch.setattr(
-        direct_vitest,
-        "_trusted_path_command",
-        lambda candidate, *, cwd, home_dir: bool(cwd and home_dir) and candidate != "node",
-    )
-
-    assert not is_explicitly_benign_tool_action_request(
-        "bash",
-        {"command": command},
-        cwd=caller,
-        home_dir=home,
     )

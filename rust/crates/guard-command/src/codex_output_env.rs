@@ -80,6 +80,11 @@ pub trait InspectionHost {
     fn bun_script_evidence_complete(&self, _script_args: &[String], _workspace: &str) -> bool {
         false
     }
+    /// Caller facts and resident filesystem trust for direct-tool recognition.
+    /// Hosts without this service cannot authorize a TypeScript context.
+    fn direct_tool_authority(&self) -> Option<&dyn crate::direct_vitest::DirectToolAuthority> {
+        None
+    }
 }
 
 /// Per-request context.

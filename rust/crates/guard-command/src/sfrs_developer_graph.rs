@@ -206,9 +206,9 @@ pub(crate) fn compound_developer_effect_graph(
             DeveloperShellEffect::LocalRead,
         ));
     }
-    if let Some(typescript) =
-        direct_local_typescript_execution_context(command_text, inputs.cwd, home_dir)
-    {
+    if let Some(typescript) = ctx.host.direct_tool_authority().and_then(|authority| {
+        direct_local_typescript_execution_context(command_text, inputs.cwd, home_dir, authority)
+    }) {
         if typescript.complete {
             return Some(known_context_effect_graph(
                 typescript,

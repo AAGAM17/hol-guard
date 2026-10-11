@@ -521,6 +521,21 @@
    "native_replacements": [
     "rust/crates/guard-runtime/src/archive_inspect.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/direct_typescript_diagnostics.py",
+   "module": "codex_plugin_scanner.guard.runtime.direct_typescript_diagnostics",
+   "source_sha256": "326c426bcd216056ba0850393c5c503e4d92f283e02d7a7a0f43615270789003",
+   "forbidden_symbols": [
+    "direct_typescript_diagnostic_filter_context",
+    "_routine_typescript_diagnostic_context",
+    "_npm_configuration_can_load_code",
+    "_workspace_npx_typescript_runner_is_bound"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/direct_tool_typescript.rs",
+    "rust/crates/guard-runtime/src/direct_tool_context_op.rs"
+   ]
   }
  ],
  "retired_test_paths": [

@@ -50,7 +50,9 @@ def test_routine_typescript_pipeline_rejects_observer_globs(
     monkeypatch: pytest.MonkeyPatch,
     replacement: str,
 ) -> None:
-    home, caller, command = _fixture(tmp_path, monkeypatch)
+    # Native parity vectors prove these refusals. This caller regression
+    # checks that a native refusal cannot become benign through another path.
+    home, caller, command = _fixture(tmp_path, monkeypatch, native_context_accepted=False)
     workspace = Path(command.split(" && ", 1)[0].removeprefix("cd "))
     source = workspace / "src" / "index.ts"
     source.parent.mkdir()

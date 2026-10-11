@@ -106,6 +106,10 @@ mod daemon_route_paths;
 mod daemon_route_resolve;
 mod daemon_route_session;
 mod data_flow_analyze_op;
+mod direct_tool_context_op;
+#[cfg(test)]
+mod direct_tool_context_tests;
+mod direct_tool_managed_bun;
 mod edge;
 mod encrypted_secret_store;
 mod false_positive_rules_op;

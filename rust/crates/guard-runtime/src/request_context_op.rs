@@ -205,7 +205,6 @@ fn build(
     budget: &Budget,
 ) -> Result<Value, &'static str> {
     admit_build(body)?;
-    let policy = admit_policy(body)?;
     budget.check()?;
     let shell_report = match &body.script {
         None => Value::Null,
@@ -221,6 +220,18 @@ fn build(
             shell::context_report(&context, budget)?
         }
     };
+    build_with_shell_report(request, body, shell_report, budget)
+}
+
+/// Bind a context already derived by a native recognizer without modeling it again.
+pub(crate) fn build_with_shell_report(
+    request: &RequestContextRequestV1,
+    body: &RequestContextBuildV1,
+    shell_report: Value,
+    budget: &Budget,
+) -> Result<Value, &'static str> {
+    admit_build(body)?;
+    let policy = admit_policy(body)?;
     budget.check()?;
     let launch_cwd = body.cwd.as_deref().or(body.fallback_cwd.as_deref());
     let environment_secret_dump = if body.classify_environment_secrets {
@@ -275,6 +286,12 @@ fn decide(request: &RequestContextRequestV1) -> Result<Value, &'static str> {
     let budget = admit(request)?;
     let payload = match &request.action {
         RequestContextKindV1::Build(body) => build(request, body, &budget)?,
+        RequestContextKindV1::DirectTool(body) => {
+            crate::direct_tool_context_op::direct(request, body, &budget)?
+        }
+        RequestContextKindV1::TrustedTool(body) => {
+            crate::direct_tool_context_op::trusted(body, &budget)?
+        }
         RequestContextKindV1::ValidateSegment {
             context,
             segment_index,

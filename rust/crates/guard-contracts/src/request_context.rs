@@ -164,6 +164,8 @@ pub struct ShellContextV1 {
 pub enum RequestContextKindV1 {
     /// Admit the request and build the whole canonical context.
     Build(RequestContextBuildV1),
+    DirectTool(RequestContextDirectToolV1),
+    TrustedTool(RequestContextTrustedToolV1),
     /// Re-read the filesystem and prove one modeled segment is unchanged.
     /// The supplied context is a claim; the filesystem is the authority.
     ValidateSegment {
@@ -176,6 +178,52 @@ pub enum RequestContextKindV1 {
         #[serde(default)]
         segment_index: Option<u64>,
     },
+}
+
+/// Caller observations; verdicts and file identities are rebuilt natively.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RequestContextDirectFactsV1 {
+    pub cwd: String,
+    pub home_dir: String,
+    pub caller_home: String,
+    pub temp_dir: String,
+    pub environment: BTreeMap<String, String>,
+    pub groups: Vec<u32>,
+    pub launcher: RequestContextDirectLauncherV1,
+}
+
+/// Current caller runtime identity; no shim bytes, digests or trust verdicts.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RequestContextDirectLauncherV1 {
+    pub python_executable: String,
+    pub interpreter: String,
+    pub import_root: String,
+    pub frozen: bool,
+    pub python_version: [u32; 2],
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DirectToolV1 {
+    Vitest,
+    Typescript,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RequestContextDirectToolV1 {
+    pub tool: DirectToolV1,
+    pub script: String,
+    pub facts: RequestContextDirectFactsV1,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RequestContextTrustedToolV1 {
+    pub command: String,
+    pub facts: RequestContextDirectFactsV1,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

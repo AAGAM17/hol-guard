@@ -36,7 +36,7 @@ if not hasattr(store_sessions, "preserve_retry_lineage"):
     sys.exit("refusing to record: the original Python sessions implementation is gone")
 
 from guard_sessions_scenarios import NOW, SCENARIOS, wire_json
-from vector_support import dump, schema_sql_for_tables
+from vector_support import dump, rows, schema_sql_for_tables
 
 from codex_plugin_scanner.guard.store import GuardStore
 
@@ -115,15 +115,6 @@ def wire(method: str, args: tuple, kwargs: dict) -> dict[str, object]:
     if method == "has_guard_surface_open":
         return {"surface": kwargs["surface"], "open_key": kwargs["open_key"]}
     raise AssertionError(method)
-
-
-def rows(path: Path, sql: str, params: tuple = ()) -> list[dict[str, object]]:
-    connection = sqlite3.connect(path)
-    connection.row_factory = sqlite3.Row
-    try:
-        return [dict(row) for row in connection.execute(sql, params)]
-    finally:
-        connection.close()
 
 
 def native_payload(path: Path, method: str, args: tuple, kwargs: dict, result: object) -> object:

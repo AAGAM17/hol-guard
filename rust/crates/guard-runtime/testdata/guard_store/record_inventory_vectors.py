@@ -34,7 +34,7 @@ if not hasattr(store_inventory, "_inventory_payload_from_row"):
     sys.exit("refusing to record: the original Python inventory implementation is gone")
 
 from inventory_scenarios import SCENARIOS, SEQUENCE_KEY, jsonable
-from vector_support import schema_sql_for_tables
+from vector_support import rows, schema_sql_for_tables
 
 from codex_plugin_scanner.guard.store import GuardStore
 
@@ -125,15 +125,6 @@ def wire(method: str, args: tuple, kwargs: dict) -> dict[str, object]:
     if method == "next_aibom_trust_attestation_sequence":
         return {"now": args[0]}
     raise AssertionError(method)
-
-
-def rows(path: Path, sql: str, params: tuple = ()) -> list[dict[str, object]]:
-    connection = sqlite3.connect(path)
-    connection.row_factory = sqlite3.Row
-    try:
-        return [dict(row) for row in connection.execute(sql, params)]
-    finally:
-        connection.close()
 
 
 def native_payload(path: Path, method: str, args: tuple, result: object) -> object:

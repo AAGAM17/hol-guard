@@ -9,6 +9,16 @@ from pathlib import Path
 from codex_plugin_scanner.guard.runtime.command_shadow_evaluation import CommandShadowObservation
 
 
+def rows(path: Path, sql: str, params: tuple = ()) -> list[dict[str, object]]:
+    """Run one query against a recorded database and return plain dict rows."""
+    connection = sqlite3.connect(path)
+    connection.row_factory = sqlite3.Row
+    try:
+        return [dict(row) for row in connection.execute(sql, params)]
+    finally:
+        connection.close()
+
+
 def shadow_wire(shadow: CommandShadowObservation | None) -> dict[str, object] | None:
     if shadow is None:
         return None

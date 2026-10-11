@@ -30,6 +30,11 @@ def _edge(harness: str, *, url: str = "https://example.test", action_type: str =
             "reason_code": "native_pre_tool_unknown_review" if action_type == "unknown" else "native_network_review",
             "reason": "HOL Guard requires review before this network action can execute.",
         },
+        "harness_response": {
+            "decision": "deny",
+            "reason": "HOL Guard requires review before this network action can execute.",
+            "policy_action": "review",
+        },
     }
 
 

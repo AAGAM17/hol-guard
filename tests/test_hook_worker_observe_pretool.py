@@ -84,6 +84,14 @@ def test_hook_worker_watch_native_block_records_without_stopping(
             "event_name": "PreToolUse",
             "harness": "cursor",
             "result": _native_generic_block(),
+            "harness_response": {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "allow",
+                    "permissionDecisionReason": "HOL Guard recorded this action under Watch.",
+                },
+                "policy_action": "warn",
+            },
         }
 
     monkeypatch.setattr(

@@ -187,7 +187,7 @@ def test_shipped_rust_exclusions_carry_evidence_and_unwired_is_reported() -> Non
     assert result["rust"]["unwired_loc"] > 0
     counted = {item["path"] for item in result["rust"]["files"]}
     assert not counted & {item["path"] for item in result["rust"]["unwired_files"]}
-    assert f"{CRATES}/guard-command/src/hook_responses.rs" not in counted
+    assert f"{CRATES}/guard-command/src/hook_responses.rs" in counted
 
 
 def test_declaration_without_a_remaining_site_is_an_error(tmp_path: Path) -> None:

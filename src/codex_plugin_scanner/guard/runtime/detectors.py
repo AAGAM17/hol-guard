@@ -10,6 +10,11 @@ from pathlib import Path
 from typing import Literal, Protocol
 
 from codex_plugin_scanner.guard.config import GuardConfig
+from codex_plugin_scanner.guard.native_cisco_preflight import (
+    CiscoMcpPreflightDetector,
+    CiscoSkillPreflightDetector,
+    NativeCiscoPreflightError,
+)
 from codex_plugin_scanner.guard.native_data_flow import NativeDataFlowError, detect_data_flow_exfiltration
 from codex_plugin_scanner.guard.native_false_positive_rules import (
     DETECTOR_ID as FALSE_POSITIVE_DETECTOR_ID,
@@ -20,7 +25,6 @@ from codex_plugin_scanner.guard.native_false_positive_rules import (
 )
 from codex_plugin_scanner.guard.native_prompt import NativePromptAnalysisError
 from codex_plugin_scanner.guard.runtime.actions import GuardActionEnvelope
-from codex_plugin_scanner.guard.runtime.cisco_preflight import CiscoMcpPreflightDetector, CiscoSkillPreflightDetector
 from codex_plugin_scanner.guard.runtime.persistence_rules import detect_persistence_mechanisms
 from codex_plugin_scanner.guard.runtime.prompt_injection import detect_prompt_injection_requests
 from codex_plugin_scanner.guard.runtime.safe_decode import SAFE_DECODE_DETECTOR_VERSION, DecodeResult, decode_layers
@@ -159,7 +163,7 @@ class DetectorRegistry:
             try:
                 detector_signals = detector.detect(action, context)
                 elapsed_ms = _elapsed_ms(started_at, self._clock())
-            except (NativePromptAnalysisError, NativeDataFlowError):
+            except (NativePromptAnalysisError, NativeDataFlowError, NativeCiscoPreflightError):
                 raise
             except Exception as error:
                 elapsed_ms = _elapsed_ms(started_at, self._clock())

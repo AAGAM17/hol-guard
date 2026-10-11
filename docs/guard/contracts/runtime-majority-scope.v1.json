@@ -450,14 +450,10 @@
       {
         "id": "secrets-cli",
         "category": "separate_product_cli",
-        "reason": "hol-guard-secrets repository/staged/pre-commit scanner CLI; separate product entry point, not a Guard runtime route. secrets/__init__.py and secret_detection.py (SECRET_RULES, SecretFinding, SecretScanSummary) are imported only by the repository/staged scanners and the secrets CLI; cli.py reaches the package only through main() for the `secrets` subcommand.",
+        "reason": "hol-guard-secrets argument parsing and text rendering; separate product entry point, not a Guard runtime route. Detection, repository/staged scans and pre-commit hooks run in the native secrets-cli command. public_rule_catalog.py is the static public rule listing; cli.py reaches the package only through main() for the `secrets` subcommand.",
         "path": [
           "src/codex_plugin_scanner/guard/secrets/cli.py",
-          "src/codex_plugin_scanner/guard/secrets/precommit.py",
-          "src/codex_plugin_scanner/guard/secrets/secret_repository_scanner.py",
-          "src/codex_plugin_scanner/guard/secrets/secret_staged_scanner.py",
           "src/codex_plugin_scanner/guard/secrets/public_rule_catalog.py",
-          "src/codex_plugin_scanner/guard/secrets/secret_detection.py",
           "src/codex_plugin_scanner/guard/secrets/__init__.py"
         ]
       },

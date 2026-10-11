@@ -86,6 +86,7 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         "git-execution-context-v1".into(),
         "native-resident-client-v1".into(),
         "native-resident-lifecycle-v1".into(),
+        "secrets-cli-v1".into(),
     ];
     features.extend(
         crate::resident_op_features::RESIDENT_OP_FEATURES

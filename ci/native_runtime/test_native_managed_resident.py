@@ -75,7 +75,10 @@ def test_native_endpoint_supports_long_guard_home_paths(managed_runtime: tuple[P
     runtime, guard_home = managed_runtime
     nested_home = guard_home / ("long-private-home-" * 7)
     state_dir = nested_home / "native-runtime"
-    state_dir.mkdir(parents=True, mode=0o700)
+    # mkdir(parents=True, mode=...) applies the mode only to the leaf, so create
+    # the guard home explicitly: the native store refuses non-private parents.
+    nested_home.mkdir(mode=0o700)
+    state_dir.mkdir(mode=0o700)
     try:
         payload = _request(runtime, nested_home)
         _push_snapshot(runtime, state_dir, payload)

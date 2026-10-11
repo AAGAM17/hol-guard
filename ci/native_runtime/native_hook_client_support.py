@@ -185,7 +185,7 @@ def _push_snapshot(runtime: Path, state_dir: Path, request: bytes) -> None:
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
         raise AssertionError("native policy push failed: native_policy_snapshot_ack_invalid") from None
     assert isinstance(acknowledgement, dict)
-    assert acknowledgement["status"] == "accepted"
+    assert acknowledgement.get("status") == "accepted", acknowledgement
 
 
 def _invoke(runtime: Path, state_dir: Path, request: bytes) -> dict[str, object]:

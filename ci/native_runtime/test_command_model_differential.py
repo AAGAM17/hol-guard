@@ -29,6 +29,9 @@ EXACT_FIXTURES = (
     r"printf escaped\ space",
     r"printf \#not-a-comment",
     "./tool --flag=value",
+    # A shell run on a script file is exact in both models; the script contents
+    # are governed by the file-shell read authority, not by command-model uncertainty.
+    "bash ./script.sh",
     # Bounded sudo wrappers preserve the same source tokens, spans, and
     # wrapper provenance as Python; exact parsing does not authorize execution.
     "sudo rm -rf /tmp/example",
@@ -48,7 +51,6 @@ UNCERTAIN_FIXTURES = (
     "time tool",
     "stdbuf -o0 tool",
     "sh -c 'rm -rf /tmp/example'",
-    "bash ./script.sh",
     "eval 'rm -rf /tmp/example'",
     "exec rm -rf /tmp/example",
     "source ./script.sh",

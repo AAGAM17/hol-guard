@@ -22,6 +22,8 @@ fn fixture() -> Fixture {
     std::fs::write(workspace.join("AGENTS.md"), "rules\n").unwrap();
     std::fs::write(workspace.join(".git/config"), "[core]\n").unwrap();
     let root = std::fs::canonicalize(root).unwrap();
+    // Windows canonicalize yields `\\?\D:\...`; hosts hand Guard plain drive paths.
+    let root = PathBuf::from(root.to_str().unwrap().trim_start_matches(r"\\?\"));
     Fixture {
         home: root.join("home"),
         workspace: root.join("home/project"),

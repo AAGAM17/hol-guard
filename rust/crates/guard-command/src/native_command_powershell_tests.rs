@@ -1,6 +1,6 @@
 use super::*;
 use crate::powershell_parser_tests::{FAIL_CLOSED, WRITE_ALL_TEXT};
-use crate::powershell_reads::with_windows_powershell_reads;
+use crate::powershell_reads::{with_posix_powershell_host, with_windows_powershell_reads};
 
 fn binding_with_layers(layers: serde_json::Value) -> NativeCommandControlBindingV1 {
     let program = packaged_command_program().unwrap();
@@ -43,7 +43,7 @@ fn evaluate(
     if windows {
         with_windows_powershell_reads(run)
     } else {
-        run()
+        with_posix_powershell_host(run)
     }
 }
 

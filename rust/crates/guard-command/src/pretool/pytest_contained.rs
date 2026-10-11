@@ -221,7 +221,10 @@ mod tests {
             &args("pytest-contained --workspace .. -- pytest -q"),
             Some(nested)
         ));
-        let explicit = format!("pytest-contained --workspace {cwd} -- pytest -q");
+        // The runner argv is shell text, where a backslash escapes, so the
+        // absolute workspace is spelled with forward slashes (valid on Windows).
+        let slashed = cwd.replace('\\', "/");
+        let explicit = format!("pytest-contained --workspace {slashed} -- pytest -q");
         assert!(safe_pytest_contained_arguments(&args(&explicit), Some(cwd)));
         std::fs::remove_dir_all(&root).unwrap();
     }

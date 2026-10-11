@@ -121,7 +121,7 @@ fn direct_pytest_requires_real_containment_never_direct_allow() {
         "./.venv/bin/python3 -m pytest -q",
         "/usr/bin/python3 -m pytest tests/unit -q",
     ] {
-        for harness in ["omp", "claude-code"] {
+        for harness in ["omp", "claude-code", "codex"] {
             let result = classify(harness, command);
             let expected = if cfg!(target_os = "macos") {
                 "sandbox-required"
@@ -167,7 +167,7 @@ fn unrelated_execution_and_shell_effects_do_not_inherit_test_delegation() {
         assert_ne!(result.decision, "allow", "{command}");
     }
     assert_ne!(
-        classify("codex", "pytest -q").reason_code,
+        classify("cursor", "pytest -q").reason_code,
         "native_pytest_readonly_containment_required"
     );
     let without_cwd = evaluate_pre_tool_envelope_with_context(

@@ -228,6 +228,9 @@ pub(crate) fn evaluate_resident_bytes(
                     &request,
                 )
             }
+            ResidentOperationV1::CodexThreadContinue(request) => {
+                crate::codex_thread_continue_op::evaluate_codex_thread_continue_request(&request)
+            }
             ResidentOperationV1::ApprovalQueueIdentity(request) => {
                 crate::approval_queue_identity_op::evaluate_approval_queue_identity_request(
                     &request,

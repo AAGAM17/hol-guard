@@ -41,6 +41,18 @@ fn client_deadline_is_bounded() {
         assert_eq!(client_timeout(payload.as_bytes()), Duration::from_secs(670));
     }
     assert_eq!(
+        client_timeout(br#"{"operation":"codex_thread_continue","deadline_budget_ms":10000}"#),
+        Duration::from_secs(10)
+    );
+    assert_eq!(
+        client_timeout(br#"{"operation":"codex_thread_continue","deadline_budget_ms":65000}"#),
+        Duration::from_secs(65)
+    );
+    assert_eq!(
+        client_timeout(br#"{"operation":"codex_thread_continue","deadline_budget_ms":999999}"#),
+        Duration::from_secs(65)
+    );
+    assert_eq!(
         client_timeout(br#"{"deadline_budget_ms":250}"#),
         Duration::from_millis(250)
     );

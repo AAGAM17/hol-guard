@@ -17,6 +17,8 @@ mod compound_git_inspection;
 pub use compound_git_inspection::*;
 mod approval_bulk_eligibility;
 pub use approval_bulk_eligibility::*;
+mod codex_thread_continue;
+pub use codex_thread_continue::*;
 mod approval_queue_identity;
 pub use approval_queue_identity::*;
 mod approval_resolution_plan;

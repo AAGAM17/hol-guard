@@ -94,6 +94,9 @@ def _authenticated_state(state_path: str | Path) -> tuple[dict[str, object], str
         raise ValueError("daemon state is malformed") from error
     if not isinstance(payload, dict):
         raise ValueError("daemon state must be a JSON object")
+    if not payload:
+        # A stopped or restarting daemon leaves this exact tombstone behind.
+        raise ValueError("daemon state records a stopped daemon")
     signature = payload.get("state_signature")
     unsigned = {key: value for key, value in payload.items() if key != "state_signature"}
     try:

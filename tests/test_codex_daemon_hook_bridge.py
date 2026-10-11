@@ -505,7 +505,11 @@ def test_bridge_authenticates_real_daemon_before_hook_delivery(
 
     response = json.loads(capsys.readouterr().out)
     assert exit_code == 0
-    if "could not authenticate the local daemon" in json.dumps(response).lower():
+    reason_text = json.dumps(response).lower()
+    if (
+        "could not authenticate the local daemon" in reason_text
+        or "was not ready before the hook deadline" in reason_text
+    ):
         assert "permissionDecision" not in response.get("hookSpecificOutput", {})
 
 

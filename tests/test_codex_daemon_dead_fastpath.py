@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from codex_plugin_scanner.guard.adapters import codex_daemon_bridge_failure_reason as failure_reason
 from codex_plugin_scanner.guard.adapters import codex_daemon_dead_fastpath as fastpath
 from codex_plugin_scanner.guard.adapters import codex_daemon_hook_bridge as bridge
 from codex_plugin_scanner.guard.adapters import codex_daemon_hook_bridge_flow as bridge_flow
@@ -127,7 +128,7 @@ def test_second_hook_after_failed_start_denies_fast_with_repair_message(
     first_reason = first["hookSpecificOutput"]["permissionDecisionReason"]
     assert "hol-guard repair" in first_reason
     assert "hol-guard daemon repair" not in first_reason
-    assert first_reason == bridge._DAEMON_DEAD_REASON
+    assert first_reason == failure_reason.DAEMON_DEAD_REASON
 
     calls.clear()
     started = time.monotonic()

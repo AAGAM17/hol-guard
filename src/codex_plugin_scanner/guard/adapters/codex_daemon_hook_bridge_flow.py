@@ -104,6 +104,8 @@ def _daemon_failure_reason(error: BaseException) -> str:
         return "daemon_transport_unavailable"
     if isinstance(error, ValueError):
         messages = {
+            "daemon state is unavailable": "daemon_state_missing",
+            "daemon state records a stopped daemon": "daemon_state_stopped",
             "daemon state is unreadable": "daemon_state_unreadable",
             "daemon discovery key is unreadable": "daemon_discovery_key_unreadable",
             "daemon auth token is unreadable": "daemon_token_unreadable",

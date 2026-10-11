@@ -263,9 +263,16 @@ def _exercise_mode_invariants(
                 raise RuntimeError(f"native_default_auto_probe_failed: invalid mode response: {response}")
             # Legacy values are accepted but resolve to auto: the native
             # resident must decide exactly as it does with the variable unset.
+            # Allow and warn outcomes use the compact PostToolUse shape, which
+            # carries no ``continue`` or ``decision`` keys, so compare the
+            # shared keys (absent on both sides is equal) and reject blocks.
             _require(
-                response.get("continue") is True
-                and all(response.get(key) == baseline.get(key) for key in ("decision", "policy_action", "reason_code")),
+                response.get("decision") not in {"block", "deny"}
+                and response.get("policy_action") in {"allow", "warn"}
+                and all(
+                    response.get(key) == baseline.get(key)
+                    for key in ("decision", "policy_action", "reason_code", "hookSpecificOutput")
+                ),
                 {"mode": mode, "response": response, "baseline": baseline},
             )
             mode_invariants[mode] = {

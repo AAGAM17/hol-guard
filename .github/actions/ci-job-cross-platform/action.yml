@@ -106,4 +106,4 @@ runs:
       }
       $env:HOL_GUARD_NATIVE_BINARY = $env:HOL_GUARD_PACKAGED_GATE_NATIVE_BINARY
       $env:HOL_GUARD_NATIVE = "force"
-      uv run --no-sync pytest tests/test_frozen_windows_daemon_bootstrap.py --tb=short
+      uv run --no-sync pytest tests/test_frozen_windows_daemon_bootstrap.py --tb=short -rP

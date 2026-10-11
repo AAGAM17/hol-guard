@@ -75,6 +75,35 @@ def _diagnostics(env: dict[str, str]) -> str:
     return " | ".join(lines)
 
 
+def _start_timeline(env: dict[str, str]) -> str:
+    """Bounded daemon startup events and phase timings, printed even when the test passes."""
+
+    daemon_log = Path(env["HOL_GUARD_HOME"]) / "logs" / "daemon.log"
+    lines = []
+    for raw in _safe_read(daemon_log).splitlines():
+        try:
+            record = json.loads(raw)
+        except ValueError:
+            continue
+        event = str(record.get("event", ""))
+        if event in _TIMELINE_EVENTS or event == "startup_phase":
+            lines.append(f"{record.get('timestamp', '')[11:23]} {event} {record.get('detail', '')}".rstrip())
+    for entry in Path(env["HOL_GUARD_HOME"]).rglob("managed-resident-phases.v1.log"):
+        phases = [line for line in _safe_read(entry).splitlines() if line.startswith("native_resident_phase ")]
+        lines.extend(phases[-64:])
+    return "\n".join(lines[-300:])
+
+
+_TIMELINE_EVENTS = frozenset(
+    {
+        "daemon_listen_ready",
+        "daemon_ready",
+        "runtime_artifact_reconciliation_completed",
+        "onefile_extraction_reclaimed",
+    }
+)
+
+
 def _full_diagnostics(env: dict[str, str]) -> str:
     """Complete daemon journal records and complete log files for a failed packaged step."""
 
@@ -196,6 +225,7 @@ def test_packaged_windows_core_bootstrap_retry_and_repair(tmp_path: Path, native
     except (Exception, pytest.fail.Exception) as error:
         pytest.fail(f"{error!r}\n{_full_diagnostics(env)}", pytrace=False)
     finally:
+        print(f"Packaged daemon start timeline:\n{_start_timeline(env)}")
         cleanup = _run_core(executable, stop_args, env=env)
         assert cleanup.returncode == 0, f"stdout={cleanup.stdout!r}\nstderr={cleanup.stderr!r}"
         cleanup_payload = _json_result(cleanup)

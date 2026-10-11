@@ -70,6 +70,7 @@ from .start_classification import (
     daemon_still_starting_evidence_present,
 )
 from .start_lock import guard_daemon_start_lock as _guard_daemon_start_lock
+from .startup_phase import timed_phase
 
 GUARD_DAEMON_COMPATIBILITY_VERSION = 2
 GUARD_DAEMON_POST_UPDATE_START_TIMEOUT_SECONDS = 30.0
@@ -2380,10 +2381,11 @@ def _guard_daemon_process_inventory_for_guard_home(
         executable_name = ntpath.basename(sys.executable).strip().lower()
         if executable_name:
             candidate_names.add(executable_name)
-        entries = windows_processes.windows_process_command_line_inventory(
-            candidate_executable_names=frozenset(candidate_names),
-            max_command_line_bytes=_GUARD_DAEMON_PROCESS_QUERY_OUTPUT_LIMIT_BYTES,
-        )
+        with timed_phase("process_inventory_enumerate"):
+            entries = windows_processes.windows_process_command_line_inventory(
+                candidate_executable_names=frozenset(candidate_names),
+                max_command_line_bytes=_GUARD_DAEMON_PROCESS_QUERY_OUTPUT_LIMIT_BYTES,
+            )
         if entries is None:
             return None
     else:
@@ -2411,7 +2413,8 @@ def _guard_daemon_process_inventory_for_guard_home(
         query["ps_output"] = output
     else:
         query["entries"] = [[pid, command_line] for pid, command_line in entries or []]
-    verdict = _lifecycle("process_inventory", query, home=guard_home, facts_home=guard_home)
+    with timed_phase("process_inventory_verdict"):
+        verdict = _lifecycle("process_inventory", query, home=guard_home, facts_home=guard_home)
     if not verdict["known"]:
         return None
     return [(int(pid), int(port)) for pid, port in verdict["processes"]]

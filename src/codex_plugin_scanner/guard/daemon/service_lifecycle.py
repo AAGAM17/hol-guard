@@ -8,6 +8,8 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
+from .startup_phase import timed_phase
+
 _LOGGER = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -109,13 +111,15 @@ def begin_service(server: GuardDaemonServer, *, publish_before_workers: bool = F
                 server._shutdown_started.clear()
             if not startup_generation_is_current(server, generation):
                 raise RuntimeError("Guard daemon stopped during startup")
-            server._owner_lock = acquire_guard_daemon_owner_lock(server._server.store.guard_home)
-            _begin_owned_service_with_store_recovery(
-                server,
-                generation,
-                publish_before_workers=publish_before_workers,
-                continue_after_listen=not publish_before_workers,
-            )
+            with timed_phase("acquire_owner_lock"):
+                server._owner_lock = acquire_guard_daemon_owner_lock(server._server.store.guard_home)
+            with timed_phase("begin_owned_service"):
+                _begin_owned_service_with_store_recovery(
+                    server,
+                    generation,
+                    publish_before_workers=publish_before_workers,
+                    continue_after_listen=not publish_before_workers,
+                )
         if publish_before_workers:
             _complete_owned_service_after_listen_with_store_recovery(server, generation)
     except BaseException as error:

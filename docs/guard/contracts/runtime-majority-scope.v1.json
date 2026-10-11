@@ -810,6 +810,105 @@
     },
     "function_exclusions": [
       {
+        "id": "mdm-machine-integrity-acl-verification",
+        "category": "async_control_plane",
+        "path": "src/codex_plugin_scanner/guard/mdm/acl.py",
+        "symbols": [
+          "_WINDOWS_ACTIVE_SETUP",
+          "_WINDOWS_POLICY",
+          "OwnershipAclVerification",
+          "_aggregate",
+          "_macos_surfaces",
+          "_windows_registry_chain",
+          "_windows_surface_payload",
+          "_run_windows_acl_probe",
+          "verify_protected_ownership_and_acl"
+        ],
+        "entry_points": [],
+        "reason": "Whole-machine ownership and ACL verification for the managed-device integrity snapshot. It runs when the health lease reports, when removal is authorized and for the guard mdm command, on their own cadence rather than during hook handling.",
+        "evidence": "verify_protected_ownership_and_acl and OwnershipAclVerification are called only from mdm/integrity.py (whose machine_integrity_snapshot is imported only by mdm/user_health.py, mdm/health_lease.py and cli/commands_dispatch_mdm.py) and mdm/removal.py (mdm-health). The per-path helpers that in-scope mdm/managed_file_trust.py imports (_PathSurface, _run_windows_acl_payload, _verify_macos_surface, _windows_filesystem_chain, _windows_result) stay in scope. The report validates this reference closure on every run."
+      },
+      {
+        "id": "local-trust-backend-checks",
+        "category": "cli_only",
+        "path": "src/codex_plugin_scanner/guard/local_trust_contract.py",
+        "symbols": [
+          "TrustBackend",
+          "_ProcessHandle",
+          "_TrustResult",
+          "_TRUST_BACKEND_SPAWN_TIMEOUT_SECONDS",
+          "TrustBackendUnavailableError",
+          "TrustBackendProcessFailedError",
+          "TrustBackendCorruptResultError",
+          "_load_trust_backend_operation",
+          "_trust_backend_check_worker",
+          "_terminate_trust_backend_process_tree",
+          "_trust_backend_process_failed_error",
+          "_load_trust_backend_result",
+          "select_trust_backend",
+          "run_trust_backend_check",
+          "degraded_reason_for_backend_error"
+        ],
+        "entry_points": [],
+        "reason": "Trust-backend selection and the spawned backend check worker behind the guard trust command.",
+        "evidence": "TrustBackend, select_trust_backend, run_trust_backend_check, degraded_reason_for_backend_error and the backend errors are used only by local_trust_controller.py, which only cli/commands_dispatch_trust.py imports. TrustStatus and the POLICY_INTEGRITY_* constants that the store modules import stay in scope. The report validates this reference closure on every run."
+      },
+      {
+        "id": "codex-hook-manifest-repair",
+        "category": "install_config",
+        "path": "src/codex_plugin_scanner/guard/codex_hook_manifest.py",
+        "symbols": [
+          "CODEX_AUTHORITY_REPAIR_ACTION",
+          "PreparedCodexHookRepair",
+          "prepare_authenticated_hook_manifest_repair"
+        ],
+        "entry_points": [],
+        "reason": "Preparing an authenticated Codex hook manifest repair. It runs only from the Codex authority repair flow.",
+        "evidence": "PreparedCodexHookRepair and prepare_authenticated_hook_manifest_repair are used only by codex_hook_repair_request.py, codex_hook_repair.py and cli/codex_authority_repair.py (install-uninstall-doctor). The manifest build, publication, baseline and live verification functions that adapters/codex.py imports stay in scope. The report validates this reference closure on every run."
+      },
+      {
+        "id": "native-daemon-handler-control-routes",
+        "category": "control_plane",
+        "path": "src/codex_plugin_scanner/guard/native_daemon_handler.py",
+        "symbols": [
+          "_MAX_LIST_ITEMS",
+          "_BODY_KEYS",
+          "_field",
+          "native_body_handler",
+          "native_requests_list",
+          "native_harness_action",
+          "_fact",
+          "native_headless_action_error",
+          "native_headless_cursor_surface_error",
+          "native_headless_action_state",
+          "native_detection_app_statuses",
+          "native_supply_chain_error"
+        ],
+        "entry_points": [],
+        "reason": "Request-body, request-list, harness-action, headless-action, detection-status and supply-chain helpers for daemon control-plane and dashboard routes.",
+        "evidence": "Each excluded public helper is called only from daemon/server_control_policy.py, server_control_misc.py, server_control_headless.py, server_control_supply_chain.py (daemon-control-plane-routes) or daemon/server_dashboard_support.py (daemon-dashboard-read-routes). HandlerDecision, NativeDaemonHandlerError and native_events_cursor, which daemon/server.py imports, stay in scope. The report validates this reference closure on every run."
+      },
+      {
+        "id": "store-evidence-dashboard-export",
+        "category": "control_plane",
+        "path": "src/codex_plugin_scanner/guard/store_evidence.py",
+        "symbols": [
+          "EXPORT_PRIVACY_WARNING",
+          "_EXPORT_COLUMNS",
+          "_CSV_FORMULA_TRIGGER_PATTERN",
+          "count_evidence",
+          "_redact_export_value",
+          "evidence_record_to_dict",
+          "export_evidence_payload",
+          "export_evidence_json",
+          "export_evidence_csv",
+          "_sanitize_csv_formula_cell"
+        ],
+        "entry_points": [],
+        "reason": "Evidence counting, serialization and JSON/CSV export (with formula-injection sanitizing) for the dashboard records view.",
+        "evidence": "count_evidence, evidence_record_to_dict, export_evidence_json and export_evidence_csv are called only from daemon/server_dashboard_records_read.py (daemon-dashboard-read-routes). Evidence schema setup, storage, listing and clearing, which the store and runtime modules import, stay in scope. The report validates this reference closure on every run."
+      },
+      {
         "id": "render-human-output",
         "category": "cli_only",
         "path": "src/codex_plugin_scanner/guard/cli/render.py",

@@ -406,6 +406,14 @@
         ]
       },
       {
+        "id": "daemon-dashboard-read-routes",
+        "category": "control_plane",
+        "reason": "Dashboard read routes and their support handlers split out of daemon/server.py: extension-control, runtime, inventory, settings, update, request-queue, receipt, policy, evidence and command-activity GET routes, plus the request list, capabilities, operator health, MCP policy request read, static asset, dashboard shell and event stream handlers. Each is reached only from an explicit /v1 GET branch (or a static dashboard path) dispatched by do_GET after the dashboard token check. Evidence: the transitive self-call closure of _handle_runtime_hook, _handle_runtime_hook_fast, _handle_hook_readiness, _execute_runtime_hook and _handle_daemon_identity_challenge contains none of the moved methods, and hook routes are POST-only so do_GET never reaches the hook path.",
+        "path": [
+          "src/codex_plugin_scanner/guard/daemon/server_dashboard_*.py"
+        ]
+      },
+      {
         "id": "daemon-control-plane-routes",
         "category": "control_plane",
         "reason": "Daemon control-plane routes split out of daemon/server.py: package-firewall and supply-chain actions, Guard Cloud connect and dashboard reconnect, headless app actions and receipts, harness/notification/insights/read-state routes, protection-repair and settings routes, and the headless cloud-sync queue and connect-state machines. Each is reached only from a /v1 control route dispatched by do_GET/do_POST or from the daemon's background cloud-sync loop. Evidence: the transitive self-call closure of _handle_runtime_hook, _handle_runtime_hook_fast, _handle_hook_readiness, _execute_runtime_hook and the _runtime_hook_* helpers contains none of the moved methods, and none of the moved module-level functions is referenced from those methods. Helpers shared with the admission path or the server (server_common.py: logger, clock, local-URL builder, string-dict guard, settings response shaper) stay in scope.",

@@ -13,6 +13,18 @@ _LOGGER = logging.getLogger("codex_plugin_scanner.guard.daemon.server")
 _SUPPLY_CHAIN_CONNECT_POLL_AFTER_MS = 1_500
 
 
+class _ServerProxy:
+    """Late-bound view of ``server`` that avoids an import cycle.
+
+    Collaborators stay owned by ``server`` so existing patches keep working.
+    """
+
+    def __getattr__(self, name: str):
+        from . import server
+
+        return getattr(server, name)
+
+
 def _is_string_object_dict(value: object) -> TypeGuard[dict[str, object]]:
     return isinstance(value, dict) and all(isinstance(key, str) for key in value)
 

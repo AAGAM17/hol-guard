@@ -14,6 +14,7 @@ import pytest
 
 from codex_plugin_scanner.guard.daemon import manager as daemon_manager_module
 from codex_plugin_scanner.guard.daemon import recovery_worker, start_classification, start_heartbeat
+from codex_plugin_scanner.guard.native_daemon_lifecycle import daemon_lifecycle_deadline
 
 
 class _FakeProcess:
@@ -137,6 +138,51 @@ def test_heartbeat_from_a_foreign_process_does_not_count(tmp_path: Path, monkeyp
         daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=30.0, home_dir=tmp_path)
 
     assert process.terminated is True
+
+
+def _deadline_bound_tree_check(pid: int, root_pid: int) -> bool:
+    # Process-tree queries run under the lifecycle deadline, like the native inventory.
+    deadline = daemon_lifecycle_deadline()
+    if deadline is not None and time.monotonic() >= deadline:
+        raise TimeoutError("Guard daemon operation deadline exceeded.")
+    return pid == root_pid
+
+
+def test_wait_leaves_time_to_classify_a_slow_child(tmp_path: Path, monkeypatch) -> None:
+    guard_home = _private_home(tmp_path)
+    process = _FakeProcess()
+    _patch_spawn(monkeypatch, process, after_spawn_wait=lambda: None)
+
+    def spend_the_wait_budget(_gh, *, timeout: float, **_kwargs) -> None:
+        stop = time.monotonic() + timeout
+        while time.monotonic() < stop:
+            pass
+        _write_heartbeat(guard_home, pid=process.pid, ns=time.time_ns())
+
+    monkeypatch.setattr(daemon_manager_module, "_wait_for_guard_daemon_url", spend_the_wait_budget)
+    monkeypatch.setattr(start_classification, "_pid_in_process_tree", _deadline_bound_tree_check)
+
+    with pytest.raises(RuntimeError, match=r"^Guard daemon is still starting"):
+        daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=0.8, home_dir=tmp_path)
+
+    assert process.terminated is False
+
+
+def test_an_expired_poll_still_classifies_the_child(tmp_path: Path, monkeypatch) -> None:
+    guard_home = _private_home(tmp_path)
+    process = _FakeProcess()
+    _patch_spawn(monkeypatch, process, after_spawn_wait=lambda: None)
+
+    def expired_poll(_gh, **_kwargs) -> None:
+        _write_heartbeat(guard_home, pid=process.pid, ns=time.time_ns())
+        raise TimeoutError("Guard daemon operation deadline exceeded.")
+
+    monkeypatch.setattr(daemon_manager_module, "_wait_for_guard_daemon_url", expired_poll)
+
+    with pytest.raises(RuntimeError, match=r"^Guard daemon is still starting"):
+        daemon_manager_module.ensure_guard_daemon(guard_home, start_timeout=30.0, home_dir=tmp_path)
+
+    assert process.terminated is False
 
 
 def test_heartbeat_stops_counting_after_the_slow_start_window(tmp_path: Path) -> None:

@@ -1302,7 +1302,8 @@ def test_ensure_guard_daemon_uses_one_start_deadline_across_candidate_ports(tmp_
         assert launched_ports == [] and waited == [] and retirement_deadlines == []
     else:
         assert launched_ports == ["5410"]
-        assert waited == [2.0 if scenario == "outer_deadline" else 5.0]
+        # The wait leaves a quarter of the budget, at most 3s, for classification.
+        assert waited == [1.5 if scenario == "outer_deadline" else 3.75]
         assert retirement_deadlines == [102.0 if scenario == "outer_deadline" else 105.0]
 
 

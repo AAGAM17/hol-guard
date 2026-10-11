@@ -40,7 +40,8 @@ def _load_failed(path: str | None) -> set[str]:
 
 def _check_digests(sha: dict[str, list[object]]) -> bool:
     for digest, (_order, preimage) in sha.items():
-        if hashlib.sha256(str(preimage).encode("utf-8")).hexdigest() != digest:
+        # A ``None`` pre-image is a digest the recorder could not capture in full.
+        if preimage is None or hashlib.sha256(str(preimage).encode("utf-8")).hexdigest() != digest:
             return False
     return True
 

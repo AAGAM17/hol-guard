@@ -94,15 +94,18 @@ class _RecordingHash:
         return clone
 
     def _remember(self, digest: str) -> None:
-        """Keep only pre-images that are complete and valid UTF-8."""
+        """Store the pre-image, or a ``None`` marker when it is truncated or not UTF-8.
 
-        if self._truncated:
-            return
-        preimage = bytes(self._buffer)
-        try:
-            preimage.decode("utf-8")
-        except UnicodeDecodeError:
-            return
+        The marker keeps the digest in the table so any record that references it
+        is dropped by the finalizer instead of shipping an unrebound digest.
+        """
+
+        preimage: bytes | None = None if self._truncated else bytes(self._buffer)
+        if preimage is not None:
+            try:
+                preimage.decode("utf-8")
+            except UnicodeDecodeError:
+                preimage = None
         _remember(digest, preimage)
 
     def hexdigest(self) -> str:
@@ -119,8 +122,8 @@ class _RecordingHash:
         return getattr(self._hash, name)
 
 
-def _remember(digest: str, preimage: bytes) -> None:
-    table: OrderedDict[str, tuple[int, bytes]] = _state["sha"]  # type: ignore[assignment]
+def _remember(digest: str, preimage: bytes | None) -> None:
+    table: OrderedDict[str, tuple[int, bytes | None]] = _state["sha"]  # type: ignore[assignment]
     if digest in table:
         return
     _state["order"] += 1  # type: ignore[operator]
@@ -229,7 +232,7 @@ def _overridden() -> bool:
 
 
 def _relevant_sha(text: str) -> dict[str, list[Any]]:
-    table: OrderedDict[str, tuple[int, bytes]] = _state["sha"]  # type: ignore[assignment]
+    table: OrderedDict[str, tuple[int, bytes | None]] = _state["sha"]  # type: ignore[assignment]
     by_prefix: dict[str, list[str]] = {}
     for digest in table:
         by_prefix.setdefault(digest[:8], []).append(digest)
@@ -243,7 +246,10 @@ def _relevant_sha(text: str) -> dict[str, list[Any]]:
             for digest in digests:
                 if digest[:8] in current and digest not in selected:
                     order, preimage = table[digest]
-                    decoded = preimage.decode("utf-8", "replace")
+                    if preimage is None:
+                        selected[digest] = [order, None]
+                        continue
+                    decoded = preimage.decode("utf-8")
                     selected[digest] = [order, decoded]
                     pending.append(decoded)
     return selected

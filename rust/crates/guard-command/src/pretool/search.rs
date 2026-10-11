@@ -443,8 +443,13 @@ fn safe_rg_arguments_inner(
             if stdin_only {
                 return false;
             }
+            // A shell glob that lexically could reach a hidden or credential
+            // path is still proven when every expansion is an ordinary file,
+            // or a directory below the cwd whose whole tree is ordinary.
             if unsafe_search_value(SearchValueRole::Path, argument, context)
                 && !tree::safe_recursive_target(argument, context)
+                && !(argument.contains(['*', '?', '['])
+                    && tree::safe_glob_operand(argument, context, true))
             {
                 return false;
             }

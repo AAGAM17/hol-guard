@@ -80,8 +80,14 @@ pub(in crate::pretool) fn safe_glob_operand(
     let Some(matches) = expand_glob(value, context) else {
         return false;
     };
+    // With globstar a final `**` also expands to every nested entry, so the
+    // matched directories must be proven like a recursive read.
+    let final_globstar = value
+        .rsplit('/')
+        .find(|part| !part.is_empty())
+        .is_some_and(|part| part.len() > 1 && part.bytes().all(|byte| byte == b'*'));
     matches.into_iter().all(|path| {
-        if recursive {
+        if recursive || final_globstar {
             walk(path, &[], &[])
         } else {
             true
@@ -208,33 +214,49 @@ fn walk(root: PathBuf, excluded_files: &[&str], excluded_directories: &[&str]) -
 }
 
 /// Expand a relative glob below the cwd. `None` when any step is ambiguous:
-/// absolute or `~` operands, dot components, `..`, links, no match, or too
-/// many matches.
+/// absolute or `~` operands, dot components, `..`, links to directories, no
+/// match, or too many matches.
+///
+/// A component made only of `*` (such as `**`) is expanded as the union of
+/// what shells do with it: zero or more nested directories with `globstar`,
+/// and a single `*` without it. A wildcard before the last component only
+/// descends into directories, as the shell does.
 fn expand_glob(value: &str, context: ReadContext<'_>) -> Option<Vec<PathBuf>> {
     if value.is_empty()
         || value.len() > 4096
         || value.contains(HAZARDS)
-        || value.contains(['{', '}'])
+        || value.contains(['{', '}', '#', '^', '(', ')'])
         || value.starts_with(['/', '~', '-'])
         || !super::super::safe_reads::verified_path_context(context.home_dir, context.cwd)
     {
         return None;
     }
     let base = real_allowed_directory(&home_relative(context.cwd?, context.home_dir)?, context)?;
-    let mut current = vec![base];
-    let mut inspected = 0_usize;
-    for component in value
+    let components: Vec<&str> = value
         .split('/')
         .filter(|part| !part.is_empty() && *part != ".")
-    {
-        if component == ".." || component.starts_with('.') {
+        .collect();
+    let mut current = vec![base];
+    let mut inspected = 0_usize;
+    for (index, component) in components.iter().enumerate() {
+        if *component == ".." || component.starts_with('.') {
             return None;
         }
+        let last = index + 1 == components.len();
         let is_pattern = component.contains(['*', '?', '[']);
         let mut next = Vec::new();
         for directory in &current {
             if !is_pattern {
-                next.push(directory.join(component));
+                // The shell keeps only literal continuations that exist.
+                let path = directory.join(component);
+                let exists = std::fs::symlink_metadata(&path).is_ok();
+                if (last && exists) || traversable(&path)? {
+                    next.push(path);
+                }
+                continue;
+            }
+            if !last && component.len() > 1 && component.bytes().all(|byte| byte == b'*') {
+                nested_directories(directory, &mut next, &mut inspected)?;
                 continue;
             }
             for entry in std::fs::read_dir(directory).ok()? {
@@ -244,8 +266,12 @@ fn expand_glob(value: &str, context: ReadContext<'_>) -> Option<Vec<PathBuf>> {
                 }
                 let name = entry.ok()?.file_name();
                 let name = name.to_str()?;
-                if !name.starts_with('.') && glob_matches(component.as_bytes(), name.as_bytes()) {
-                    next.push(directory.join(name));
+                if name.starts_with('.') || !glob_matches(component.as_bytes(), name.as_bytes()) {
+                    continue;
+                }
+                let path = directory.join(name);
+                if last || traversable(&path)? {
+                    next.push(path);
                 }
             }
         }
@@ -292,4 +318,49 @@ fn expand_glob(value: &str, context: ReadContext<'_>) -> Option<Vec<PathBuf>> {
         matches.push(path);
     }
     (!matches.is_empty()).then_some(matches)
+}
+
+/// Whether the shell continues below this path: `Some(true)` for a real
+/// directory, `Some(false)` for anything it skips, `None` for a link to a
+/// directory, which a shell without `globstar` would follow.
+fn traversable(path: &Path) -> Option<bool> {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return Some(false);
+    };
+    if metadata.file_type().is_symlink() {
+        return std::fs::metadata(path)
+            .map_or(Some(false), |target| (!target.is_dir()).then_some(false));
+    }
+    Some(metadata.is_dir())
+}
+
+/// `directory` and every non-hidden real directory below it.
+fn nested_directories(
+    directory: &Path,
+    found: &mut Vec<PathBuf>,
+    inspected: &mut usize,
+) -> Option<()> {
+    let mut pending = vec![(directory.to_path_buf(), 0_usize)];
+    while let Some((path, depth)) = pending.pop() {
+        if depth > MAX_WALK_DEPTH || found.len() >= MAX_GLOB_MATCHES {
+            return None;
+        }
+        for entry in std::fs::read_dir(&path).ok()? {
+            *inspected += 1;
+            if *inspected > MAX_GLOB_ENTRIES {
+                return None;
+            }
+            let entry = entry.ok()?;
+            let name = entry.file_name();
+            if name.to_str()?.starts_with('.') {
+                continue;
+            }
+            let child = entry.path();
+            if traversable(&child)? {
+                pending.push((child, depth + 1));
+            }
+        }
+        found.push(path);
+    }
+    Some(())
 }

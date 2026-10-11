@@ -475,6 +475,7 @@
     "src/codex_plugin_scanner/guard/path_resolution_cache.py",
     "src/codex_plugin_scanner/guard/config_mutation.py",
     "src/codex_plugin_scanner/guard/native_policy_snapshot.py",
+    "src/codex_plugin_scanner/guard/native_policy_effective.py",
     "src/codex_plugin_scanner/guard/native_policy_snapshot_*.py",
     "src/codex_plugin_scanner/guard/native_business_*.py",
     "src/codex_plugin_scanner/guard/native_command_control_*.py",

@@ -191,6 +191,15 @@ pub(crate) fn stop_managed(state_base: &Path, retire_clients: bool) -> Result<()
     Err("native_resident_stop_unavailable".to_owned())
 }
 
+/// Forget the crash-loop history of this runtime's resident so the next
+/// request may start it immediately.  This only lifts the restart pacing; the
+/// resident itself is still started by the normal authenticated client path.
+pub(crate) fn reset_restart_budget(state_base: &Path) -> Result<(), String> {
+    let digest = runtime_digest()?;
+    let scope = state_scope(state_base, &digest)?;
+    restart_budget::clear(&scope)
+}
+
 pub(crate) fn serve_managed(
     state_base: &Path,
     generation: u64,

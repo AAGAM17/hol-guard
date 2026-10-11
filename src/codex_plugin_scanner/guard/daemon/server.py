@@ -1031,6 +1031,12 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
         capacity = self._request_capacity_for_kind(capacity_kind)
         with self.request_capacity_lock:
             previous_kind = self.request_capacity_kinds.pop(id(request), None)
+            if previous_kind is not None and id(request) in self.request_accepted_at:
+                # A follow-up request on a kept-alive connection (the hook POST
+                # after its identity challenge) starts its own admission clock.
+                # Charging it the challenge round trip left loaded hosts with
+                # too little of the hook budget to finish the review.
+                self.request_accepted_at[id(request)] = time.monotonic()
         if previous_kind is not None:
             self._request_capacity_for_kind(previous_kind).release()
         admitted = (

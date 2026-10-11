@@ -37,11 +37,15 @@ _RISKY_PROMPT_ADDITIONAL_CONTEXT = (
     "approval question to protect you."
 )
 _HARNESS_TIMEOUT_BUDGET_SECONDS = 10
-# The identity challenge and hook POST share this budget. Parallel tool calls queue
-# at the daemon, and on slower Windows hosts two seconds expired mid-review; a fresh
-# fallback process could not finish in what was left of the hook deadline.
-_DAEMON_IO_TIMEOUT_SECONDS = 4
+# The identity challenge and hook POST share this budget. On loaded Windows hosts
+# the challenge round trip alone took about two seconds, leaving the daemon too
+# little time to review. A timeout at this cap leaves less than the recovery
+# minimum before the fallback reserve, so recovery is skipped and the local
+# fallback still reviews.
+_DAEMON_IO_TIMEOUT_SECONDS = 5.5
 _RECOVERY_TIMEOUT_SECONDS = 3
+# Do not start a recovery process that the fallback reserve would kill.
+_MINIMUM_RECOVERY_SECONDS = 1.5
 # Recovery and its retry stop this long before the hook deadline, so a daemon that
 # times out and then fails to recover still leaves the local fallback time to review.
 _FALLBACK_RESERVE_SECONDS = 2
@@ -456,10 +460,15 @@ def _recover_retry_or_fallback(
     failure_kind: str = "transport-failure",
 ) -> str:
     recovery_deadline = None if deadline is None else deadline - _FALLBACK_RESERVE_SECONDS
-    if recovery_command and _run_recovery_command(
-        recovery_command,
-        deadline=recovery_deadline,
-        failure_kind=failure_kind,
+    recovery_window = _remaining_seconds(recovery_deadline, cap=_RECOVERY_TIMEOUT_SECONDS)
+    if (
+        recovery_command
+        and recovery_window >= _MINIMUM_RECOVERY_SECONDS
+        and _run_recovery_command(
+            recovery_command,
+            deadline=recovery_deadline,
+            failure_kind=failure_kind,
+        )
     ):
         try:
             endpoint = urljoin(_daemon_url(state_path, fallback_daemon_url), f"/v1/hooks/claude-code?{query}")

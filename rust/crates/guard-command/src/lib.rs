@@ -586,6 +586,7 @@ mod mcp_package_sources;
 #[cfg(unix)]
 pub mod mcp_stdio_session;
 pub mod pep440;
+pub mod persistence_rules;
 pub mod registry_metadata_transport;
 pub mod restricted_archive;
 mod restricted_archive_address;
@@ -597,12 +598,14 @@ mod restricted_archive_write;
 #[cfg(unix)]
 pub mod restricted_pytest;
 pub mod resume_template;
+pub mod safe_decode;
 #[cfg(unix)]
 pub mod sandbox;
 #[cfg(unix)]
 pub(crate) mod semantic_workspace;
 pub mod shims;
 pub mod signals;
+pub mod skill_content_risk;
 pub mod supply_chain_bundle;
 pub mod supply_chain_package_identity;
 pub mod supply_chain_risk;

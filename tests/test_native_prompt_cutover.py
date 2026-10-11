@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -91,17 +92,16 @@ def test_missing_or_malformed_authority_cannot_start_harness(monkeypatch, tmp_pa
 
 
 def test_native_prompt_failure_is_not_an_empty_detector_result(monkeypatch):
-    from codex_plugin_scanner.guard.runtime.detectors import DetectorRegistry
+    from codex_plugin_scanner.guard.native_runtime_detectors import NativeRuntimeDetectorError
+    from codex_plugin_scanner.guard.runtime import detectors
 
-    class Unavailable:
-        detector_id = "prompt.native"
-        categories = ("prompt",)
+    def unavailable(*_args, **_kwargs):
+        raise NativeRuntimeDetectorError("native_runtime_detector_run_unavailable")
 
-        def detect(self, *_):
-            raise native_prompt.NativePromptAnalysisError("native_prompt_analysis_unavailable")
-
-    with pytest.raises(native_prompt.NativePromptAnalysisError):
-        DetectorRegistry([Unavailable()]).run(SimpleNamespace(), SimpleNamespace())
+    monkeypatch.setattr(detectors, "native_runtime_detector_entries", unavailable)
+    context = SimpleNamespace(workspace=None, guard_home=None, config=SimpleNamespace(guard_home=None))
+    with pytest.raises(NativeRuntimeDetectorError):
+        detectors.DetectorRegistry([detectors.NativeRuntimeDetectors()]).run(SimpleNamespace(), context)
 
 
 def test_retired_python_prompt_implementations_are_absent():
@@ -117,10 +117,7 @@ def test_retired_python_prompt_implementations_are_absent():
     names = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
     names.update(node.id for node in ast.walk(tree) if isinstance(node, ast.Name))
     assert not retired & names
-    from codex_plugin_scanner.guard.runtime import prompt_injection
-
-    facade = ast.parse(Path(prompt_injection.__file__).read_text())
-    assert not any(isinstance(node, ast.FunctionDef) for node in facade.body)
+    assert importlib.util.find_spec("codex_plugin_scanner.guard.runtime.prompt_injection") is None
 
 
 @pytest.mark.parametrize(

@@ -455,6 +455,18 @@ def native_data_flow_runtime(
 
 
 @pytest.fixture
+def native_runtime_detectors_runtime(
+    native_hook_force: Path, _native_context_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """Serve the runtime detector run from the real resident; there is no Python fallback."""
+
+    from codex_plugin_scanner.guard import native_runtime_detectors
+
+    monkeypatch.setattr(native_runtime_detectors, "_resolve_digest_home", lambda _guard_home: _native_context_home)
+    return _native_context_home
+
+
+@pytest.fixture
 def native_route_policy_with_hooks_off(monkeypatch: pytest.MonkeyPatch) -> Path:
     """Keep daemon route/origin policy native while hook handling stays ``off``.
 

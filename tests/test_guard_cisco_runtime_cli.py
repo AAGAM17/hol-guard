@@ -15,7 +15,12 @@ from codex_plugin_scanner.guard.config import GuardConfig
 from codex_plugin_scanner.guard.models import GuardApprovalRequest
 from codex_plugin_scanner.guard.receipts import build_receipt
 from codex_plugin_scanner.guard.runtime.actions import GuardActionEnvelope
-from codex_plugin_scanner.guard.runtime.detectors import DetectorContext, DetectorRegistry, register_default_detectors
+from codex_plugin_scanner.guard.runtime.detectors import (
+    DetectorContext,
+    DetectorRegistry,
+    NativeRuntimeDetectors,
+    register_default_detectors,
+)
 from codex_plugin_scanner.guard.runtime.signals import GuardRiskSignalV3
 from codex_plugin_scanner.guard.store import GuardStore
 from codex_plugin_scanner.integrations import cisco_mcp_scanner, cisco_skill_scanner
@@ -192,7 +197,11 @@ def _relative_target_write_action(target: str) -> GuardActionEnvelope:
 
 
 def test_default_detector_registry_includes_cisco_sources() -> None:
-    detector_ids = {detector.detector_id for detector in register_default_detectors()}
+    detector_ids = {
+        detector.detector_id
+        for detector in register_default_detectors()
+        if not isinstance(detector, NativeRuntimeDetectors)
+    }
 
     assert "cisco.skill" in detector_ids
     assert "cisco.mcp" in detector_ids

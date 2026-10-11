@@ -24,11 +24,7 @@ from codex_plugin_scanner.guard.native_policy_snapshot_publisher import provisio
 from codex_plugin_scanner.guard.policy_integrity import PolicyIntegrityVerificationResult
 from codex_plugin_scanner.guard.runtime.actions import GuardActionEnvelope
 from codex_plugin_scanner.guard.runtime.composition_rules import compose_action_from_signals
-from codex_plugin_scanner.guard.runtime.detectors import (
-    DataFlowExfiltrationDetector,
-    DetectorContext,
-    FalsePositiveSuppressorDetector,
-)
+from codex_plugin_scanner.guard.runtime.detectors import DetectorContext
 from codex_plugin_scanner.guard.store import (
     GuardStore,
     _runtime_scoped_exact_match_key,
@@ -36,6 +32,7 @@ from codex_plugin_scanner.guard.store import (
     _warn_only_policy_integrity_status,
     runtime_tool_action_exact_match_context,
 )
+from tests.native_detector_support import NativeDetector
 
 
 def _store(tmp_path: Path) -> GuardStore:
@@ -204,11 +201,11 @@ def test_gr101_gr103_action_identity_reuses_same_action_and_splits_changed_comma
     assert changed_group != same_group_a
 
 
-@pytest.mark.usefixtures("native_data_flow_runtime")
+@pytest.mark.usefixtures("native_runtime_detectors_runtime")
 def test_gr104_gr105_read_only_listing_and_maileroo_search_are_not_exfiltration(tmp_path: Path) -> None:
     context = _detector_context(tmp_path)
-    suppressor = FalsePositiveSuppressorDetector()
-    data_flow = DataFlowExfiltrationDetector()
+    suppressor = NativeDetector("false_positive.suppressor")
+    data_flow = NativeDetector("data_flow.exfiltration")
 
     listing_signals = suppressor.detect(_shell_action("ls -la src/codex_plugin_scanner"), context)
     maileroo_signals = suppressor.detect(_shell_action('rg "EMAIL_|SMTP_" .'), context)
@@ -221,11 +218,11 @@ def test_gr104_gr105_read_only_listing_and_maileroo_search_are_not_exfiltration(
     assert any(signal.signal_id == "data-flow:secret-pipe-http" for signal in real_exfil)
 
 
-@pytest.mark.usefixtures("native_data_flow_runtime")
+@pytest.mark.usefixtures("native_runtime_detectors_runtime")
 def test_read_only_node_fetch_page_probe_downgrades_review_without_hiding_exfil(tmp_path: Path) -> None:
     context = _detector_context(tmp_path)
-    suppressor = FalsePositiveSuppressorDetector()
-    data_flow = DataFlowExfiltrationDetector()
+    suppressor = NativeDetector("false_positive.suppressor")
+    data_flow = NativeDetector("data_flow.exfiltration")
     command = """node - <<'NODE'
 const res = await fetch('https://hol.org/guard/apps/codex', { redirect: 'manual' });
 const text = await res.text();

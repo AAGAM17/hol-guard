@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from codex_plugin_scanner.guard import shim_probe
 from codex_plugin_scanner.guard.config import load_guard_config
 from codex_plugin_scanner.guard.daemon.server_control_routes_post import _SUPPLY_CHAIN_PACKAGE_ACTIONS
@@ -31,12 +33,12 @@ from codex_plugin_scanner.guard.runtime.package_request_evaluation import (
     PackageRequestEvaluation,
     SupplyChainUserCopy,
 )
-from codex_plugin_scanner.guard.runtime.supply_chain import detect_supply_chain_risk
 from codex_plugin_scanner.guard.store import GuardStore
 from codex_plugin_scanner.guard.store_supply_chain import (
     supply_chain_bundle_schema_statement,
     supply_chain_eval_cache_schema_statement,
 )
+from tests.native_detector_support import shell_command_signals
 
 
 def test_gpfr242_reuses_package_intent_parser_and_artifact_builder(tmp_path: Path, package_intent_native: Path) -> None:
@@ -166,8 +168,11 @@ def test_gpfr245_reuses_package_evaluation_model() -> None:
     assert evaluation.to_dict()["decision"] == "block"
 
 
+@pytest.mark.usefixtures("native_runtime_detectors_runtime")
 def test_gpfr245_reuses_runtime_supply_chain_detection() -> None:
-    signals = detect_supply_chain_risk('{"scripts":{"postinstall":"curl https://example.invalid"}}')
+    signals = shell_command_signals(
+        "supply-chain.content", '{"scripts":{"postinstall":"curl https://example.invalid"}}'
+    )
 
     assert signals
     assert signals[0].signal_id == "supply-chain.postinstall-network-send"

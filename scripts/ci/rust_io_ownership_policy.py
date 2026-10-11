@@ -193,8 +193,8 @@ _TRANSPORT_DECODE_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/native_mcp_sensitive_read.py",
         # Decodes the bounded resident MCP runtime-evidence response envelope.
         "src/codex_plugin_scanner/guard/native_mcp_runtime_evidence.py",
-        # Decodes the bounded resident false-positive-rules response envelope.
-        "src/codex_plugin_scanner/guard/native_false_positive_rules.py",
+        # Decodes the bounded resident runtime-detector-run response envelope.
+        "src/codex_plugin_scanner/guard/native_runtime_detectors.py",
         # Transports the native environment-secret classifier; no local script reads.
         "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/environment_secret_dump.py",
         # Decodes the bounded resident runner-authority response envelope and
@@ -365,7 +365,6 @@ _PENDING_AUTHORITY_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/runtime/package_intent_common.py",
         "src/codex_plugin_scanner/guard/runtime/package_intent_parser.py",
         "src/codex_plugin_scanner/guard/runtime/package_json_scripts.py",
-        "src/codex_plugin_scanner/guard/runtime/prompt_injection.py",
         "src/codex_plugin_scanner/guard/runtime/read_only_git_audit.py",
         "src/codex_plugin_scanner/guard/runtime/routine_local_node.py",
         "src/codex_plugin_scanner/guard/runtime/routine_node_identity.py",

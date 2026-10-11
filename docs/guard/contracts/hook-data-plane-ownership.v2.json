@@ -347,7 +347,7 @@
     "src/codex_plugin_scanner/guard/native_approval_errors.py",
     "src/codex_plugin_scanner/guard/native_approval_gate.py",
     "src/codex_plugin_scanner/guard/native_approval_reuse.py",
-    "src/codex_plugin_scanner/guard/native_false_positive_rules.py",
+    "src/codex_plugin_scanner/guard/native_runtime_detectors.py",
     "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/environment_secret_dump.py",
     "src/codex_plugin_scanner/guard/native_runner_authority.py",
     "src/codex_plugin_scanner/guard/runtime/runner_native_authority.py",

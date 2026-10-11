@@ -113,7 +113,6 @@ mod direct_tool_context_tests;
 mod direct_tool_managed_bun;
 mod edge;
 mod encrypted_secret_store;
-mod false_positive_rules_op;
 mod git_execution_safety_binary;
 mod git_execution_safety_checks;
 mod git_execution_safety_config;
@@ -300,6 +299,7 @@ mod request_context_shell;
 mod resident_client;
 mod resident_diagnostics;
 mod resident_endpoint;
+mod resident_op_features;
 mod resident_ops;
 #[allow(dead_code)] // Worker enrollment is not enabled by this OS identity input.
 mod resident_peer_identity;
@@ -318,6 +318,7 @@ mod runner_sync_policy;
 mod runner_sync_signals;
 mod runner_sync_url;
 mod runtime_cli;
+mod runtime_detector_run_op;
 mod shim_op;
 #[cfg(unix)]
 mod skill_directory_identity_op;

@@ -64,6 +64,25 @@ Normal pushes to `main` still build and verify packages without publishing.
 
 The workflow rejects alpha versions outside the 3.x line, rejects non-alpha prerelease types, rejects alpha publishes from any other branch, binds every tag and artifact to the exact branch commit, and prevents alpha artifacts from entering the stable repository-version synchronization flow.
 
+### Desktop Core alpha sidecars
+
+The `Desktop Core macOS feed` workflow can publish signed, notarized macOS Core sidecars to an existing `alpha/v<VERSION>` prerelease. Alpha runs happen only by explicit dispatch; scheduled and push runs stay stable-only and never look for alpha releases.
+
+Dispatch from `main` with an exact version, the alpha publish run, and the alpha source commit:
+
+```sh
+gh workflow run desktop-core-alpha-feed.yml --ref main \
+  -f core_version=<VERSION> -f release_channel=alpha \
+  -f publication_run_id=<RUN_ID> -f publication_source_sha=<ALPHA_SOURCE_SHA>
+```
+
+- `core_version` must match `3.<minor>.<patch>a<N>` exactly. `release_channel` defaults to `stable`, which keeps the existing behavior.
+- The `alpha/v<VERSION>` release must be a published prerelease, not a draft, and its tag must point at `publication_source_sha`. The workflow never creates or edits releases.
+- The publish run must be a `main` dispatch of `publish.yml` whose `Publish alpha to PyPI` job succeeded. The alpha source commit must be an ancestor of that run's commit, not necessarily the head of `main`.
+- Manifests declare `"channel": "alpha"`. Existing complete sidecar assets are reused, so rerunning a dispatch is safe.
+- If the prerelease or tag is deleted before upload, the run fails and nothing is recreated.
+- Alpha dispatches queue separately from the stable feed. A `main` run in which only the alpha publish jobs succeeded does not trigger MCP registry or MCPB publishing.
+
 ### Cut an optional test alpha from main
 
 Use this to try a large batch on real machines before the stable Release Please PR merges. A main alpha never changes the stable version line, the Release Please PR, or the default installer path.

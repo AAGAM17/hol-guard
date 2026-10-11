@@ -107,17 +107,20 @@ pub(super) fn claude_glob_scope_proven(
     unfiltered_directory_scope_proven(target, home_dir, cwd)
 }
 
-/// Content search (`grep`) variant of the unfiltered proof. Agent-state trees
-/// (`~/.agent/skills`, `~/.agent/artifacts`) are excluded: the per-file rules
-/// that deny direct reads there do not apply to a directory walk.
+/// Content search (`grep`) variant of the unfiltered proof. Inside agent-state
+/// trees (`~/.agent/skills`, `~/.agent/artifacts`) the per-file rules that
+/// deny direct reads do not apply to a directory walk, so the walk must reach
+/// only documents a direct read would allow.
 pub(super) fn content_search_scope_proven(
     target: &str,
     home_dir: Option<&str>,
     cwd: Option<&str>,
 ) -> bool {
-    !verified_directory_root(target, home_dir, cwd)
-        .is_some_and(|root| super::read_paths::inside_agent_state_tree(&root, home_dir))
-        && unfiltered_directory_scope_proven(target, home_dir, cwd)
+    unfiltered_directory_root(target, home_dir, cwd).is_some_and(|root| {
+        (!super::read_paths::inside_agent_state_tree(&root, home_dir)
+            || super::read_paths::agent_state_tree_holds_only_documents(&root, home_dir))
+            && unfiltered_walk_proven(&root)
+    })
 }
 
 /// Host-neutral variant for hosts whose search semantics are not modeled
@@ -129,34 +132,40 @@ pub(super) fn unfiltered_directory_scope_proven(
     home_dir: Option<&str>,
     cwd: Option<&str>,
 ) -> bool {
-    let Some(filter) = SearchFilter::from_input(&Map::new()) else {
-        return false;
-    };
+    unfiltered_directory_root(target, home_dir, cwd)
+        .is_some_and(|root| unfiltered_walk_proven(&root))
+}
+
+fn unfiltered_walk_proven(root: &Path) -> bool {
+    SearchFilter::from_input(&Map::new())
+        .is_some_and(|filter| walk_scope(root, &filter, false).is_ok())
+}
+
+/// Canonical directory an unfiltered search walks, with `~/` expanded the
+/// way the host does. Both the walk and the agent-state gate use this root.
+fn unfiltered_directory_root(
+    target: &str,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+) -> Option<PathBuf> {
     if !super::safe_reads::bounded_omp_directory_read_target(target, home_dir, cwd) {
-        return false;
+        return None;
     }
     let candidate = if Path::new(target).is_absolute() {
         PathBuf::from(target)
     } else if let Some(stripped) = target.strip_prefix("~/") {
-        match home_dir {
-            Some(home) => Path::new(home).join(stripped),
-            None => return false,
-        }
+        Path::new(home_dir?).join(stripped)
     } else if target == "~" {
-        return false;
+        return None;
     } else {
-        match cwd {
-            Some(cwd) => Path::new(cwd).join(target),
-            None => return false,
-        }
+        Path::new(cwd?).join(target)
     };
     if guard_secure_fs::contains_symlink_component(&candidate) {
-        return false;
+        return None;
     }
     std::fs::canonicalize(candidate)
         .ok()
         .filter(|root| root.is_dir())
-        .is_some_and(|root| walk_scope(&root, &filter, false).is_ok())
 }
 
 fn claude_grep_input(payload: &Value) -> Option<&Map<String, Value>> {

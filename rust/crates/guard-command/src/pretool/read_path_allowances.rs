@@ -182,6 +182,45 @@ pub(in crate::pretool) fn inside_agent_state_tree(
         .any(|name| canonical.starts_with(agent.join(name)))
 }
 
+/// True when a content search rooted at `root` inside an agent-state tree can
+/// reach only files a direct read would allow (visible `.md` documents). The
+/// walk is bounded and refuses links and hidden entries, so a search over
+/// `~/.agent/artifacts` holding reports proceeds while one that would reach
+/// `artifacts/data.json` or `artifacts/.cache` still asks.
+pub(in crate::pretool) fn agent_state_tree_holds_only_documents(
+    root: &std::path::Path,
+    home_dir: Option<&str>,
+) -> bool {
+    let mut pending = vec![root.to_path_buf()];
+    let mut seen = 0usize;
+    while let Some(directory) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&directory) else {
+            return false;
+        };
+        for entry in entries {
+            seen += 1;
+            let Ok(entry) = entry else {
+                return false;
+            };
+            let Ok(kind) = entry.file_type() else {
+                return false;
+            };
+            let path = entry.path();
+            if seen > 4096 || entry.file_name().to_string_lossy().starts_with('.') {
+                return false;
+            }
+            if kind.is_dir() {
+                pending.push(path);
+            } else if !(kind.is_file()
+                && (agent_home_state(&path, home_dir) || agent_skill_document(&path, home_dir)))
+            {
+                return false;
+            }
+        }
+    }
+    agent_home_state(root, home_dir)
+}
+
 /// `~/.hol-support/SAFETY.md` is the harness-facing safety guide that agents
 /// are instructed to read before acting; it gets the same explicit allowance
 /// the Python source-path classifier grants.

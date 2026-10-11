@@ -464,9 +464,11 @@
       {
         "id": "embedded-hook-templates",
         "category": "generated_asset",
-        "reason": "Python string templates that emit TypeScript/JS/shell harness hook assets at install time; generated artifacts, not Python executed on the request path.",
+        "reason": "Python string templates that emit TypeScript/JS/shell harness hook assets at install time; generated artifacts, not Python executed on the request path. The current Pi extension emitters (pi_extension_source*.py: header, body, tail, shared-v1 and runtime variants, rendered by managed_extension_source for install, update and drift comparison) and pi_extension_runtime_ownership.py (which only resolves the Guard CLI command and recovery arguments embedded in that generated TypeScript) are the same kind of module as the previous-extension emitters already listed here; their only importers are the Pi adapter, its support shim and the update command (extension install, drift check and update), plus the emitters themselves.",
         "path": [
           "src/codex_plugin_scanner/guard/adapters/pi_extension_*_source*.py",
+          "src/codex_plugin_scanner/guard/adapters/pi_extension_source*.py",
+          "src/codex_plugin_scanner/guard/adapters/pi_extension_runtime_ownership.py",
           "src/codex_plugin_scanner/guard/adapters/cursor_hook_script_template_*.py",
           "src/codex_plugin_scanner/guard/adapters/opencode_*template.py",
           "src/codex_plugin_scanner/guard/adapters/grok_hook_*_template.py"
@@ -740,15 +742,6 @@
           "src/codex_plugin_scanner/guard/adapters/paseo_config.py",
           "src/codex_plugin_scanner/guard/adapters/paseo_install.py",
           "src/codex_plugin_scanner/guard/adapters/pi.py",
-          "src/codex_plugin_scanner/guard/adapters/pi_extension_runtime_ownership.py",
-          "src/codex_plugin_scanner/guard/adapters/pi_extension_source.py",
-          "src/codex_plugin_scanner/guard/adapters/pi_extension_source_body.py",
-          "src/codex_plugin_scanner/guard/adapters/pi_extension_source_body_shared_v1.py",
-          "src/codex_plugin_scanner/guard/adapters/pi_extension_source_header.py",
-          "src/codex_plugin_scanner/guard/adapters/pi_extension_source_header_shared_v1.py",
-          "src/codex_plugin_scanner/guard/adapters/pi_extension_source_runtime.py",
-          "src/codex_plugin_scanner/guard/adapters/pi_extension_source_tail.py",
-          "src/codex_plugin_scanner/guard/adapters/pi_extension_source_tail_shared_v1.py",
           "src/codex_plugin_scanner/guard/adapters/pi_support.py",
           "src/codex_plugin_scanner/guard/adapters/zcode.py",
           "src/codex_plugin_scanner/json_comment_stripping.py"
@@ -766,6 +759,8 @@
     "generated": {
       "path": [
         "src/codex_plugin_scanner/guard/adapters/pi_extension_*_source*.py",
+        "src/codex_plugin_scanner/guard/adapters/pi_extension_source*.py",
+        "src/codex_plugin_scanner/guard/adapters/pi_extension_runtime_ownership.py",
         "src/codex_plugin_scanner/guard/adapters/cursor_hook_script_template_*.py",
         "src/codex_plugin_scanner/guard/adapters/opencode_*template.py",
         "src/codex_plugin_scanner/guard/adapters/grok_hook_*_template.py"

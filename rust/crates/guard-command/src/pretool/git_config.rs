@@ -75,7 +75,20 @@ fn probe(
     }
     let home = fs::canonicalize(declared_home).ok()?;
     let cwd = fs::canonicalize(declared_cwd).ok()?;
-    let leading = &arguments[..arguments.len().checked_sub(remaining.len())?];
+    let raw_leading = &arguments[..arguments.len().checked_sub(remaining.len())?];
+    if raw_leading
+        .windows(2)
+        .any(|pair| pair[0] == "-C" && pair[1].starts_with('~'))
+    {
+        let shell_home = execution_environment
+            .and_then(|context| context.home.as_deref())
+            .map(Path::new)
+            .unwrap_or(declared_home);
+        if fs::canonicalize(shell_home).ok().as_deref() != Some(home.as_path()) {
+            return None;
+        }
+    }
+    let leading = expand_home_targets(raw_leading, declared_home);
     if !home.is_dir() || !cwd.is_dir() || !clean_environment(execution_environment, &home, &cwd) {
         return None;
     }
@@ -107,7 +120,7 @@ fn probe(
         // extended-length prefix produced by std::fs::canonicalize.
         .unwrap_or(declared_home);
     command
-        .args(leading)
+        .args(&leading)
         // Git for Windows rejects the `\\?\` prefix from canonicalize.
         // The declared cwd is the path the agent process would use.
         .current_dir(declared_cwd)
@@ -221,7 +234,7 @@ fn probe(
     let filters_unused = !has_filters
         || filters::unused(
             &binary,
-            leading,
+            &leading,
             declared_cwd,
             git_home,
             execution_environment,
@@ -285,6 +298,29 @@ fn probe(
         return Some(false);
     }
     Some(true)
+}
+
+/// The probe runs Git without a shell, so a `-C ~/repo` target the shell
+/// would expand must be expanded here or the probe inspects nothing.
+fn expand_home_targets(leading: &[String], home: &Path) -> Vec<String> {
+    let mut expanded = Vec::with_capacity(leading.len());
+    let mut directory_next = false;
+    for argument in leading {
+        let value = if directory_next {
+            match argument.strip_prefix('~') {
+                Some("") => home.to_string_lossy().into_owned(),
+                Some(rest) if rest.starts_with('/') => {
+                    format!("{}{rest}", home.to_string_lossy())
+                }
+                _ => argument.clone(),
+            }
+        } else {
+            argument.clone()
+        };
+        directory_next = argument == "-C";
+        expanded.push(value);
+    }
+    expanded
 }
 
 fn disabled_boolean(value: &str) -> bool {
@@ -462,3 +498,6 @@ pub(super) fn trusted_command(
     };
     super::trusted_location::trusted_location(&path, home, cwd).then_some(path)
 }
+#[cfg(all(test, unix))]
+#[path = "git_config_home_tests.rs"]
+mod home_tests;

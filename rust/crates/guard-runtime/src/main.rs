@@ -153,6 +153,7 @@ mod guard_store_inventory_page_tests;
 mod guard_store_inventory_vectors_tests;
 mod guard_store_json;
 mod guard_store_lineage;
+mod guard_store_observed_mcp;
 mod guard_store_op;
 mod guard_store_outbox_append;
 mod guard_store_outbox_binding;

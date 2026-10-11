@@ -93,6 +93,9 @@ def test_permission_mutation_retires_native_readiness_before_writing(
         command_states={tool.command_id: "allow"},
     )
     monkeypatch.setattr(store, "_policy_integrity_secret_material", lambda *, create: (b"f" * 32, "fixture-key"))
+    # The observed connector's choices are compiled by the real guard-store
+    # resident; give it the fixture verifier before the first publish.
+    store._provision_resident_verifier()
     refresh = threading.Event()
     entered = threading.Event()
     release = threading.Event()
@@ -102,7 +105,7 @@ def test_permission_mutation_retires_native_readiness_before_writing(
         if refresh.is_set():
             entered.set()
             assert release.wait(10)
-        return _ack(payload)
+        return _ack(payload, guard_home=kwargs.get("guard_home"))
 
     publisher = NativePolicySnapshotPublisher(
         store=store, status_provider=_status, client_request=client_request, poll_interval_seconds=60

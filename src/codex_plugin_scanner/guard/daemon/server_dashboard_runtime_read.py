@@ -18,7 +18,7 @@ from ..store import GuardStore
 from .dashboard_update import merge_dashboard_update_progress
 from .extension_control_api import ExtensionControlApiError
 from .local_cli_http import handle_local_cli_list
-from .server_common import _now, _ServerProxy
+from .server_common import _now, _ServerProxy, _settings_export_payload, _settings_response_payload
 from .server_control_cloud_sync import _managed_controls_publish_for, _maybe_queue_first_cloud_sync
 
 m = _ServerProxy()
@@ -166,13 +166,13 @@ class _DashboardRuntimeReadRoutes:
             return True
         if parsed.path == "/v1/settings/export":
             config = load_guard_config(store.guard_home)
-            self._write_json(m._settings_export_payload(config))
+            self._write_json(_settings_export_payload(config))
             return True
         if parsed.path == "/v1/settings":
             from ..config import maybe_auto_revert_watch
 
             config = maybe_auto_revert_watch(store.guard_home)
-            self._write_json(m._settings_response_payload(store.guard_home, editable_guard_settings(config)))
+            self._write_json(_settings_response_payload(store.guard_home, editable_guard_settings(config)))
             return True
         if parsed.path == "/v1/cloud-review":
             from .cloud_review_settings import cloud_review_settings_status

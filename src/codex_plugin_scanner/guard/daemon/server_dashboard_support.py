@@ -15,6 +15,8 @@ from ..native_daemon_handler import NativeDaemonHandlerError, native_detection_a
 from ..store_approvals import InvalidApprovalCursorError
 from .manager import GUARD_DAEMON_COMPATIBILITY_VERSION
 from .server_common import _NATIVE_HANDLER_UNAVAILABLE, _is_string_object_dict, _ServerProxy
+from .server_control_health import _HEADLESS_OPERATIONS, _headless_safe_failure_reasons
+from .server_control_sync import _safe_int
 
 m = _ServerProxy()
 
@@ -69,7 +71,7 @@ class _DashboardSupportRoutes:
         context = self._harness_context({})
         items = list_harness_setup_items(context, self.server.store)  # type: ignore[attr-defined]
         supported = []
-        failure_reasons = m._headless_safe_failure_reasons()
+        failure_reasons = _headless_safe_failure_reasons()
         listed = [item for item in items if isinstance(item.get("harness"), str)]
         try:
             app_statuses = native_detection_app_statuses(
@@ -87,7 +89,7 @@ class _DashboardSupportRoutes:
                     "harness": harness,
                     "status": app_status,
                     "command_available": bool(item.get("command_available")),
-                    "headless_actions": list(m._HEADLESS_OPERATIONS[:-1]),
+                    "headless_actions": list(_HEADLESS_OPERATIONS[:-1]),
                     "safe_failure_reasons": failure_reasons,
                 }
             )
@@ -102,13 +104,13 @@ class _DashboardSupportRoutes:
                 },
                 "headless_api": {
                     "execution_mode": "guard_cloud_command_queue",
-                    "operations": list(m._HEADLESS_OPERATIONS),
+                    "operations": list(_HEADLESS_OPERATIONS),
                 },
                 "package_firewall_api": {
                     "execution_mode": "guard_cloud_command_queue",
                     "operations": ["status", "connect", "install", "repair", "test", "audit", "sync", "remove"],
                 },
-                "safe_failure_reasons": m._headless_safe_failure_reasons(),
+                "safe_failure_reasons": _headless_safe_failure_reasons(),
                 "supported_harnesses": sorted(item["harness"] for item in supported),
                 "items": supported,
             }
@@ -227,8 +229,8 @@ class _DashboardSupportRoutes:
                 "isTerminal": request.is_terminal,
                 "isExpired": request.is_expired,
                 "result": {
-                    "inserted": m._safe_int(inserted),
-                    "replaced": m._safe_int(replaced),
+                    "inserted": _safe_int(inserted),
+                    "replaced": _safe_int(replaced),
                 },
                 "writePlan": {
                     "additions": list(additions),

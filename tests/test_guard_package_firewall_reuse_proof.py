@@ -6,7 +6,7 @@ from pathlib import Path
 
 from codex_plugin_scanner.guard import shim_probe
 from codex_plugin_scanner.guard.config import load_guard_config
-from codex_plugin_scanner.guard.daemon.server import _SUPPLY_CHAIN_PACKAGE_ACTIONS
+from codex_plugin_scanner.guard.daemon.server_control_routes_post import _SUPPLY_CHAIN_PACKAGE_ACTIONS
 from codex_plugin_scanner.guard.local_supply_chain import build_local_supply_chain_posture
 from codex_plugin_scanner.guard.package_firewall_action_rate_limit import (
     PackageFirewallActionRateLimiter,

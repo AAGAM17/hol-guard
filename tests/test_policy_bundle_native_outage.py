@@ -17,7 +17,6 @@ from codex_plugin_scanner.guard import native_policy_bundle as bridge
 from codex_plugin_scanner.guard import policy_bundle_parser as parser
 from codex_plugin_scanner.guard import policy_bundle_trusted_keys as trusted_keys
 from codex_plugin_scanner.guard.daemon import GuardDaemonServer
-from codex_plugin_scanner.guard.daemon import server as daemon_server_module
 from codex_plugin_scanner.guard.native_policy_bundle import (
     NATIVE_UNAVAILABLE_REJECTION,
     PolicyBundleNativeError,
@@ -27,6 +26,7 @@ from codex_plugin_scanner.guard.runtime import runner as guard_runner_module
 from codex_plugin_scanner.guard.store import GuardStore
 from codex_plugin_scanner.guard.synced_policy import cached_policy_bundle_validation
 from tests.cloud_exception_bundle_fixtures import build_cloud_exception_policy_bundle
+from tests.daemon_control_patching import patch_daemon_global
 from tests.policy_bundle_signing_helpers import (
     policy_bundle_test_keyring,
     policy_bundle_test_verification_key,
@@ -337,7 +337,7 @@ def test_daemon_policy_sync_reports_a_native_rejection_as_a_400_verdict(
     def _rejected(*_args: object, **_kwargs: object) -> object:
         raise PolicyBundleNativeError("limit_bytes")
 
-    monkeypatch.setattr(daemon_server_module, "activate_with_reason", _rejected)
+    patch_daemon_global(monkeypatch, "activate_with_reason", _rejected)
     store = GuardStore(tmp_path / "guard-home")
     status, payload = _post_policy_sync(store, _signed_policy_bundle(store))
 

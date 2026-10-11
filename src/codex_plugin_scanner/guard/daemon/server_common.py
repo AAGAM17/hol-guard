@@ -50,3 +50,13 @@ def _settings_response_payload(guard_home: Path, settings: dict[str, object]) ->
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _settings_export_payload(config: object) -> dict[str, object]:
+    from ..config import editable_guard_settings
+
+    return {
+        "schema_version": 1,
+        "privacy_warning": "Exports include local Guard preferences but not secrets or receipt evidence.",
+        "settings": editable_guard_settings(config),  # pyright: ignore[reportArgumentType]
+    }

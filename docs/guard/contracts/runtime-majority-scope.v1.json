@@ -1443,6 +1443,69 @@
         "entry_points": [],
         "reason": "Cloud connect and pairing lifecycle methods of the OAuth credential store: clearing credentials and sync state on disconnect or reconnect, listing sources, legacy macOS secret migration and recording connect results.",
         "evidence": "Remaining callers are the guard connect and uninstall CLI flows, the daemon connect-flow and cloud-sync control handlers, and the cloud sync runner, all of which the install-uninstall-doctor, daemon-control-plane-routes and cloud-sync-transport exclusions already remove from scope, plus the excluded install and update dispatchers that reach the legacy migration by name. The credential read path (health, profile, local credentials, source loading, recovery and the credential lock) is not excluded because approvals and package entitlement callers use it. The report validates that no retained method or in-scope module references the excluded names."
+      },
+      {
+        "id": "adapter-cline-setup",
+        "category": "install_config",
+        "path": "src/codex_plugin_scanner/guard/adapters/cline.py",
+        "symbols": [
+          "ClineHarnessAdapter.install",
+          "ClineHarnessAdapter.uninstall",
+          "ClineHarnessAdapter._install_transport",
+          "ClineHarnessAdapter._reconcile_transport"
+        ],
+        "entry_points": [],
+        "reason": "Cline adapter install and uninstall, including transport selection and inactive-transport cleanup used only by them.",
+        "evidence": "install and uninstall have no caller in any in-scope module; they are invoked by the excluded install, uninstall and repair dispatchers. The report validates that no retained symbol or in-scope module references the excluded names. Install-only imports live inside these methods so the retained module imports only state and detection helpers."
+      },
+      {
+        "id": "adapter-cline-hooks-setup",
+        "category": "install_config",
+        "path": "src/codex_plugin_scanner/guard/adapters/cline_hooks.py",
+        "symbols": [
+          "install_cline_hooks",
+          "_slot_for_event",
+          "_worker_path",
+          "_write",
+          "_posix_wrapper",
+          "_ps_quote",
+          "_powershell_wrapper"
+        ],
+        "entry_points": [],
+        "reason": "Cline native-hook install: worker and launcher file writes plus the POSIX and PowerShell launcher templates.",
+        "evidence": "install and uninstall have no caller in any in-scope module; they are invoked by the excluded install, uninstall and repair dispatchers. The report validates that no retained symbol or in-scope module references the excluded names. The generated Python hook worker source (_hook_source) stays in scope because that worker runs on each Cline hook call."
+      },
+      {
+        "id": "adapter-cline-plugin-setup",
+        "category": "install_config",
+        "path": "src/codex_plugin_scanner/guard/adapters/cline_plugin.py",
+        "symbols": [
+          "install_cline_plugin",
+          "uninstall_cline_plugin",
+          "cline_plugin_syntax_probe",
+          "_plugin_source",
+          "_package_json",
+          "_atomic_write"
+        ],
+        "entry_points": [],
+        "reason": "Cline AgentPlugin install, uninstall and install-time syntax probe, plus the TypeScript plugin and package.json templates they write.",
+        "evidence": "install and uninstall have no caller in any in-scope module; they are invoked by the excluded install, uninstall and repair dispatchers. The report validates that no retained symbol or in-scope module references the excluded names. The plugin source is a TypeScript asset executed by Cline, not Python on the request path."
+      },
+      {
+        "id": "adapter-cline-mcp-setup",
+        "category": "install_config",
+        "path": "src/codex_plugin_scanner/guard/adapters/cline_mcp.py",
+        "symbols": [
+          "install_cline_mcp_proxies",
+          "restore_cline_mcp_proxies",
+          "_proxy_entry",
+          "_managed_server",
+          "_backup_path",
+          "_atomic_write_bytes"
+        ],
+        "entry_points": [],
+        "reason": "Cline MCP settings rewrite to the Guard proxy on install and restore on uninstall.",
+        "evidence": "install and uninstall have no caller in any in-scope module; they are invoked by the excluded install, uninstall and repair dispatchers. The report validates that no retained symbol or in-scope module references the excluded names."
       }
     ],
     "dynamic_imports": [

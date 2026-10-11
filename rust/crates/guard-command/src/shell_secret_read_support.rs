@@ -274,11 +274,37 @@ fn make_match(
     }
 }
 
+/// Basenames and keywords the shell-read classifier flags beyond the
+/// `secret_sensitivity.classify_secret_path` tables that the file-request
+/// classification used.
+const SHELL_READ_ONLY_BASENAMES: &[&str] =
+    &[".wallet", "wallet.dat", "id_rsa", "id_ed25519", "id_ecdsa"];
+
 /// `classify_secret_path` (:221-288).
 pub(crate) fn classify_secret_path(
     path: &str,
     cwd: Option<&Path>,
     home_dir: Option<&Path>,
+) -> Option<SecretPathMatch> {
+    classify_secret_path_profile(path, cwd, home_dir, false)
+}
+
+/// `classify_secret_path` with the tables of `secret_sensitivity.py`, which
+/// file-request classification uses: bare key basenames are only sensitive
+/// below a `.ssh` directory or after redaction.
+pub(crate) fn classify_request_secret_path(
+    path: &str,
+    cwd: Option<&Path>,
+    home_dir: Option<&Path>,
+) -> Option<SecretPathMatch> {
+    classify_secret_path_profile(path, cwd, home_dir, true)
+}
+
+fn classify_secret_path_profile(
+    path: &str,
+    cwd: Option<&Path>,
+    home_dir: Option<&Path>,
+    request_profile: bool,
 ) -> Option<SecretPathMatch> {
     let requested_path = path.trim().trim_matches('\'').trim_matches('"');
     if requested_path.is_empty() {
@@ -305,7 +331,11 @@ pub(crate) fn classify_secret_path(
             "critical",
         ));
     }
-    if let Some(family) = sensitive_basename_labels().get(basename.as_str()) {
+    let shell_read_only = request_profile && SHELL_READ_ONLY_BASENAMES.contains(&basename.as_str());
+    if let Some(family) = sensitive_basename_labels()
+        .get(basename.as_str())
+        .filter(|_| !shell_read_only)
+    {
         let sensitivity = if *family == "wallet/private-key file" {
             "critical"
         } else {
@@ -320,7 +350,7 @@ pub(crate) fn classify_secret_path(
     }
     if sensitive_basename_keywords()
         .iter()
-        .any(|kw| basename.contains(kw))
+        .any(|kw| basename.contains(kw) && !(request_profile && *kw == "privatekey"))
     {
         return Some(make_match(
             requested_path,

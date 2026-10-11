@@ -58,10 +58,16 @@ def _init_push_repository(path: Path, *, branch: str = "fix/about-partners-link"
     )
 
 
-def test_compound_current_branch_push_to_verified_origin_is_routine(tmp_path: Path) -> None:
+def test_compound_current_branch_push_to_verified_origin_is_routine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     home = tmp_path / "home"
     workspace = home / "projects" / "hol-guard-partners-fix"
     workspace.mkdir(parents=True)
+    # Routine push needs global Git config to belong to the account running Git.
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(native_git_execution_safety, "_account_home_directory", lambda: str(home))
     _init_push_repository(workspace)
 
     command = f"cd {workspace} && git push -u origin fix/about-partners-link 2>&1 | tail -2"

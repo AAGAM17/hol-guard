@@ -262,6 +262,14 @@
         ]
       },
       {
+        "id": "runtime-protection-health-report",
+        "category": "offline_reporting",
+        "reason": "Protection-health summary shown on the dashboard runtime page and in `guard approvals` status. runtime/protection_health_runtime.py turns stored daemon, install and hook-verification state into display signals for a snapshot field. Its only in-scope caller is approvals._build_runtime_snapshot, which is built solely by the dashboard runtime read route and the approvals CLI status command; no hook, daemon enforcement or policy path imports it, and the headline state it feeds is informational.",
+        "path": [
+          "src/codex_plugin_scanner/guard/runtime/protection_health_runtime.py"
+        ]
+      },
+      {
         "id": "extension-authoring",
         "category": "offline_authoring",
         "reason": "Extension/contribution authoring, discovery, probing and custom-extension profile management (offline builder or dashboard control plane). Modules the hook evaluation calls synchronously (package_json_scripts, custom_extension_suggestion, mcp_server_contribution, extension_contribution) stay in scope; only continuity sync, catalog sync/handshake and builder/control surfaces are excluded.",

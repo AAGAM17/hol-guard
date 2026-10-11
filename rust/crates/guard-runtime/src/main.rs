@@ -299,6 +299,7 @@ mod policy_integrity_resolver;
 mod policy_snapshot_build;
 mod policy_store;
 mod prompt_analyze_op;
+mod protect_request_op;
 #[cfg(test)]
 mod registry_vectors_tests;
 mod request_context_op;

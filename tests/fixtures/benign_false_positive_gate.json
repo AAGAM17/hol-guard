@@ -6,10 +6,6 @@
     "cat-credential-lookalike-name@codex": "native_policy_reapproval_required",
     "cat-credential-lookalike-name@omp": "native_policy_reapproval_required",
     "cat-credential-lookalike-name@zcode": "native_policy_reapproval_required",
-    "git-worktree-branch-list@claude-code": "native_command_review_required",
-    "git-worktree-branch-list@codex": "native_command_review_required",
-    "git-worktree-branch-list@omp": "native_command_review_required",
-    "git-worktree-branch-list@zcode": "native_command_review_required",
     "glob-claude@claude-code": "native_file_read_review",
     "ls-slug-dir@claude-code": "native_command_review_required",
     "ls-slug-dir@codex": "native_command_review_required",
@@ -428,6 +424,54 @@
       "tool": "shell",
       "tool_input": {
         "command": "git branch --list"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "git-worktree-branch-vv",
+      "fix_area": "git",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git branch -vv"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "git-worktree-branch-show-current",
+      "fix_area": "git",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git branch --show-current"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "git-worktree-hash-object",
+      "fix_area": "git",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git hash-object src/one.ts README.md"
       },
       "cwd": "worktree",
       "expect": "allow"
@@ -1696,6 +1740,54 @@
       },
       "cwd": "worktree",
       "expect": "not_allow"
+    },
+    {
+      "id": "neg-git-branch-create",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git branch new-feature"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-git-branch-force-delete",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git branch -D main"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-git-hash-object-write",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git hash-object -w README.md"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
     }
   ],
   "pending_pr": {
@@ -1703,10 +1795,6 @@
     "cat-credential-lookalike-name@codex": "unassigned",
     "cat-credential-lookalike-name@omp": "unassigned",
     "cat-credential-lookalike-name@zcode": "unassigned",
-    "git-worktree-branch-list@claude-code": "unassigned",
-    "git-worktree-branch-list@codex": "unassigned",
-    "git-worktree-branch-list@omp": "unassigned",
-    "git-worktree-branch-list@zcode": "unassigned",
     "glob-claude@claude-code": "unassigned",
     "ls-slug-dir@claude-code": "unassigned",
     "ls-slug-dir@codex": "unassigned",

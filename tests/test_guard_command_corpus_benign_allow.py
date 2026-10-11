@@ -33,7 +33,6 @@ _MANIFEST = json.loads(
 _READ_ONLY_FAMILIES = ("navigation-public-read", "source-search-read", "git-local")
 _READ_ONLY_EXTRA = {("shell-composition", "cd-pipeline"), ("shell-composition", "json-pipeline")}
 PENDING: dict[str, str] = {
-    "git-local/branches": "native_command_review_required",
     "source-search-read/source-files": "native_command_review_required",
 }
 

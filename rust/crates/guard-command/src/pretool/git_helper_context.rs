@@ -28,13 +28,19 @@ pub(super) fn git_helper_context_required(
                             .position(|argument| argument == "--")
                             .unwrap_or(arguments.len());
                         let active_options = &arguments[1..option_end];
-                        matches!(arguments[0].as_str(), "diff" | "log" | "show")
-                            && !(active_options
+                        match arguments[0].as_str() {
+                            "diff" | "log" | "show" => !(active_options
                                 .iter()
                                 .any(|argument| argument == "--no-ext-diff")
                                 && active_options
                                     .iter()
-                                    .any(|argument| argument == "--no-textconv"))
+                                    .any(|argument| argument == "--no-textconv")),
+                            // A clean filter is the only helper hash-object runs.
+                            "hash-object" => {
+                                !super::git_hash_object::filters_disabled(&arguments[1..])
+                            }
+                            _ => false,
+                        }
                     })
         })
     })

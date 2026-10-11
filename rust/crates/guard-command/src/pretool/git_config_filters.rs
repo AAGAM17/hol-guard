@@ -4,7 +4,8 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 // Attribute inspection never invokes clean/smudge/process filters. Check every
-// tracked and untracked path; a global filter definition alone cannot execute.
+// tracked and untracked path, or only the `named` operands when the command
+// reads nothing else; a global filter definition alone cannot execute.
 pub(super) fn unused(
     binary: &Path,
     leading: &[String],
@@ -12,6 +13,7 @@ pub(super) fn unused(
     home: &Path,
     environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
     deadline: Instant,
+    named: &[&str],
 ) -> Option<bool> {
     let query = |arguments: &[&str], input: Option<Vec<u8>>, root: Option<&Path>| {
         let mut command = Command::new(binary);
@@ -50,6 +52,24 @@ pub(super) fn unused(
         command.args(arguments);
         bounded_output(command, input, deadline)
     };
+    if !named.is_empty() {
+        // Operands resolve against the caller's directory. A path outside the
+        // work tree makes check-attr fail, which keeps the command reviewed.
+        let mut batch = Vec::new();
+        for path in named {
+            if path.is_empty() || path.contains('\0') || path.len() > 4096 {
+                return None;
+            }
+            batch.extend_from_slice(path.as_bytes());
+            batch.push(0);
+        }
+        let attributes = query(
+            &["check-attr", "-z", "--stdin", "filter"],
+            Some(batch.clone()),
+            None,
+        )?;
+        return filters_unset(&attributes, &batch);
+    }
     let root = query(&["rev-parse", "--show-toplevel"], None, None)?;
     let root = std::str::from_utf8(&root).ok()?.strip_suffix('\n')?;
     if root.len() > 4096 || root.chars().any(char::is_control) {
@@ -134,22 +154,30 @@ pub(super) fn unused(
             Some(batch.to_vec()),
             Some(&root),
         )?;
-        let mut fields = attributes.split(|byte| *byte == 0);
-        for path in batch
-            .split(|byte| *byte == 0)
-            .filter(|path| !path.is_empty())
-        {
-            if fields.next()? != path || fields.next()? != b"filter" {
-                return None;
-            }
-            if !matches!(fields.next()?, b"unspecified" | b"unset") {
-                return Some(false);
-            }
-        }
-        if fields.next()? != b"" || fields.next().is_some() {
-            return None;
+        if !filters_unset(&attributes, batch)? {
+            return Some(false);
         }
         batches += 1;
+    }
+    Some(true)
+}
+
+/// Parse `check-attr -z filter` output for exactly the paths in `batch`.
+fn filters_unset(attributes: &[u8], batch: &[u8]) -> Option<bool> {
+    let mut fields = attributes.split(|byte| *byte == 0);
+    for path in batch
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+    {
+        if fields.next()? != path || fields.next()? != b"filter" {
+            return None;
+        }
+        if !matches!(fields.next()?, b"unspecified" | b"unset") {
+            return Some(false);
+        }
+    }
+    if fields.next()? != b"" || fields.next().is_some() {
+        return None;
     }
     Some(true)
 }

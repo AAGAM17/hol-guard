@@ -18,7 +18,10 @@ pub(super) fn execution_free(
 ) -> Option<bool> {
     let remaining = crate::command_compatibility::git_inspection_arguments(arguments, context)?;
     let operation = remaining.first()?.as_str();
-    if !matches!(operation, "status" | "diff" | "log" | "show") {
+    if !matches!(
+        operation,
+        "status" | "diff" | "log" | "show" | "branch" | "hash-object"
+    ) {
         return None;
     }
     Some(
@@ -157,8 +160,10 @@ fn probe(
     }
     let pager_key = format!("pager.{operation}");
     let pager_setting = effective.get(pager_key.as_str()).copied();
+    // Like status, hash-object pages only when its own pager.* key says so.
+    let pages_by_default = !matches!(operation, "status" | "hash-object");
     let configured_pager = pager_setting.or_else(|| {
-        (operation != "status")
+        pages_by_default
             .then(|| effective.get("core.pager").copied())
             .flatten()
     });
@@ -168,8 +173,8 @@ fn probe(
         || leading
             .iter()
             .any(|argument| matches!(argument.as_str(), "-P" | "--no-pager"));
-    let configured_paging = !no_pager
-        && configured_pager.map_or(operation != "status", |value| !disabled_boolean(value));
+    let configured_paging =
+        !no_pager && configured_pager.map_or(pages_by_default, |value| !disabled_boolean(value));
     let configured_pager_is_cat = configured_pager.is_some_and(|value| value == "cat");
     let paging = configured_paging
         && !configured_pager_is_cat
@@ -186,7 +191,13 @@ fn probe(
     }) {
         return Some(false);
     }
-    let has_filters = matches!(operation, "status" | "diff")
+    // hash-object cleans only its named files, and only without --no-filters.
+    let hashed = (operation == "hash-object")
+        .then(|| super::git_hash_object::read_operands(&remaining[1..]))
+        .flatten()
+        .filter(|_| !super::git_hash_object::filters_disabled(&remaining[1..]));
+    let filtered = matches!(operation, "status" | "diff") || hashed.is_some();
+    let has_filters = filtered
         && effective
             .iter()
             .any(|(key, value)| key.starts_with("filter.") && !value.is_empty());
@@ -198,6 +209,7 @@ fn probe(
             git_home,
             execution_environment,
             deadline,
+            hashed.as_deref().unwrap_or_default(),
         )?;
     for (key, value) in effective {
         let disabled = disabled_boolean(value);
@@ -231,9 +243,7 @@ fn probe(
             key if key.starts_with("diff.") && key.ends_with(".textconv") => {
                 !no_textconv && !value.is_empty()
             }
-            key if key.starts_with("filter.") => {
-                matches!(operation, "status" | "diff") && !value.is_empty() && !filters_unused
-            }
+            key if key.starts_with("filter.") => filtered && !value.is_empty() && !filters_unused,
             "format.pretty" => matches!(operation, "log" | "show") && value.contains("%G"),
             key if key.starts_with("pretty.") => {
                 matches!(operation, "log" | "show") && value.contains("%G")

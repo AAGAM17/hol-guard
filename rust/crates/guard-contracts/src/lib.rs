@@ -139,6 +139,8 @@ pub use authoritative_decision::*;
 
 mod package_authority;
 pub use package_authority::*;
+mod package_audit_projection;
+pub use package_audit_projection::*;
 mod supply_chain_egress;
 pub use supply_chain_egress::*;
 

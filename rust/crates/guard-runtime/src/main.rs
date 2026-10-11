@@ -240,6 +240,7 @@ mod oci_path;
 mod omp_yield_input_scan;
 mod oneshot;
 mod package_approval_hash_op;
+mod package_audit_projection_op;
 mod package_authority_config;
 mod package_authority_op;
 mod package_evaluation_compose_op;

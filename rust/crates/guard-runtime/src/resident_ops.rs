@@ -352,6 +352,9 @@ pub(crate) fn evaluate_resident_bytes(
             ResidentOperationV1::PackagePosture(request) => {
                 crate::package_posture_op::evaluate_package_posture(&request)
             }
+            ResidentOperationV1::PackageAuditProjection(request) => {
+                crate::package_audit_projection_op::evaluate_package_audit_projection(&request)
+            }
             ResidentOperationV1::WorkspaceInventory(request) => {
                 crate::workspace_inventory_op::evaluate_workspace_inventory(&request)
             }
@@ -467,6 +470,7 @@ fn operation_guard_home(operation: &ResidentOperationV1) -> Option<&str> {
         ResidentOperationV1::PackageApprovalHash(request) => Some(&request.guard_home),
         ResidentOperationV1::PackagePolicyResolve(request) => Some(&request.guard_home),
         ResidentOperationV1::PackagePosture(request) => Some(&request.guard_home),
+        ResidentOperationV1::PackageAuditProjection(request) => Some(&request.guard_home),
         ResidentOperationV1::WorkspaceInventory(request) => Some(&request.guard_home),
         ResidentOperationV1::PolicyDecisionLookup(request) => Some(&request.guard_home),
         ResidentOperationV1::ContainedNodeExecute(request) => Some(&request.guard_home),
@@ -501,6 +505,11 @@ fn operation_store_path(operation: &ResidentOperationV1) -> Option<&str> {
         ResidentOperationV1::PackageAuthorityDecide(request) => Some(&request.store_path),
         ResidentOperationV1::PackageAdvisoryIds(request) => Some(&request.store_path),
         ResidentOperationV1::PackageApprovalHash(request) => request.store_path.as_deref(),
+        ResidentOperationV1::PackageAuditProjection(request) => match &request.query {
+            guard_contracts::PackageAuditQueryV1::Receipt(query) => query.store_path.as_deref(),
+            guard_contracts::PackageAuditQueryV1::Aliases(query) => Some(&query.store_path),
+            _ => None,
+        },
         ResidentOperationV1::PolicyDecisionLookup(request) => Some(&request.store_path),
         ResidentOperationV1::LocalCliGrantDecide(request) => Some(&request.store_path),
         ResidentOperationV1::LocalMcpGrantDecide(request) => Some(&request.store_path),

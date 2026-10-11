@@ -11,8 +11,10 @@ from pathlib import Path
 
 import pytest
 
+from codex_plugin_scanner.guard.config import resolve_guard_home
 from codex_plugin_scanner.guard.containment_execution_support import containment_positive_proof
 from codex_plugin_scanner.guard.daemon.manager import current_guard_daemon_runtime_fingerprint
+from codex_plugin_scanner.guard.native_context import ensure_resident_prerequisite
 from codex_plugin_scanner.guard.runtime.containment_contract import ContainmentPolicy, ContainmentRequest
 from codex_plugin_scanner.guard.runtime.containment_executor import execute_contained, file_sha256
 from codex_plugin_scanner.guard.runtime.containment_health import probe_containment_health
@@ -98,6 +100,9 @@ test('contained runtime boundaries', async () => {
     )
     (workspace / "boundary.test.ts").write_text(script, encoding="utf-8")
     args = ("--no-install", "vitest", "run", "boundary.test.ts", "--reporter=dot")
+    # The package-intent parser answers only for an enrolled guard home, the way
+    # production entry points provision it before their first resident request.
+    assert ensure_resident_prerequisite(resolve_guard_home())
     intent = parse_package_intent("npx " + " ".join(args), workspace=workspace)
     assert intent is not None and len(intent.local_executions) == 1
     evidence = build_local_node_runner_evidence("npx", args, intent.local_executions[0], workspace=workspace)

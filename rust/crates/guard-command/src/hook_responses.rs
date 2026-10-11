@@ -22,7 +22,7 @@ const POST_BLOCK_REASON: &str =
 const POST_WARN_REASON: &str =
     "HOL Guard raised a non-blocking warning under the installed native policy.";
 const PROMPT_UNAVAILABLE_REASON: &str = "HOL Guard could not complete native prompt review safely.";
-const SILENT_WARNING_CODES: [&str; 1] = ["native_policy_observed"];
+const SILENT_WARNING_CODES: [&str; 2] = ["native_policy_observed", "native_policy_warning"];
 
 /// Lower-cased, dash-normalised harness name used to select an envelope.
 pub fn canonical_hook_harness(harness: &str) -> String {

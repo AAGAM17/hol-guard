@@ -1169,6 +1169,39 @@
       "expect": "allow"
     },
     {
+      "id": "omp-grep-host-flags",
+      "fix_area": "omp",
+      "harnesses": [
+        "omp"
+      ],
+      "tool": "grep",
+      "tool_input": {
+        "path": "${WORKTREE}",
+        "pattern": "export",
+        "case": false,
+        "gitignore": true,
+        "skip": null
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "omp-glob-host-flags",
+      "fix_area": "omp",
+      "harnesses": [
+        "omp"
+      ],
+      "tool": "glob",
+      "tool_input": {
+        "path": "${WORKTREE}",
+        "hidden": false,
+        "gitignore": true,
+        "limit": 200
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "omp-eval-py-read",
       "fix_area": "omp",
       "harnesses": [

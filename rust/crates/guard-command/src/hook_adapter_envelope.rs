@@ -378,6 +378,22 @@ fn adjust_omp(envelope: &mut Envelope) {
     envelope.action_id = envelope.compute_action_id();
 }
 
+/// Pi's `ls` and `find` built-ins list names, like their Oh My Pi
+/// counterparts. Pi has no `task`, `eval` or bookkeeping tools.
+fn adjust_pi(envelope: &mut Envelope) {
+    if envelope.mcp_server.is_some() || envelope.command.is_some() {
+        return;
+    }
+    if envelope.event_name == "UserPromptSubmit" && envelope.prompt_excerpt.is_some() {
+        return;
+    }
+    let tool = py_lower(envelope.tool_name.as_deref().unwrap_or(""));
+    if matches!(tool.as_str(), "ls" | "find") {
+        "file_read".clone_into(&mut envelope.action_type);
+        envelope.action_id = envelope.compute_action_id();
+    }
+}
+
 fn adjust_cline(envelope: &mut Envelope, prepared: &OMap) {
     let original = prepared
         .get("tool_input")
@@ -404,6 +420,7 @@ pub fn normalize_harness_envelope(
         "grok" => adjust_grok(&mut envelope),
         "cline" => adjust_cline(&mut envelope, &prepared),
         "omp" => adjust_omp(&mut envelope),
+        "pi" => adjust_pi(&mut envelope),
         _ => {}
     }
     Ok(envelope.into_map())

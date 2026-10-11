@@ -2,7 +2,8 @@
 //! bookkeeping tools, names-only listings, bounded `grep` scopes, and the
 //! literal-only `eval` bridge. Every proof is gated on harness `omp`,
 //! `PreToolUse`, and an exact tool name; anything else falls through to the
-//! ordinary generic review path.
+//! ordinary generic review path. Upstream Pi ships the same `ls`, `find` and
+//! `grep` built-ins, so those listing and search proofs also cover harness `pi`.
 
 #[path = "generic_omp_eval.rs"]
 mod eval;
@@ -53,7 +54,7 @@ pub(super) fn evaluate(
     context: &OmpContext<'_>,
 ) -> Option<PreToolResultV1> {
     if context.event != "PreToolUse"
-        || context.harness != "omp"
+        || !matches!(context.harness, "omp" | "pi")
         || signals.sensitive_target
         || signals.command.is_some()
         || signals.package_present
@@ -62,6 +63,9 @@ pub(super) fn evaluate(
         return None;
     }
     let tool = signals.tool_name.as_deref()?;
+    if context.harness == "pi" && !matches!(tool, "find" | "ls" | "grep") {
+        return None;
+    }
     match tool {
         "yield" => {
             yield_report::signal_payload(payload)?;
@@ -150,14 +154,18 @@ fn contained_selector(value: &str) -> bool {
 
 /// Modeled non-string options from the host tool schemas: grep takes
 /// `case`, `gitignore` and a `skip` offset; glob/ls/find take `hidden`,
-/// `gitignore` and a `limit`; read takes line paging. Anything else may change what
-/// the host touches, so it goes to review.
+/// `gitignore` and a `limit`; read takes line paging. Pi's grep adds
+/// `ignoreCase`, `literal`, `context` lines and a `limit`, which only shape
+/// matches inside the proven scope. Anything else may change what the host
+/// touches, so it goes to review.
 pub(super) fn modeled_scalar(tool: &str, key: &str, value: &Value) -> bool {
     let bounded = |value: &Value| value.as_u64().is_some_and(|count| count <= 100_000);
     match (tool, key, value) {
         ("grep", "case" | "gitignore", Value::Bool(_)) => true,
         ("grep", "skip", Value::Null) => true,
         ("grep", "skip", number @ Value::Number(_)) => bounded(number),
+        ("grep", "ignoreCase" | "literal", Value::Bool(_)) => true,
+        ("grep", "context" | "limit", number @ Value::Number(_)) => bounded(number),
         ("ls" | "glob" | "find", "hidden" | "gitignore", Value::Bool(_)) => true,
         ("ls" | "glob" | "find", "limit", number @ Value::Number(_)) => bounded(number),
         // Older read schemas paged by line; the current one ignores them.
@@ -227,6 +235,14 @@ fn listing(
     {
         return None;
     }
+    // `find` and a `pattern` walk the tree below the root and return names
+    // only, so an ordinary project root is fine even with a `.env` inside;
+    // reading that file stays gated. A walk from the home directory or above
+    // it reaches credential stores and agent state, so it stays on review.
+    let recursive = signals.tool_name.as_deref() == Some("find") || input.contains_key("pattern");
+    if recursive && walk_covers_home(target, context) {
+        return None;
+    }
     super::super::safe_reads::bounded_omp_directory_read_target(
         target,
         context.path.home_dir,
@@ -239,6 +255,25 @@ fn listing(
             "The Rust authority proved this names-only listing targets a verified ordinary directory.",
         )
     })
+}
+
+/// True when the walk root is the home directory or one of its ancestors,
+/// or when either cannot be resolved.
+fn walk_covers_home(target: &str, context: &OmpContext<'_>) -> bool {
+    let (Some(home), Some(cwd)) = (context.path.home_dir, context.path.cwd) else {
+        return true;
+    };
+    let root = if target == "~" {
+        std::path::PathBuf::from(home)
+    } else if let Some(rest) = target.strip_prefix("~/") {
+        std::path::Path::new(home).join(rest)
+    } else {
+        std::path::Path::new(cwd).join(target)
+    };
+    match (std::fs::canonicalize(root), std::fs::canonicalize(home)) {
+        (Ok(root), Ok(home)) => home.starts_with(root),
+        _ => true,
+    }
 }
 
 fn glob_directory(target: &str) -> Option<&str> {

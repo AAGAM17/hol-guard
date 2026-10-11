@@ -43,6 +43,7 @@ from ..native_policy_snapshot import get_native_policy_snapshot_publisher
 from ..native_policy_snapshot_acked import acked_snapshot_binding_for_store as acked_snapshot_binding_for_store
 from ..native_policy_snapshot_constants import _PUBLISH_TIMEOUT_SECONDS
 from ..native_runtime import NativeRuntimeStatus, native_runtime_status
+from ..native_runtime_status_share import share_verified_runtime_status
 from .hook_request_parsing import (
     runtime_hook_event_name,
 )
@@ -170,7 +171,9 @@ class HookWorker(HookWorkerNativeMixin):
         if callable(current_runtime_status):
             status = current_runtime_status()
             if status is not None:
-                return cast(NativeRuntimeStatus, status)
+                verified = cast(NativeRuntimeStatus, status)
+                share_verified_runtime_status(verified)
+                return verified
         return native_runtime_status()
 
     def close(self, *, deadline_monotonic: float | None = None) -> bool:

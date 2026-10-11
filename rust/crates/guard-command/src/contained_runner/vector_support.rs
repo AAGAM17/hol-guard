@@ -107,7 +107,7 @@ impl Workspace {
             fs::create_dir_all(path.parent().expect("parent")).expect("parent dirs");
             fs::write(&path, text(item, "text")).expect("write fixture");
             if item["exec"] == Value::Bool(true) {
-                fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("chmod");
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).expect("chmod");
             }
         }
         for item in fixture["links"].as_array().into_iter().flatten() {

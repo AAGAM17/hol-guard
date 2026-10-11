@@ -253,9 +253,10 @@
       {
         "id": "cloud-command-queue",
         "category": "async_control_plane",
-        "reason": "Guard Cloud command-queue worker and executors; remote job processing, not request-path enforcement.",
+        "reason": "Guard Cloud command-queue worker and executors; remote job processing, not request-path enforcement. runtime/command_capability.py holds the queue capability verification and job authorization; its only in-scope caller is approvals._build_runtime_snapshot, which adds the informational cloud_command_capability field to the approval-center runtime snapshot. That snapshot is built only by the dashboard runtime read route and the `approvals` CLI status read, never from hook admission, decision, consume or dispatch. Through it the module was the sole in-scope importer of review_contracts and review_signature_verification, which leave scope with it.",
         "path": [
           "src/codex_plugin_scanner/guard/runtime/command_queue*.py",
+          "src/codex_plugin_scanner/guard/runtime/command_capability.py",
           "src/codex_plugin_scanner/guard/runtime/command_executors.py",
           "src/codex_plugin_scanner/guard/daemon/command_queue_worker.py"
         ]

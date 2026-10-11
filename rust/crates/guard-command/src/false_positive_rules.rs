@@ -160,7 +160,7 @@ pub const SOURCE_INSPECTION_SENSITIVE_PARTS: &[&str] = &[
     "credentials",
 ];
 pub const SOURCE_INSPECTION_BENIGN_DOTFILES: &[&str] = &[".nvmrc"];
-const KNOWN_SKILL_DOC_ROOT_SUFFIXES: &[&str] = &[
+pub(crate) const KNOWN_SKILL_DOC_ROOT_SUFFIXES: &[&str] = &[
     ".codex/superpowers/skills",
     ".codex/skills",
     ".agents/skills",

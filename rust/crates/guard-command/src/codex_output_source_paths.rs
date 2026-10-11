@@ -7,10 +7,11 @@ use crate::codex_output_env::Ctx;
 use crate::codex_output_fs as pyfs;
 use crate::codex_output_py::{py_strip, strip_quotes, PyPath};
 use crate::false_positive_rules::{
-    target_is_known_skill_doc_path, SOURCE_INSPECTION_BENIGN_DOTFILES,
-    SOURCE_INSPECTION_EXTENSIONS, SOURCE_INSPECTION_PARTS, SOURCE_INSPECTION_SENSITIVE_PARTS,
+    target_is_known_skill_doc_path, KNOWN_SKILL_DOC_ROOT_SUFFIXES,
+    SOURCE_INSPECTION_BENIGN_DOTFILES, SOURCE_INSPECTION_EXTENSIONS, SOURCE_INSPECTION_PARTS,
+    SOURCE_INSPECTION_SENSITIVE_PARTS,
 };
-use crate::shell_secret_read_support::classify_secret_path;
+use crate::shell_secret_read_support::{classify_request_secret_path, classify_secret_path};
 
 const EXTRA_EXTERNAL_SENSITIVE: &[&str] = &[
     "auth",
@@ -73,24 +74,27 @@ pub(crate) fn hidden_parts_are_allowed_source(parts: &[String]) -> bool {
     workflow && hidden == [".github"]
 }
 
-/// `SourcePathDecision` without the resolved path no caller reads.
+/// `SourcePathDecision`; `resolved_path` is set on every allow.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct SourceDecision {
     pub allowed: bool,
     pub reason_code: &'static str,
+    pub resolved_path: Option<PyPath>,
 }
 
 fn deny(reason_code: &'static str) -> SourceDecision {
     SourceDecision {
         allowed: false,
         reason_code,
+        resolved_path: None,
     }
 }
 
-fn allow(reason_code: &'static str) -> SourceDecision {
+fn allow(reason_code: &'static str, resolved_path: Option<PyPath>) -> SourceDecision {
     SourceDecision {
         allowed: true,
         reason_code,
+        resolved_path,
     }
 }
 
@@ -188,17 +192,86 @@ pub(crate) fn resolve_source_candidate_path(
     Some(base.join(&target_path.to_string()))
 }
 
+/// `resolve_known_skill_doc_path`: a `skill://` URI to its installed document.
+pub(crate) fn resolve_known_skill_doc_path(
+    target: &str,
+    home_dir: Option<&PyPath>,
+    ctx: &Ctx,
+) -> Option<PyPath> {
+    if ["$", "`", "<", ">", "|", ";", "&"]
+        .iter()
+        .any(|marker| target.contains(marker))
+    {
+        return None;
+    }
+    let rest = target.strip_prefix("skill://")?;
+    let name = py_strip(rest).trim_matches(|c| c == '\'' || c == '"');
+    if name.is_empty() {
+        return None;
+    }
+    let name = crate::home_path_text::normalize_path(name, None).replace('\\', "/");
+    if name.starts_with("..") || name == "." || name.starts_with('/') {
+        return None;
+    }
+    // `Path.resolve()` anchors a relative home at the process working directory.
+    let home = home_dir.unwrap_or(&ctx.default_home);
+    let home = if home.is_absolute() {
+        home.clone()
+    } else {
+        ctx.process_cwd.join(&home.to_string())
+    };
+    for suffix in KNOWN_SKILL_DOC_ROOT_SUFFIXES {
+        let candidate_dir = home.join(suffix).join(&name);
+        let candidate_file = candidate_dir.join("SKILL.md");
+        if pyfs::is_file(&candidate_file) != Ok(true) {
+            continue;
+        }
+        let (Some(real_dir), Some(real_file)) = (
+            pyfs::resolve(&candidate_dir),
+            pyfs::resolve(&candidate_file),
+        ) else {
+            continue;
+        };
+        if real_file.relative_to(&real_dir).is_some() {
+            return Some(real_file);
+        }
+    }
+    None
+}
+
 fn std_path(path: Option<&PyPath>) -> Option<PathBuf> {
     path.map(|value| PathBuf::from(value.to_string()))
 }
 
-/// `source_path_is_allowed`.
+/// `source_path_is_allowed` with the strict shell-read secret table.
 pub(crate) fn source_path_is_allowed(
     target: &str,
     cwd: Option<&PyPath>,
     home_dir: Option<&PyPath>,
     ctx: &Ctx,
     allow_external_source: bool,
+) -> SourceDecision {
+    source_path_decision(target, cwd, home_dir, ctx, allow_external_source, false)
+}
+
+/// `source_path_is_allowed` with the request-classification secret table.
+pub(crate) fn source_path_is_allowed_for_request(
+    target: &str,
+    cwd: Option<&PyPath>,
+    home_dir: Option<&PyPath>,
+    ctx: &Ctx,
+    allow_external_source: bool,
+) -> SourceDecision {
+    source_path_decision(target, cwd, home_dir, ctx, allow_external_source, true)
+}
+
+fn source_path_decision(
+    target: &str,
+    cwd: Option<&PyPath>,
+    home_dir: Option<&PyPath>,
+    ctx: &Ctx,
+    allow_external_source: bool,
+    request_profile: bool,
 ) -> SourceDecision {
     let stripped = strip_quotes(py_strip(target));
     if stripped.is_empty() {
@@ -217,7 +290,12 @@ pub(crate) fn source_path_is_allowed(
     }
     let cwd_std = std_path(cwd);
     let home_std = std_path(Some(home_dir.unwrap_or(&ctx.default_home)));
-    if classify_secret_path(stripped, cwd_std.as_deref(), home_std.as_deref()).is_some() {
+    let classify = if request_profile {
+        classify_request_secret_path
+    } else {
+        classify_secret_path
+    };
+    if classify(stripped, cwd_std.as_deref(), home_std.as_deref()).is_some() {
         return deny("sensitive_basename");
     }
     if lexical
@@ -227,7 +305,9 @@ pub(crate) fn source_path_is_allowed(
         return deny("sensitive_basename");
     }
     if target_is_known_skill_doc_path(stripped, home_std.as_deref()) {
-        return allow("known_skill_doc_path");
+        let resolved = resolve_known_skill_doc_path(stripped, home_dir, ctx)
+            .or_else(|| resolve_source_candidate_path(stripped, cwd, home_dir, ctx));
+        return allow("known_skill_doc_path", resolved);
     }
     if let Some(home) = home_dir {
         let safety = home.join(".hol-support").join("SAFETY.md");
@@ -235,7 +315,7 @@ pub(crate) fn source_path_is_allowed(
             && pyfs::is_file(&safety) == Ok(true)
             && pyfs::is_symlink(&safety) == Ok(false)
         {
-            return allow("guard_safety_doc_path");
+            return allow("guard_safety_doc_path", pyfs::resolve(&safety));
         }
     }
     let Some(base_dir) = pyfs::resolve(cwd.unwrap_or(&ctx.process_cwd)) else {
@@ -292,20 +372,20 @@ pub(crate) fn source_path_is_allowed(
     }
     let normalized = parts.join("/");
     if SOURCE_INSPECTION_PARTS.contains(&normalized.as_str()) {
-        return allow("source_prefix_exact");
+        return allow("source_prefix_exact", Some(candidate));
     }
     if has_source_prefix(&normalized) {
-        return allow("source_prefix");
+        return allow("source_prefix", Some(candidate));
     }
     if lowered.iter().any(|part| is_source_part(part)) {
-        return allow("source_inspection_part");
+        return allow("source_inspection_part", Some(candidate));
     }
     let literal = PyPath::new(stripped);
     if is_benign_source_dotfile(&literal.name().to_lowercase()) {
-        return allow("benign_source_dotfile");
+        return allow("benign_source_dotfile", Some(candidate));
     }
     if is_source_extension(&literal.suffix().to_lowercase()) {
-        return allow("source_extension");
+        return allow("source_extension", Some(candidate));
     }
     deny("not_source_like")
 }
@@ -357,7 +437,7 @@ fn external_decision(
     if !source_like {
         return deny("not_source_like");
     }
-    allow("external_source_path")
+    allow("external_source_path", Some(candidate.clone()))
 }
 
 /// Convenience for callers holding std paths.

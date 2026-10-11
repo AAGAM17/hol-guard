@@ -87,9 +87,14 @@ fn check_entry(entry: &str) {
         if vector.host_dependent {
             continue;
         }
-        let actual =
-            guard_command::sfrs_replay::replay_entry(entry, &vector.args, &vector.evaluation)
-                .unwrap_or_else(|error| json!({ "replay_error": error }));
+        let actual = guard_command::sfrs_replay::replay_entry(
+            entry,
+            &vector.args,
+            &vector.evaluation,
+            &vector.env,
+            &vector.dir,
+        )
+        .unwrap_or_else(|error| json!({ "replay_error": error }));
         let expected = vector.expected(&actual);
         compared += 1;
         if actual != expected {

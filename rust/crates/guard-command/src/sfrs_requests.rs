@@ -14,65 +14,11 @@ use crate::home_path_text::{expand_home, normalize_path};
 use crate::hook_adapter_envelope_text::apply_patch_target_paths;
 use crate::hook_adapter_value::{OMap, OValue};
 use crate::launch_identity_common::sha256_hex;
+use crate::sfrs_constants::{
+    FILE_READ_TOOL_NAMES, FILE_WRITE_TOOL_NAMES, PATH_KEYS, PATH_LIST_KEYS,
+};
 use crate::sfrs_json::dumps_sorted;
 use crate::shell_secret_read_support::classify_request_secret_path;
-
-/// `_FILE_READ_TOOL_NAMES` (constants_core.py).
-const FILE_READ_TOOL_NAMES: &[&str] = &[
-    "read",
-    "read_file",
-    "open_file",
-    "view",
-    "view_file",
-    "cat_file",
-];
-
-/// `_FILE_WRITE_TOOL_NAMES` (constants_core.py).
-const FILE_WRITE_TOOL_NAMES: &[&str] = &[
-    "edit",
-    "edit_file",
-    "multiedit",
-    "strreplace",
-    "delete",
-    "delete_file",
-    "write",
-    "write_file",
-    "apply_patch",
-];
-
-/// `_PATH_KEYS` (constants_core.py).
-const PATH_KEYS: &[&str] = &[
-    "path",
-    "file_path",
-    "filePath",
-    "filepath",
-    "file",
-    "filename",
-    "target_path",
-    "targetPath",
-];
-
-/// `_PATH_LIST_KEYS` (constants_core.py).
-const PATH_LIST_KEYS: &[&str] = &["paths", "file_paths", "filePaths"];
-
-/// `_COMMAND_KEYS` (constants_core.py).
-const COMMAND_KEYS: &[&str] = &[
-    "command",
-    "cmd",
-    "shell_command",
-    "shellCommand",
-    "pattern",
-    "query",
-    "search",
-    "regex",
-];
-
-/// `COMMAND_CANDIDATE_LIST_KEYS` (constants_core.py).
-pub(crate) const COMMAND_CANDIDATE_LIST_KEYS: &[&str] =
-    &["argv", "args", "command", "cmd", "commands"];
-
-/// `COMMAND_SEQUENCE_KEYS` (constants_core.py).
-pub(crate) const COMMAND_SEQUENCE_KEYS: &[&str] = &["commands"];
 
 /// `SecretPathMatch` with owned fields.
 #[derive(Clone, Debug)]

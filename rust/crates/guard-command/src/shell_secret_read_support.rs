@@ -14,9 +14,11 @@ use std::sync::OnceLock;
 use fancy_regex::Regex as FancyRegex;
 use regex::Regex;
 
+use crate::codex_output_fnmatch::fnmatchcase;
 use crate::command_model::CanonicalCommand;
 use crate::home_path_text::{expand_home, normalize_path};
 use crate::runtime_read_paths::path_is_relative_to;
+use crate::sfrs_read_only_filters::read_only_lookup_target_is_safe;
 use crate::shell_execution_context_support::{
     split_shell_tokens, SHELL_CWD_MISSING_DIRECTORY, SHELL_CWD_NOT_DIRECTORY,
     SHELL_CWD_UNREADABLE_DIRECTORY,
@@ -672,81 +674,6 @@ fn target_is_known_skill_doc_path(target: &str, home_dir: Option<&Path>) -> bool
 // read_only_filters.py `_read_only_lookup_target_is_safe` (:376-400).
 // ---------------------------------------------------------------------------
 
-/// `_read_only_lookup_target_is_safe` (:376-400).
-#[allow(dead_code)]
-fn read_only_lookup_target_is_safe(
-    target: &str,
-    allow_dirs: bool,
-    home_dir: Option<&Path>,
-) -> bool {
-    let stripped = target.trim().trim_matches('\'').trim_matches('"');
-    if stripped.is_empty() || stripped == "." {
-        return allow_dirs;
-    }
-    if stripped == "-" {
-        return false;
-    }
-    if stripped
-        .chars()
-        .any(|c| matches!(c, '$' | '`' | '<' | '>' | '|' | ';' | '&'))
-    {
-        return false;
-    }
-    let normalized = stripped.replace('\\', "/");
-    let parts: Vec<&str> = Path::new(&normalized)
-        .components()
-        .filter_map(|c| match c {
-            std::path::Component::Normal(s) => s.to_str(),
-            _ => None,
-        })
-        .collect();
-    let lowered_parts: Vec<String> = parts.iter().map(|p| p.to_lowercase()).collect();
-    if parts.is_empty() {
-        return allow_dirs;
-    }
-    if parts.contains(&"..")
-        || stripped
-            .chars()
-            .any(|c| matches!(c, '*' | '?' | '[' | ']' | '{' | '}'))
-    {
-        return false;
-    }
-    if lowered_parts
-        .iter()
-        .any(|p| SOURCE_INSPECTION_SENSITIVE_PARTS.contains(&p.as_str()))
-    {
-        return false;
-    }
-    if target_is_known_skill_doc_path(stripped, home_dir) {
-        return true;
-    }
-    let hidden_parts: Vec<&String> = lowered_parts
-        .iter()
-        .filter(|p| p.starts_with('.'))
-        .collect();
-    if !hidden_parts.is_empty()
-        && !hidden_parts
-            .iter()
-            .all(|p| SOURCE_INSPECTION_BENIGN_DOTFILES.contains(&p.as_str()))
-    {
-        return false;
-    }
-    if lowered_parts
-        .iter()
-        .any(|p| SOURCE_INSPECTION_PARTS.contains(&p.as_str()))
-    {
-        return true;
-    }
-    let suffix = Path::new(&normalized)
-        .extension()
-        .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
-        .unwrap_or_default();
-    if SOURCE_INSPECTION_EXTENSIONS.contains(&suffix.as_str()) {
-        return true;
-    }
-    allow_dirs
-}
-
 // ---------------------------------------------------------------------------
 // local_read_operands.py (459 lines): operand extraction + containment.
 // ---------------------------------------------------------------------------
@@ -776,8 +703,7 @@ const RG_LONG_OPTIONS_WITH_VALUE: &[&str] = &[
 ];
 
 /// `_ripgrep_args_expand_hidden_files` (:36-58).
-#[allow(dead_code)]
-fn ripgrep_args_expand_hidden_files(args: &[String]) -> bool {
+pub(crate) fn ripgrep_args_expand_hidden_files(args: &[String]) -> bool {
     let mut expect_value = false;
     for arg in args {
         if expect_value {
@@ -930,7 +856,7 @@ fn bounded_local_read_glob_is_safe(candidate: &Path, root: &Path, allow_dirs: bo
     };
     for entry in dir.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        if !fnmatchcase(pattern, &name) {
+        if !fnmatchcase(&name, pattern) {
             continue;
         }
         let resolved = match entry.path().canonicalize() {
@@ -961,64 +887,8 @@ fn bounded_local_read_glob_is_safe(candidate: &Path, root: &Path, allow_dirs: bo
     true
 }
 
-/// `fnmatch.fnmatchcase` (POSIX `*`/`?`/`[seq]`, no path separator semantics).
-#[allow(dead_code)]
-fn fnmatchcase(pattern: &str, name: &str) -> bool {
-    fn rec(pat: &[char], text: &[char]) -> bool {
-        if pat.is_empty() {
-            return text.is_empty();
-        }
-        match pat[0] {
-            '*' => (0..=text.len()).any(|i| rec(&pat[1..], &text[i..])),
-            '?' => !text.is_empty() && rec(&pat[1..], &text[1..]),
-            '[' => {
-                if text.is_empty() {
-                    return false;
-                }
-                let mut index = 1;
-                let negate = pat.get(1) == Some(&'!') || pat.get(1) == Some(&'^');
-                if negate {
-                    index += 1;
-                }
-                let mut matched = false;
-                let mut prev: Option<char> = None;
-                let mut i = index;
-                while i < pat.len() && pat[i] != ']' {
-                    if pat[i] == '-' && prev.is_some() && i + 1 < pat.len() && pat[i + 1] != ']' {
-                        let lo = prev.unwrap();
-                        let hi = pat[i + 1];
-                        if lo <= text[0] && text[0] <= hi {
-                            matched = true;
-                        }
-                        i += 1;
-                    } else {
-                        if pat[i] == text[0] {
-                            matched = true;
-                        }
-                        prev = Some(pat[i]);
-                    }
-                    i += 1;
-                }
-                if i >= pat.len() {
-                    // Unclosed class: `[` is literal.
-                    return text[0] == '[' && rec(&pat[1..], &text[1..]);
-                }
-                if matched != negate {
-                    rec(&pat[i + 1..], &text[1..])
-                } else {
-                    false
-                }
-            }
-            c => !text.is_empty() && text[0] == c && rec(&pat[1..], &text[1..]),
-        }
-    }
-    let p: Vec<char> = pattern.chars().collect();
-    let t: Vec<char> = name.chars().collect();
-    rec(&p, &t)
-}
-
 /// `_cat_file_operand_tokens` (:214-230).
-fn cat_file_operand_tokens(args: &[String]) -> Vec<String> {
+pub(crate) fn cat_file_operand_tokens(args: &[String]) -> Vec<String> {
     let mut operands = Vec::new();
     let mut after_options = false;
     for arg in args {
@@ -1042,7 +912,7 @@ fn cat_file_operand_tokens(args: &[String]) -> Vec<String> {
 }
 
 /// `_plain_file_operand_tokens` (:232-255).
-fn plain_file_operand_tokens(args: &[String]) -> Vec<String> {
+pub(crate) fn plain_file_operand_tokens(args: &[String]) -> Vec<String> {
     let mut operands = Vec::new();
     let mut skip_next = false;
     let mut after_options = false;
@@ -1066,7 +936,7 @@ fn plain_file_operand_tokens(args: &[String]) -> Vec<String> {
         if arg.starts_with("--lines=") || arg.starts_with("--bytes=") {
             continue;
         }
-        if arg.starts_with('-') && arg.len() > 1 {
+        if arg.starts_with('-') {
             continue;
         }
         operands.push(arg.clone());
@@ -1075,7 +945,7 @@ fn plain_file_operand_tokens(args: &[String]) -> Vec<String> {
 }
 
 /// `_sed_file_operand_tokens` (:257-290).
-fn sed_file_operand_tokens(args: &[String]) -> Vec<String> {
+pub(crate) fn sed_file_operand_tokens(args: &[String]) -> Vec<String> {
     let mut operands = Vec::new();
     let mut scripts_seen = 0usize;
     let mut skip_script = false;
@@ -1122,7 +992,7 @@ fn sed_file_operand_tokens(args: &[String]) -> Vec<String> {
 }
 
 /// `_search_file_operand_tokens` (:293-295).
-fn search_file_operand_tokens(command_name: &str, args: &[String]) -> Vec<String> {
+pub(crate) fn search_file_operand_tokens(command_name: &str, args: &[String]) -> Vec<String> {
     search_file_operand_roles(command_name, args)
         .into_iter()
         .map(|(o, _)| o)
@@ -1185,8 +1055,30 @@ const SEARCH_VALUE_OPTIONS: &[&str] = &[
     "--type-not",
 ];
 
+/// Flags whose `--flag=value` spelling carries a value (`search_value_flags`).
+const SEARCH_VALUE_FLAGS_EQ: [&str; 15] = [
+    "--after-context",
+    "--before-context",
+    "--context",
+    "--exclude",
+    "--exclude-dir",
+    "--file",
+    "--glob",
+    "--iglob",
+    "--include",
+    "--max-count",
+    "--max-depth",
+    "--max-filesize",
+    "--regexp",
+    "--type",
+    "--type-not",
+];
+
 /// `_search_file_operand_roles` (:319-413). `(operand, is_search_glob)`.
-fn search_file_operand_roles(command_name: &str, args: &[String]) -> Vec<(String, bool)> {
+pub(crate) fn search_file_operand_roles(
+    command_name: &str,
+    args: &[String],
+) -> Vec<(String, bool)> {
     let mut operands: Vec<(String, bool)> = Vec::new();
     let mut pattern_seen = search_command_has_no_pattern(command_name, args);
     let mut skip_next = false;
@@ -1220,15 +1112,17 @@ fn search_file_operand_roles(command_name: &str, args: &[String]) -> Vec<(String
             continue;
         }
         if let Some((prefix, value)) = arg.split_once('=') {
-            if arg.starts_with("--") {
-                if ["--include", "--glob", "--iglob"].contains(&prefix) {
-                    let is_search_glob = (["grep", "egrep", "fgrep"].contains(&command_name)
-                        && prefix == "--include")
-                        || (command_name == "rg" && ["--glob", "--iglob"].contains(&prefix));
-                    operands.push((value.to_owned(), is_search_glob));
+            if SEARCH_VALUE_FLAGS_EQ.contains(&prefix) {
+                let grep_like = ["grep", "egrep", "fgrep"].contains(&command_name);
+                if grep_like && prefix == "--include" {
+                    operands.push((value.to_owned(), true));
                     continue;
                 }
-                if arg.starts_with("--regexp=") || arg.starts_with("--file=") {
+                if command_name == "rg" && ["--glob", "--iglob"].contains(&prefix) {
+                    operands.push((value.to_owned(), true));
+                    continue;
+                }
+                if prefix == "--regexp" || prefix == "--file" {
                     pattern_seen = true;
                 }
                 continue;
@@ -1267,36 +1161,31 @@ fn search_command_has_no_pattern(command_name: &str, args: &[String]) -> bool {
 }
 
 /// `_search_glob_pattern_is_safe` (:419-445).
-#[allow(dead_code)]
-fn search_glob_pattern_is_safe(pattern: &str, root: Option<&Path>) -> bool {
+pub(crate) fn search_glob_pattern_is_safe(pattern: &str, root: Option<&Path>) -> bool {
+    let _ = root;
     let is_exclusion = pattern.starts_with('!');
     let effective_pattern = if is_exclusion { &pattern[1..] } else { pattern };
+    let path = crate::codex_output_py::PyPath::new(effective_pattern);
+    let components = path.parts();
     if effective_pattern.is_empty()
-        || effective_pattern.len() > 4096
+        || effective_pattern.chars().count() > 4096
         || effective_pattern.contains('\n')
         || effective_pattern.contains('\x00')
-        || effective_pattern
-            .chars()
-            .any(|c| matches!(c, '{') || effective_pattern.contains("**") || c == '!')
-        || Path::new(effective_pattern).is_absolute()
-        || Path::new(effective_pattern).components().any(|c| {
-            matches!(
-                c,
-                std::path::Component::CurDir | std::path::Component::ParentDir
-            )
-        })
+        || ["**", "{", "}", "!"]
+            .iter()
+            .any(|token| effective_pattern.contains(token))
+        || path.is_absolute()
+        || components
+            .iter()
+            .any(|component| matches!(component.as_str(), "" | "." | ".."))
     {
         return false;
     }
-    let _ = root;
     if is_exclusion {
         return true;
     }
-    for component in Path::new(effective_pattern).components() {
-        let std::path::Component::Normal(raw) = component else {
-            return false;
-        };
-        let folded = raw.to_string_lossy().to_lowercase();
+    for component in &components {
+        let folded = component.to_lowercase();
         if folded.starts_with('.') && !SOURCE_INSPECTION_BENIGN_DOTFILES.contains(&folded.as_str())
         {
             return false;

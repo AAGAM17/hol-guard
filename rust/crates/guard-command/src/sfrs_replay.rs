@@ -10,7 +10,10 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
+use crate::codex_output_env::{Ctx, GitCheck, GitRun, InspectionHost};
 use crate::hook_adapter_value::{OMap, OValue};
+use crate::sfrs_benign_reads::is_explicitly_benign_native_file_read_request;
+use crate::sfrs_read_only_filters::read_only_lookup_target_is_safe;
 use crate::sfrs_requests::{
     build_file_read_request_artifact, build_file_write_request_artifact, classify_sensitive_path,
     command_list_candidate_texts, extract_sensitive_file_read_request,
@@ -30,16 +33,27 @@ pub fn implements(entry: &str) -> bool {
             | "extract_sensitive_file_write_request"
             | "build_file_read_request_artifact"
             | "build_file_write_request_artifact"
+            | "is_explicitly_benign_native_file_read_request"
+            | "read_only_lookup_target_is_safe"
     )
 }
 
 /// Run the classifier for `entry` over one recorded call.
 ///
+/// `env` is the recorded environment and `dir` the materialized test
+/// directory used as the working directory.
+///
 /// # Errors
 ///
 /// Returns a description when the recorded arguments do not decode or the
 /// entry has no implementation yet.
-pub fn replay_entry(entry: &str, args: &Value, _evaluation: &Value) -> Result<Value, String> {
+pub fn replay_entry(
+    entry: &str,
+    args: &Value,
+    _evaluation: &Value,
+    env: &Value,
+    dir: &Path,
+) -> Result<Value, String> {
     match entry {
         "classify_sensitive_path" => {
             let found = classify_sensitive_path(
@@ -103,7 +117,53 @@ pub fn replay_entry(entry: &str, args: &Value, _evaluation: &Value) -> Result<Va
                 str_arg(args, "source_scope").unwrap_or_default(),
             )))
         }
+        "is_explicitly_benign_native_file_read_request" => {
+            // Never read the reviewer's machine: the call runs in its own
+            // materialized directory with the recorded HOME.
+            let process_cwd = dir.to_string_lossy().into_owned();
+            let home = env
+                .get("HOME")
+                .and_then(Value::as_str)
+                .map_or_else(|| process_cwd.clone(), str::to_owned);
+            let host = ReplayHost { home: home.clone() };
+            let ctx = Ctx::new(&host, &process_cwd, &home);
+            Ok(json!(is_explicitly_benign_native_file_read_request(
+                &ovalue_arg(args, "tool_name"),
+                &ovalue_arg(args, "arguments"),
+                path_arg(args, "cwd").as_deref(),
+                path_arg(args, "home_dir").as_deref(),
+                &ctx,
+            )))
+        }
+        "read_only_lookup_target_is_safe" => Ok(json!(read_only_lookup_target_is_safe(
+            str_arg(args, "target").unwrap_or_default(),
+            args["allow_dirs"].as_bool().unwrap_or(false),
+            path_arg(args, "home_dir").as_deref(),
+        ))),
         other => Err(format!("entry {other} is not implemented")),
+    }
+}
+
+/// Host for classifiers that never run a process.
+struct ReplayHost {
+    home: String,
+}
+
+impl InspectionHost for ReplayHost {
+    fn env(&self, name: &str) -> Option<String> {
+        (name == "HOME").then(|| self.home.clone())
+    }
+    fn git_executable(&self) -> Option<String> {
+        None
+    }
+    fn git_safety(&self, _: GitCheck, _: Option<&str>, _: &[String]) -> bool {
+        false
+    }
+    fn git_binary_trusted(&self, _: &str, _: &str) -> bool {
+        false
+    }
+    fn run_git(&self, _: &str, _: &[String], _: &str) -> GitRun {
+        GitRun::Failed("replay host does not run git")
     }
 }
 

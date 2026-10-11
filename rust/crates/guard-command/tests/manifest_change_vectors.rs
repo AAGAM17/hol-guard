@@ -8,6 +8,12 @@ use serde_json::Value;
 
 const VECTORS: &str = include_str!("../testdata/manifest_change_vectors.json");
 
+/// The vectors record Python's 50 ms deadline, and none of them expect
+/// `deadline_exceeded`. On a loaded, coverage-instrumented runner the first
+/// parse can take longer than that, so the parity check gets enough time to
+/// finish. `deadline_exceeded_truncates` covers the deadline path itself.
+const PARITY_DEADLINE_MS: u64 = 10_000;
+
 #[test]
 fn recorded_python_change_vectors_match() {
     let vectors: Vec<Value> = serde_json::from_str(VECTORS).unwrap();
@@ -19,7 +25,10 @@ fn recorded_python_change_vectors_match() {
             vector["before"].as_str(),
             vector["after"].as_str(),
             vector["byte_limit"].as_u64().unwrap() as usize,
-            vector["deadline_ms"].as_u64().unwrap(),
+            vector["deadline_ms"]
+                .as_u64()
+                .unwrap()
+                .max(PARITY_DEADLINE_MS),
         );
         let changes: Vec<Value> = result
             .changes

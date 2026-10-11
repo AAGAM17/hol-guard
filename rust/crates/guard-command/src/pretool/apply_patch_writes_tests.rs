@@ -14,6 +14,14 @@ fn fixture() -> Fixture {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../target")
         .join(format!("guard-apply-patch-{}-{nonce}", std::process::id()));
+    // The target directory survives between CI runs through the build cache,
+    // and process ids repeat, so an earlier run's fixture (including its
+    // symlinks) can already sit at this path.
+    match std::fs::remove_dir_all(&root) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => panic!("failed to clear stale fixture {}: {error}", root.display()),
+    }
     let workspace = root.join("home/project");
     std::fs::create_dir_all(workspace.join("src")).unwrap();
     std::fs::create_dir_all(workspace.join(".git")).unwrap();

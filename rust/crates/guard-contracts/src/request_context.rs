@@ -162,6 +162,8 @@ pub struct ShellContextV1 {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", content = "body", rename_all = "snake_case")]
 pub enum RequestContextKindV1 {
+    /// Rebuild monotonic command floors without workflow authorization grants.
+    CriticalFloor(RequestContextCriticalFloorV1),
     /// Admit the request and build the whole canonical context.
     Build(RequestContextBuildV1),
     DirectTool(RequestContextDirectToolV1),
@@ -224,6 +226,14 @@ pub struct RequestContextDirectToolV1 {
 pub struct RequestContextTrustedToolV1 {
     pub command: String,
     pub facts: RequestContextDirectFactsV1,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RequestContextCriticalFloorV1 {
+    pub script: String,
+    pub cwd: String,
+    pub home_dir: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

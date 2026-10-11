@@ -214,9 +214,11 @@ pub mod typescript_launch_evidence;
 
 pub mod package_context_environment;
 
+mod critical_floor_context;
 pub use command_evaluation::CompositeCommandEvaluation;
 pub use command_evaluation_compose::{evaluate_command, CommandEvaluationInput};
 pub use command_model::parse_shell_command;
+pub use critical_floor_context::critical_floor_action;
 
 use serde::{Deserialize, Serialize};
 

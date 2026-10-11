@@ -154,7 +154,7 @@
       "id": "CDX-064",
       "pull_request": 1761,
       "deliverables": [
-        "src/codex_plugin_scanner/guard/runtime/command_critical_floors.py",
+        "rust/crates/guard-command/src/command_critical_floors.rs",
         "src/codex_plugin_scanner/guard/runtime/command_evaluation.py",
         "tests/test_guard_command_critical_floors.py",
         "tests/test_guard_github_capability_floors.py"
@@ -169,7 +169,7 @@
       "id": "CDX-065",
       "pull_request": 1761,
       "deliverables": [
-        "src/codex_plugin_scanner/guard/runtime/command_launcher_floors.py",
+        "rust/crates/guard-command/src/command_launcher_floors.rs",
         "tests/test_guard_runtime.py"
       ],
       "acceptance": "package, source, launcher, executable, and provenance drift retain their security floors",

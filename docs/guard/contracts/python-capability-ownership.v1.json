@@ -536,6 +536,33 @@
     "rust/crates/guard-command/src/direct_tool_typescript.rs",
     "rust/crates/guard-runtime/src/direct_tool_context_op.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/command_critical_floors.py",
+   "module": "codex_plugin_scanner.guard.runtime.command_critical_floors",
+   "source_sha256": "91a5dd9c6b086775b9cc1d6cde353ff9c59129296f0f312f1d31aa14dfabf9e4",
+   "forbidden_symbols": [
+    "command_critical_floor_factors",
+    "_command_critical_floor_factors",
+    "_critical_floor"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/command_critical_floors.rs",
+    "rust/crates/guard-runtime/src/critical_floor_op.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/command_launcher_floors.py",
+   "module": "codex_plugin_scanner.guard.runtime.command_launcher_floors",
+   "source_sha256": "c90ebb1ea06a15f42304cbe92a7428a2fe1279d283374a5a16a28f903ca2fc28",
+   "forbidden_symbols": [
+    "launcher_child_commands",
+    "_possible_children",
+    "_find_children"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/command_launcher_floors.rs"
+   ]
   }
  ],
  "retired_test_paths": [

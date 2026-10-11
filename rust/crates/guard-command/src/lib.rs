@@ -508,6 +508,8 @@ pub mod command_operation_classification;
 pub mod composition_rules;
 #[cfg(unix)]
 pub mod contained_execution;
+#[cfg(unix)]
+pub mod contained_runner;
 pub mod data_flow_rules;
 pub mod decisions;
 pub mod detectors;

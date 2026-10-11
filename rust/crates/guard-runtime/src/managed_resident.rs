@@ -389,6 +389,10 @@ pub(crate) fn parse_process_id(value: &str) -> Result<u32, String> {
 /// legitimately read hundreds of megabytes and is granted a longer ceiling.
 const CLIENT_TIMEOUT_CEILING_MS: u64 = 9_000;
 const SKILL_SCAN_TIMEOUT_CEILING_MS: u64 = 60_000;
+/// Contained local runners honour the caller's process timeout (up to ten
+/// minutes) plus a minute of transport slack for the probe and snapshot, so their budget must not be clamped to the
+/// nine-second ceiling that would abort a legitimate test run mid-flight.
+const CONTAINED_RUNNER_TIMEOUT_CEILING_MS: u64 = 670_000;
 
 pub(crate) fn client_timeout(payload: &[u8]) -> Duration {
     let value = crate::strict_json_value(payload).ok();
@@ -397,6 +401,11 @@ pub(crate) fn client_timeout(payload: &[u8]) -> Duration {
         .and_then(|value| value.get("operation")?.as_str())
     {
         Some("skill_directory_identity") => SKILL_SCAN_TIMEOUT_CEILING_MS,
+        Some(
+            "contained_node_execute"
+            | "contained_typescript_execute"
+            | "contained_package_script_execute",
+        ) => CONTAINED_RUNNER_TIMEOUT_CEILING_MS,
         _ => CLIENT_TIMEOUT_CEILING_MS,
     };
     let budget = value

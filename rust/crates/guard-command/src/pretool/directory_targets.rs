@@ -202,12 +202,31 @@ impl<'a> super::PathContext<'a> {
                     .iter()
                     .any(|name| name == "CDPATH")
         });
+        // rustup reads these before any toolchain file, and either one can
+        // name a toolchain directory. Without a stamped environment, the
+        // runtime's own environment is what a probe would inherit.
+        let rustup_override_absent = match execution_environment {
+            Some(environment) => {
+                environment.has_valid_shape()
+                    && !environment
+                        .environment_names
+                        .iter()
+                        .any(|name| rustup_selector(name))
+            }
+            None => !std::env::vars_os()
+                .any(|(name, value)| !value.is_empty() && rustup_selector(&name.to_string_lossy())),
+        };
         Self {
             home_dir,
             cwd,
             cdpath_unset,
+            rustup_override_absent,
         }
     }
+}
+
+fn rustup_selector(name: &str) -> bool {
+    name.eq_ignore_ascii_case("RUSTUP_TOOLCHAIN") || name.eq_ignore_ascii_case("RUSTUP_HOME")
 }
 
 #[cfg(test)]

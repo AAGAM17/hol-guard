@@ -32,6 +32,7 @@ pub(super) fn bounded_native_temporary_write_target(
             home_dir,
             cwd,
             cdpath_unset: false,
+            rustup_override_absent: false,
         },
     )
 }

@@ -42,6 +42,7 @@ fn git_query_uses_bounded_request_context_not_resident_path() {
                 home_dir: home.to_str(),
                 cwd: repository.to_str(),
                 cdpath_unset: false,
+                rustup_override_absent: false,
             },
             Some(context),
         )
@@ -311,6 +312,7 @@ fn stamped_git_reads_allow_only_when_no_diff_helper_is_configured() {
                 home_dir: home.to_str(),
                 cwd: repository.to_str(),
                 cdpath_unset: false,
+                rustup_override_absent: false,
             },
             context,
         )

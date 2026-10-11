@@ -124,6 +124,7 @@ fn evaluate_with_path(
             home_dir: home.to_str(),
             cwd: repository.to_str(),
             cdpath_unset: false,
+            rustup_override_absent: false,
         },
         Some(&context),
     )

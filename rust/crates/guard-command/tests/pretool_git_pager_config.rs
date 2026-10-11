@@ -114,6 +114,7 @@ fn pager_checks_follow_the_actual_subcommand_and_global_override() {
                 home_dir: home.to_str(),
                 cwd: repository.to_str(),
                 cdpath_unset: false,
+                rustup_override_absent: false,
             },
             Some(&context),
         );
@@ -142,6 +143,7 @@ fn pager_checks_follow_the_actual_subcommand_and_global_override() {
                 home_dir: home.to_str(),
                 cwd: repository.to_str(),
                 cdpath_unset: false,
+                rustup_override_absent: false,
             },
             Some(&caller),
         );
@@ -185,6 +187,7 @@ fn pager_checks_follow_the_actual_subcommand_and_global_override() {
                 home_dir: home.to_str(),
                 cwd: repository.to_str(),
                 cdpath_unset: false,
+                rustup_override_absent: false,
             },
             Some(&caller),
         );
@@ -243,6 +246,7 @@ fn empty_git_pager_overrides_a_custom_pager_variable() {
                 home_dir: home.to_str(),
                 cwd: repository.to_str(),
                 cdpath_unset: false,
+                rustup_override_absent: false,
             },
             Some(context),
         );
@@ -302,6 +306,7 @@ fn piped_git_output_never_starts_a_configured_pager() {
                 home_dir: home.to_str(),
                 cwd: repository.to_str(),
                 cdpath_unset: false,
+                rustup_override_absent: false,
             },
             Some(&context),
         );

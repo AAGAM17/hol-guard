@@ -48,6 +48,7 @@ pub fn evaluate_pre_tool_envelope_with_context(
             home_dir: home,
             cwd,
             cdpath_unset: false,
+            rustup_override_absent: false,
         },
         Some(&context),
     )

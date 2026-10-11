@@ -18,10 +18,14 @@ pub(super) fn evaluate_signals(
         signals.tool_name.as_deref(),
         signals,
     );
+    // A command the Rust authority proved explicitly benign (a lone version
+    // query, say) keeps its command decision even when it names a package tool.
     if action_type == PreToolActionTypeV1::Command
         && command_decision
             .and_then(|decision| decision.as_ref().ok())
-            .is_some_and(|decision| package_command(&decision.command_model))
+            .is_some_and(|decision| {
+                !decision.explicitly_benign && package_command(&decision.command_model)
+            })
     {
         action_type = PreToolActionTypeV1::Package;
         operation = PreToolOperationV1::Install;

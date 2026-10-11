@@ -16,9 +16,9 @@
 //! - `yarn` and `pnpm`: Yarn's `yarnPath` and Corepack's `packageManager`
 //!   field select a workspace-supplied binary that the probe would execute.
 //! - `docker version` and bare `kubectl version`: both contact a server.
-//! - `cargo` and `rustc`: a workspace `rust-toolchain.toml` with an absolute
-//!   `path` makes the rustup proxy run that directory's binary, and a
-//!   `channel` makes it download a toolchain first.
+//! - `cargo` and `rustc`: a workspace `rust-toolchain.toml` with a `path`
+//!   makes the rustup proxy run that directory's binary. `rust_toolchain`
+//!   admits their version queries only after checking the toolchain file.
 //! - `go version`: a `go.mod` `toolchain` line makes `go` fetch and run a
 //!   different toolchain.
 //! - `-v` for tools where it means "verbose" rather than "version".

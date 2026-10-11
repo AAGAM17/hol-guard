@@ -19,6 +19,7 @@ from uuid import uuid4
 
 from .native_context import _canonical_request_sha256, ensure_resident_prerequisite
 from .native_execution import _resident_request
+from .native_resident_prerequisite_reason import prerequisite_unavailable_code
 
 LOCAL_MCP_GRANT_FEATURE = "local-mcp-grant-v1"
 _REQUEST_SCHEMA = "guard-local-mcp-grant-request.v1"
@@ -85,7 +86,9 @@ def native_local_mcp_grant(
     except (TypeError, ValueError):
         return NativeLocalMcpGrantFailure("native_local_mcp_grant_request_invalid")
     if not ensure_resident_prerequisite(guard_home):
-        return NativeLocalMcpGrantFailure("native_local_mcp_grant_prerequisite_unavailable")
+        return NativeLocalMcpGrantFailure(
+            prerequisite_unavailable_code("native_local_mcp_grant_prerequisite_unavailable", guard_home)
+        )
     response = _resident_request(
         operation="local_mcp_grant_decide",
         request=request,

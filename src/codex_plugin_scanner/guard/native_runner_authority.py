@@ -29,6 +29,7 @@ from .native_context import (
     ensure_resident_prerequisite,
 )
 from .native_resident_client import native_resident_client_ready, native_resident_client_request
+from .native_resident_prerequisite_reason import prerequisite_unavailable_code
 from .native_runtime import _isolated_environment
 from .native_runtime_resilience import (
     native_record_overload,
@@ -83,7 +84,9 @@ def native_runner_authority(kind: str, args: Mapping[str, Any], guard_home: Path
     except Exception as error:
         raise NativeRunnerAuthorityError("native_runner_authority_prerequisite_unavailable") from error
     if not prerequisite:
-        raise NativeRunnerAuthorityError("native_runner_authority_prerequisite_unavailable")
+        raise NativeRunnerAuthorityError(
+            prerequisite_unavailable_code("native_runner_authority_prerequisite_unavailable", guard_home)
+        )
     try:
         request_sha256 = _canonical_request_sha256(request)
         budget_seconds = _TIMEOUT_SECONDS

@@ -142,7 +142,7 @@ class StoreCommandActivityLifecycleMixin:
                 {"error_code": error_code, "occurred_at": occurred_at.isoformat()},
             )
         except NativeGuardStoreUnavailable as error:
-            if error.reason not in _PRE_SEND_REASONS:
+            if error.reason.partition(":")[0] not in _PRE_SEND_REASONS:
                 raise
             _count_failure_locally(self, error_code, occurred_at)
 
@@ -160,7 +160,7 @@ class StoreCommandActivityLifecycleMixin:
                 {"occurred_at": occurred_at.isoformat()},
             )
         except NativeGuardStoreUnavailable as error:
-            if error.reason not in _PRE_SEND_REASONS:
+            if error.reason.partition(":")[0] not in _PRE_SEND_REASONS:
                 raise
             _count_conflict_locally(self, occurred_at)
 

@@ -20,6 +20,7 @@ from uuid import uuid4
 
 from .native_context import _canonical_request_sha256, ensure_resident_prerequisite
 from .native_execution import _resident_request
+from .native_resident_prerequisite_reason import prerequisite_unavailable_code
 
 CONTRIBUTED_MCP_DECISION_FEATURE = "contributed-mcp-decision-v1"
 _REQUEST_SCHEMA = "guard-contributed-mcp-decision-request.v1"
@@ -77,7 +78,9 @@ def native_contributed_mcp_decision(
     except (TypeError, ValueError):
         return NativeContributedMcpFailure("native_contributed_mcp_request_invalid")
     if not ensure_resident_prerequisite(guard_home):
-        return NativeContributedMcpFailure("native_contributed_mcp_prerequisite_unavailable")
+        return NativeContributedMcpFailure(
+            prerequisite_unavailable_code("native_contributed_mcp_prerequisite_unavailable", guard_home)
+        )
     response = _resident_request(
         operation="contributed_mcp_decide",
         request=request,

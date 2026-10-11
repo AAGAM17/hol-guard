@@ -31,6 +31,12 @@ from .native_resident_client import (
     native_resident_client_request,
     native_resident_client_transport,
 )
+from .native_resident_prerequisite_reason import (
+    clear_prerequisite_failure,
+    prerequisite_failure_reason,
+    prerequisite_unavailable_code,
+    record_prerequisite_failure,
+)
 from .native_response_decoder import native_error as _native_error
 from .native_runtime import NativeRuntimeStatus, _isolated_environment, native_runtime_status
 from .native_runtime_request_scope import _status_binary_unchanged
@@ -291,15 +297,21 @@ def ensure_resident_prerequisite(guard_home: Path) -> bool:
         with _RESIDENT_PREREQUISITE_LOCK:
             _RESIDENT_PREREQUISITE_HOMES.add(key)
         return True
+    phase = "open_store"
     try:
         from .native_policy_snapshot_publisher import provision_native_verifier_key_for_store
         from .store import GuardStore
 
-        provision_native_verifier_key_for_store(GuardStore(guard_home))
-    except Exception:
+        store = GuardStore(guard_home)
+        phase = "provision_key"
+        provision_native_verifier_key_for_store(store)
+    except Exception as error:
         # Nothing to fall back to: the resident is the only authority for these
-        # digests, so an unprovisionable home is an unavailable runtime.
+        # digests, so an unprovisionable home is an unavailable runtime. The
+        # bounded reason rides on the caller's error code for diagnostics.
+        record_prerequisite_failure(key, prerequisite_failure_reason(phase, error))
         return False
+    clear_prerequisite_failure(key)
     with _RESIDENT_PREREQUISITE_LOCK:
         _RESIDENT_PREREQUISITE_HOMES.add(key)
     return True
@@ -667,7 +679,9 @@ def native_context_digest(
     ):
         return _digest_failed("native_context_digest_unsupported")
     if not ensure_resident_prerequisite(guard_home):
-        return _digest_failed("native_context_digest_prerequisite_unavailable")
+        return _digest_failed(
+            prerequisite_unavailable_code("native_context_digest_prerequisite_unavailable", guard_home)
+        )
     canonical_home = canonical_guard_home_path(guard_home)
     # The pool spawns its resident lazily and drops it when the process dies,
     # so ask it rather than remembering: a pair that has answered before can

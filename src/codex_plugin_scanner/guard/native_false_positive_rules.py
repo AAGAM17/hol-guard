@@ -28,6 +28,7 @@ from .native_context import (
     ensure_resident_prerequisite,
 )
 from .native_resident_client import native_resident_client_ready, native_resident_client_request
+from .native_resident_prerequisite_reason import prerequisite_unavailable_code
 from .native_runtime import _isolated_environment
 from .native_runtime_resilience import (
     native_record_overload,
@@ -107,7 +108,9 @@ def native_false_positive_signals(
     except Exception as error:
         raise NativeFalsePositiveRulesError("native_false_positive_rules_prerequisite_unavailable") from error
     if not prerequisite:
-        raise NativeFalsePositiveRulesError("native_false_positive_rules_prerequisite_unavailable")
+        raise NativeFalsePositiveRulesError(
+            prerequisite_unavailable_code("native_false_positive_rules_prerequisite_unavailable", guard_home)
+        )
     try:
         request_sha256 = _canonical_request_sha256(request)
         # Rust bounds the ASCII-escaped canonical form, which can exceed the

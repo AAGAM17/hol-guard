@@ -34,6 +34,7 @@ from uuid import uuid4
 from .native_context import _canonical_request_sha256, _resolve_existing_digest_home, ensure_resident_prerequisite
 from .native_execution import _resident_request
 from .native_resident_client import native_resident_client_failure_code, native_resident_client_ready
+from .native_resident_prerequisite_reason import prerequisite_unavailable_code
 from .native_runtime import native_runtime_probe_missed, native_runtime_status
 from .native_runtime_resilience import native_record_resident_failure, native_record_resident_success
 
@@ -250,7 +251,7 @@ def _round_trip(
     except (TypeError, ValueError) as error:
         raise _fail("native_daemon_lifecycle_request_invalid") from error
     if not ensure_resident_prerequisite(home):
-        raise _fail("native_daemon_lifecycle_prerequisite_unavailable")
+        raise _fail(prerequisite_unavailable_code("native_daemon_lifecycle_prerequisite_unavailable", home))
     timeout_seconds -= _await_native_runtime(timeout_seconds)
     if timeout_seconds <= 0:
         raise _fail("native_daemon_lifecycle_deadline")
@@ -334,7 +335,7 @@ def _decide(
             cached = _recall(_VERDICTS, f"{query_key}:{facts_digest}")
             if cached is not None:
                 if not ensure_resident_prerequisite(home):
-                    raise _fail("native_daemon_lifecycle_prerequisite_unavailable")
+                    raise _fail(prerequisite_unavailable_code("native_daemon_lifecycle_prerequisite_unavailable", home))
                 return copy.deepcopy(cached)
     for _ in range(_MAX_NEED_ROUNDS):
         payload = _round_trip(

@@ -26,6 +26,7 @@ from .native_context import (
     ensure_resident_prerequisite,
 )
 from .native_execution import _resident_request
+from .native_resident_prerequisite_reason import prerequisite_unavailable_code
 
 REQUEST_CONTEXT_FEATURE = "request-context-v1"
 _REQUEST_SCHEMA = "guard-request-context-request.v1"
@@ -116,7 +117,9 @@ def _call(
     except (TypeError, ValueError):
         return NativeRequestContextFailure("native_request_context_request_invalid")
     if not ensure_resident_prerequisite(home):
-        return NativeRequestContextFailure("native_request_context_prerequisite_unavailable")
+        return NativeRequestContextFailure(
+            prerequisite_unavailable_code("native_request_context_prerequisite_unavailable", home)
+        )
     response = _resident_request(
         operation="request_context_build",
         request=request,

@@ -165,6 +165,7 @@ def pause_native_pre_tool_for_approval(
             exact_token=exact_token,
             once_only_reason=once_only_reason,
             approval_center_url=approval_center_url,
+            review_binding=identity,
         )
         if queued is None:
             _LOGGER.warning("Silent review blocked without an inbox row for %s", harness)
@@ -195,6 +196,7 @@ def pause_native_pre_tool_for_approval(
         exact_token=exact_token,
         once_only_reason=once_only_reason,
         approval_center_url=approval_center_url,
+        review_binding=identity,
     )
     if queued is None:
         failed = dict(native_result)
@@ -259,6 +261,7 @@ def queue_native_pre_tool_review(
     exact_token: str | None | TokenUnset = TOKEN_UNSET,
     once_only_reason: str | None = None,
     approval_center_url: str | None = None,
+    review_binding: str | None | TokenUnset = TOKEN_UNSET,
 ) -> dict[str, object] | None:
     try:
         native_review_policy_binding(harness=harness, native_result=native_result, verified_receipt=native_receipt)
@@ -276,7 +279,13 @@ def queue_native_pre_tool_review(
         approval_center_url = _native_review_approval_center_url(store)
     approval_url = f"{approval_center_url}/requests/{request_id}"
     reason = str(native_result.get("reason") or "HOL Guard requires review before this action can execute.")
-    binding = native_review_binding(harness, payload, native_result, native_receipt, workspace, guard_home)
+    # The pause path already asked the resident for this binding. Asking again
+    # repeats a resident round trip that can exhaust the hook deadline on Windows.
+    binding = (
+        native_review_binding(harness, payload, native_result, native_receipt, workspace, guard_home)
+        if isinstance(review_binding, TokenUnset)
+        else review_binding
+    )
     try:
         action_envelope = _native_review_action_envelope(
             harness=harness,

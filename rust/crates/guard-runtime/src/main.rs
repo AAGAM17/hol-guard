@@ -147,6 +147,9 @@ mod daemon_route_paths;
 mod daemon_route_resolve;
 mod daemon_route_session;
 mod data_flow_analyze_op;
+mod decision_authority_op;
+#[cfg(test)]
+mod decision_authority_vectors_tests;
 mod direct_tool_context_op;
 #[cfg(test)]
 mod direct_tool_context_tests;
@@ -420,6 +423,12 @@ mod secrets_cli;
 mod sfrs_support;
 mod shell_helpers_op;
 mod shim_op;
+mod signal_projection_approval;
+mod signal_projection_decode;
+mod signal_projection_op;
+mod signal_projection_receipt;
+#[cfg(test)]
+mod signal_projection_vectors_tests;
 mod skill_directory_identity_op;
 mod skill_identity_canon;
 mod skill_identity_discovery;

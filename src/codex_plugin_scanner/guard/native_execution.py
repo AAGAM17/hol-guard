@@ -177,6 +177,8 @@ def _resident_request(
             "hook_authority_state",
             "hook_render",
             "protect_request",
+            "hook_artifact_compose",
+            "consumer_artifact_compose",
             "mcp_tool_call_identity",
             "package_context_build",
         }:

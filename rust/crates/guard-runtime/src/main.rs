@@ -160,6 +160,10 @@ mod guard_store_cmd_rollups;
 #[cfg(test)]
 mod guard_store_cmd_vectors_tests;
 mod guard_store_cmd_wire;
+mod guard_store_connect;
+mod guard_store_connect_effective;
+#[cfg(test)]
+mod guard_store_connect_vectors_tests;
 mod guard_store_db;
 mod guard_store_inventory;
 #[cfg(test)]

@@ -7,7 +7,9 @@ import json
 from .catalog import Scenario
 from .fixtures import Fixture
 
-COMMANDS_HEADER = "\n\nRequired Bash command strings (JSON; use each decoded string verbatim):\n"
+COMMANDS_HEADER = (
+    "\n\nRequired Bash command strings (JSON; run each decoded string verbatim as its own Bash call):\n"
+)
 
 
 def scenario_prompt(scenario: Scenario) -> str:

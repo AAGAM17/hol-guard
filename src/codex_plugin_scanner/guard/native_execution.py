@@ -1,4 +1,6 @@
-"""Resident bridge for contained-execution + shim-admin + MCP-probe ops (RTM-020).
+"""Resident bridge for contained-execution, MCP-probe and prompt ops (RTM-020).
+
+Package-shim administration lives in ``native_shim_admin``.
 
 Each helper sends a native request and decodes its response. A missing or
 malformed response returns ``None``; enforcement callers must treat that as
@@ -33,7 +35,6 @@ if TYPE_CHECKING:
 _MAX_REQUEST_BYTES = 256 * 1024
 _RESIDENT_PROTOCOL_FEATURE = "resident-protocol-v2"
 _CONTAINED_EXECUTION_FEATURE = "contained-execution-v1"
-_SHIM_ADMIN_FEATURE = "shim-admin-v1"
 _MCP_STDIO_PROBE_FEATURE = "mcp-stdio-probe-v1"
 _MCP_STDIO_SESSION_FEATURE = "mcp-stdio-session-v1"
 _MCP_STDIO_SESSION_OPEN_SCHEMA = "guard-mcp-stdio-session-open-request.v1"
@@ -370,48 +371,6 @@ def contained_workspace_write_execute_native(
         return _contained_workspace_write_result(result)
     except (KeyError, TypeError, ValueError):
         return None
-
-
-# ---------------------------------------------------------------------------
-# Shim admin op
-# ---------------------------------------------------------------------------
-
-
-def shim_admin_native(
-    subop: str,
-    *,
-    guard_home: Path,
-    managers: Sequence[str] | None = None,
-    workspace_dir: Path | None = None,
-    allow_inactive_path: bool = False,
-    timeout_seconds: int = 30,
-    path_env: str | None = None,
-    install_managers: Sequence[str] | None = None,
-    repair: bool = False,
-) -> dict[str, object] | list[object] | None:
-    request: dict[str, object] = {
-        "schema": "guard-shim-admin-request.v1",
-        "subop": subop,
-        "guard_home": str(guard_home),
-        "managers": list(managers) if managers else None,
-        "workspace_dir": str(workspace_dir) if workspace_dir else None,
-        "allow_inactive_path": allow_inactive_path,
-        "timeout_seconds": timeout_seconds,
-        "path_env": path_env,
-        "install_managers": list(install_managers) if install_managers else None,
-        "repair": repair,
-    }
-    decoded = _resident_request(
-        operation="shim_admin",
-        request=request,
-        guard_home=guard_home,
-        timeout_seconds=float(timeout_seconds) + 5.0,
-        required_feature=_SHIM_ADMIN_FEATURE,
-    )
-    if decoded is None:
-        return None
-    result = decoded.get("result")
-    return result if isinstance(result, (dict, list)) else None
 
 
 # ---------------------------------------------------------------------------

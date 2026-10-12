@@ -195,11 +195,9 @@ def test_approval_filter_cannot_turn_non_string_into_permission(monkeypatch):
     assert captured["approved_classes"] == ["read"]
 
 
-@pytest.mark.parametrize("native", [["npm"], ["npm", None], {}])
-def test_supported_manager_list_stays_on_the_static_contract(monkeypatch, tmp_path, native):
+def test_supported_manager_list_stays_on_the_static_contract(monkeypatch, tmp_path):
     monkeypatch.setattr(local_supply_chain, "package_shim_dashboard_status", lambda _: {})
     monkeypatch.setattr(local_supply_chain, "package_shim_supported_managers", lambda _guard_home=None: ("fallback",))
-    monkeypatch.setattr(native_execution, "shim_admin_native", lambda *_args, **_kwargs: native)
     result = local_supply_chain._build_package_manager_protection(SimpleNamespace(guard_home=tmp_path))
     assert result["supported_managers"] == ["fallback"]
 

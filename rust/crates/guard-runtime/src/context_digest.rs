@@ -648,6 +648,10 @@ fn evaluate_request(
                 request,
             )?);
         }
+        ContextDigestKindV1::ManagedControlsPolicyFields { request } => {
+            result.managed_controls_policy_fields =
+                Some(super::managed_controls_policy_fields::evaluate(request)?);
+        }
         ContextDigestKindV1::LocalCliIdentity { source } => {
             result.local_cli_identity =
                 super::context_digest_local_cli::local_cli_identity(source)?;
@@ -853,6 +857,7 @@ fn evaluate_context_digest_request_inner(
         runtime_resolved_argv: None,
         tool_catalog: None,
         local_cli_identity: None,
+        managed_controls_policy_fields: None,
         package_json_scripts: None,
         custom_extension_suggestion: None,
     };

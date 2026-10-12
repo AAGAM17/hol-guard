@@ -222,7 +222,10 @@ def test_dynamic_mixed_and_high_impact_operations_are_ineligible(command: str) -
     assert parse_github_workflow_operation(parse_shell_command(command), repository="example/repo") is None
 
 
-def test_atomic_claim_proof_cannot_relax_native_unknown_graphql_uncertainty(tmp_path: Path) -> None:
+def test_atomic_claim_authorizes_a_review_thread_resolution_native_attributes_exactly(tmp_path: Path) -> None:
+    # Native now attributes the static resolution to its GitHub maintenance
+    # owner without uncertainty, so the exact claim can discharge its review.
+    # Without a claim the same command still asks for review.
     store = GuardStore(tmp_path / "guard-home", prime_policy_integrity=False)
     context = _context()
     _issue(store, context)
@@ -237,9 +240,9 @@ def test_atomic_claim_proof_cannot_relax_native_unknown_graphql_uncertainty(tmp_
         workflow_authorization=authorization,
     )
 
-    assert evaluation.decision_plane.action == "review"
-    assert evaluation.decision_plane.disposition is FinalDisposition.REVIEW
-    assert evaluation.extension_observations[0].uncertainty_reasons
+    assert not evaluation.extension_observations[0].uncertainty_reasons
+    assert evaluation.decision_plane.action == "allow"
+    assert evaluation.decision_plane.disposition is FinalDisposition.WORKFLOW_AUTHORIZED
 
 
 def test_bounded_pr_metadata_claim_produces_workflow_authorized_decision(tmp_path: Path) -> None:

@@ -240,7 +240,10 @@ fn truthy(value: &Value) -> bool {
 
 /// The edge verdict as a floor on the composed action. A present but
 /// unrecognized action fails closed to `block`.
-fn edge_floor(edge: Option<&HookNativeEdgeV1>, event: Option<&str>) -> Option<GuardAction> {
+pub(crate) fn edge_floor(
+    edge: Option<&HookNativeEdgeV1>,
+    event: Option<&str>,
+) -> Option<GuardAction> {
     let edge = edge?;
     let raw = if truthy(&edge.policy_action) {
         Some(&edge.policy_action)

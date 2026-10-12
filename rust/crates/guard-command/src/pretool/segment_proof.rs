@@ -417,7 +417,9 @@ fn stderr_merge_tail(segment: &crate::CommandSegmentV1) -> bool {
         && segment.tokens.last().map(String::as_str) == Some("2>&1")
 }
 
-fn without_stderr_merge(segment: &crate::CommandSegmentV1) -> Option<crate::CommandSegmentV1> {
+pub(super) fn without_stderr_merge(
+    segment: &crate::CommandSegmentV1,
+) -> Option<crate::CommandSegmentV1> {
     if !stderr_merge_tail(segment) {
         return None;
     }

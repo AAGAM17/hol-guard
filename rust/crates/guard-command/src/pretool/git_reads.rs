@@ -1,7 +1,7 @@
 //! Read-only `git` invocations proven without a review.
 //!
 //! Status, diff, log, show, rev-parse, ls-files, `remote -v`, `worktree list`,
-//! branch listings and `hash-object` reads. Diff-style reads that can run a
+//! branch listings, `hash-object` and `config` reads. Diff-style reads that can run a
 //! configured helper need the helper-context probe or both `--no-ext-diff`
 //! and `--no-textconv`.
 
@@ -55,6 +55,11 @@ pub(super) fn safe_git_arguments(
     if subcommand == "worktree" {
         return matches!(&arguments[1..], [list] if list == "list")
             || matches!(&arguments[1..], [list, flag] if list == "list" && flag == "--porcelain");
+    }
+    if subcommand == "config" {
+        // Only the configuration probe can prove what the read prints.
+        return allow_helper_context
+            && super::git_config_reads::read_form(&arguments[1..]).is_some();
     }
     if !matches!(
         subcommand,

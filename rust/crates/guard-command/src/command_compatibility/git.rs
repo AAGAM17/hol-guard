@@ -103,6 +103,7 @@ fn read_only_plumbing(arguments: &[String]) -> bool {
                 .collect();
             operands.len() == 1 && !operands[0].starts_with('-')
         }
+        "config" if crate::pretool::git_config_reads::read_form(rest).is_some() => true,
         "config" => {
             let mut reads = false;
             for argument in rest {
@@ -193,6 +194,7 @@ pub(super) fn inspection_arguments<'a>(
                 | "ls-files"
                 | "remote"
                 | "worktree"
+                | "config"
         )
     )
     .then_some(remaining)

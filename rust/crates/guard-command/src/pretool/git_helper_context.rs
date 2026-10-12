@@ -39,6 +39,9 @@ pub(super) fn git_helper_context_required(
                             "hash-object" => {
                                 !super::git_hash_object::filters_disabled(&arguments[1..])
                             }
+                            // The probe screens the printed entries for credentials.
+                            "config" => super::git_config_reads::read_form(&arguments[1..])
+                                .is_some(),
                             _ => false,
                         }
                     })

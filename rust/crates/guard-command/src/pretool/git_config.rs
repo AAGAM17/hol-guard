@@ -5,6 +5,8 @@ use std::time::Instant;
 
 #[path = "git_config_filters.rs"]
 mod filters;
+#[path = "git_config_pager.rs"]
+mod pager;
 #[path = "git_config_textconv.rs"]
 mod textconv;
 
@@ -22,7 +24,7 @@ pub(super) fn execution_free(
     let operation = remaining.first()?.as_str();
     if !matches!(
         operation,
-        "status" | "diff" | "log" | "show" | "branch" | "hash-object"
+        "status" | "diff" | "log" | "show" | "branch" | "hash-object" | "config"
     ) {
         return None;
     }
@@ -190,15 +192,20 @@ fn probe(
     }
     let pager_key = format!("pager.{operation}");
     let pager_setting = effective.get(pager_key.as_str()).copied();
-    // Like status, hash-object pages only when its own pager.* key says so.
-    let pages_by_default = !matches!(operation, "status" | "hash-object");
+    // Like status, hash-object pages only when its own pager.* key says so;
+    // config pages by default only for its listing forms.
+    let pages_by_default = match operation {
+        "status" | "hash-object" => false,
+        "config" => super::git_config_reads::pages_by_default(&remaining[1..]),
+        _ => true,
+    };
     let configured_pager = pager_setting.or_else(|| {
         pages_by_default
             .then(|| effective.get("core.pager").copied())
             .flatten()
     });
-    let environment_pager = environment_pager_disabled(execution_environment);
-    let git_pager_disabled = git_pager_disabled(execution_environment);
+    let environment_pager = pager::environment_pager_disabled(execution_environment);
+    let git_pager_disabled = pager::git_pager_disabled(execution_environment);
     let no_pager = stdout_piped
         || leading
             .iter()
@@ -292,6 +299,9 @@ fn probe(
             return Some(false);
         }
     }
+    if operation == "config" {
+        return super::git_config_reads::credential_free(&command, &remaining[1..], deadline);
+    }
     if matches!(operation, "status" | "diff")
         && !super::git_probe::submodules_are_inert(&command, remaining, deadline)?
     {
@@ -335,52 +345,6 @@ pub(super) fn enabled_boolean(value: &str) -> bool {
         value.trim().to_ascii_lowercase().as_str(),
         "true" | "yes" | "on" | "1"
     )
-}
-
-fn environment_pager_disabled(
-    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
-) -> Option<bool> {
-    match execution_environment {
-        Some(context) => {
-            if context
-                .environment_names
-                .iter()
-                .any(|name| name.eq_ignore_ascii_case("GIT_PAGER"))
-            {
-                Some(context.git_pager_disabled)
-            } else if context
-                .environment_names
-                .iter()
-                .any(|name| name.eq_ignore_ascii_case("PAGER"))
-            {
-                Some(context.pager_disabled)
-            } else {
-                None
-            }
-        }
-        None => std::env::var_os("GIT_PAGER")
-            .map(|value| value.is_empty() || value.to_string_lossy() == "cat")
-            .or_else(|| {
-                std::env::var_os("PAGER")
-                    .map(|value| value.is_empty() || value.to_string_lossy() == "cat")
-            }),
-    }
-}
-
-fn git_pager_disabled(
-    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
-) -> bool {
-    match execution_environment {
-        Some(context) => {
-            context
-                .environment_names
-                .iter()
-                .any(|name| name.eq_ignore_ascii_case("GIT_PAGER"))
-                && context.git_pager_disabled
-        }
-        None => std::env::var_os("GIT_PAGER")
-            .is_some_and(|value| value.is_empty() || value.to_string_lossy() == "cat"),
-    }
 }
 
 pub(super) fn clean_environment(

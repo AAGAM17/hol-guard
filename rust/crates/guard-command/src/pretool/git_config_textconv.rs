@@ -15,7 +15,7 @@ pub(super) fn may_run(operation: &str, options: &[&str]) -> bool {
         "diff" | "show" => {
             !(options.iter().any(|option| summary_format(option)) && options.iter().all(known))
         }
-        "branch" | "hash-object" => false,
+        "branch" | "hash-object" | "config" => false,
         _ => true,
     }
 }

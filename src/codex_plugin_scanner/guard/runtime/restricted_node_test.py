@@ -143,6 +143,7 @@ def run_restricted_node_test(
     timeout_seconds: int = 1800,
     prepared_plan: RestrictedPytestPlan | None = None,
     authorize_capability: Callable[[tuple[str, ...]], None] | None = None,
+    merge_stderr: bool = False,
 ) -> int:
     if timeout_seconds <= 0 or timeout_seconds > 86400:
         raise RestrictedPytestError(_INVALID, "Protected Node timeout must be between 1 second and 24 hours.")
@@ -183,4 +184,5 @@ def run_restricted_node_test(
             timeout_seconds=timeout_seconds,
             cwd=plan.cwd,
             node_virtual_address_space=plan.backend == "linux-bubblewrap",
+            merge_stderr=merge_stderr,
         )

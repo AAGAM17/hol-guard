@@ -241,6 +241,7 @@ def run_restricted_vitest(
     timeout_seconds: int = 1800,
     prepared_plan: RestrictedPytestPlan | None = None,
     authorize_capability: Callable[[tuple[str, ...]], None] | None = None,
+    merge_stderr: bool = False,
 ) -> int:
     if timeout_seconds <= 0 or timeout_seconds > 86400:
         raise RestrictedPytestError("vitest_restricted_invalid_command", "Protected Vitest timeout is out of bounds.")
@@ -248,7 +249,11 @@ def run_restricted_vitest(
     if plan.profile_version != VITEST_READ_ONLY_PROFILE_VERSION:
         raise RestrictedPytestError("vitest_restricted_invalid_command", "Unexpected Vitest profile.")
     return run_restricted_node_plan(
-        plan, env=env, timeout_seconds=timeout_seconds, authorize_capability=authorize_capability
+        plan,
+        env=env,
+        timeout_seconds=timeout_seconds,
+        authorize_capability=authorize_capability,
+        merge_stderr=merge_stderr,
     )
 
 
@@ -258,6 +263,7 @@ def run_restricted_node_plan(
     env: Mapping[str, str] | None = None,
     timeout_seconds: int = 1800,
     authorize_capability: Callable[[tuple[str, ...]], None] | None = None,
+    merge_stderr: bool = False,
 ) -> int:
     if (
         not 0 < timeout_seconds <= 86400
@@ -335,4 +341,5 @@ def run_restricted_node_plan(
             timeout_seconds=timeout_seconds,
             cwd=plan.cwd,
             node_virtual_address_space=plan.backend == "linux-bubblewrap",
+            merge_stderr=merge_stderr,
         )

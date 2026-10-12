@@ -109,7 +109,8 @@ def test_native_capability_gate_does_not_override_extension_denial(monkeypatch, 
     calls, executed = [], []
     monkeypatch.setattr(tool, "prepare_restricted_node_tool", lambda *args, **kwargs: plan)
 
-    def run(plan, *, timeout_seconds, authorize_capability):
+    def run(plan, *, timeout_seconds, authorize_capability, merge_stderr=False):
+        assert merge_stderr is False
         authorize_capability(("/usr/bin/node", "--help"))
         executed.append(True)
         return 0

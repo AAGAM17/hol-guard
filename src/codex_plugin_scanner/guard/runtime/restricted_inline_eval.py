@@ -32,6 +32,9 @@ _NODE_SCRIPT_FLAGS = re.compile(
 )
 
 
+_UNITTEST_ARGUMENT_REJECT = frozenset("<>|&;`$")
+
+
 def _test_script(script: str, *, node: bool = False) -> bool:
     """A lexical workspace-relative, test-named script; the plan resolves it."""
     parts = script.rstrip("/").split("/")
@@ -54,7 +57,7 @@ def _node_script_index(command: Sequence[str], start: int) -> int | None:
 
 
 def _python_runtime_args(command: Sequence[str]) -> tuple[str, ...] | None:
-    """Accept only capability-reducing isolation flags before inline code or a test script."""
+    """Accept only capability-reducing isolation flags before inline code, a test script or unittest."""
     flags = 0
     index = 1
     bits_by_flag = {"-I": 1, "-S": 2, "-IS": 3, "-SI": 3}
@@ -65,7 +68,11 @@ def _python_runtime_args(command: Sequence[str]) -> tuple[str, ...] | None:
         flags |= bits
         index += 1
     inline = len(command) == index + 2 and command[index] == "-c"
-    if not inline and not (len(command) > index and _test_script(command[index])):
+    # Imported read-only, workspace test modules are no more capable than inline code.
+    unittest = tuple(command[index : index + 2]) == ("-m", "unittest") and not any(
+        set(argument) & _UNITTEST_ARGUMENT_REJECT for argument in command[index + 2 :]
+    )
+    if not inline and not unittest and not (len(command) > index and _test_script(command[index])):
         return None
     return tuple(command[1:index])
 
@@ -95,7 +102,7 @@ def prepare_restricted_inline_eval(
     script_index = None
     if node and argv[eval_index] not in {"-e", "--eval"}:
         script_index = _node_script_index(argv, eval_index)
-    elif not node and argv[eval_index] != "-c":
+    elif not node and argv[eval_index] not in {"-c", "-m"}:
         script_index = eval_index
     if script_index is not None:
         # A test script runs from the workspace, never from a link out of it.
@@ -127,6 +134,7 @@ def run_restricted_inline_eval(
     *,
     timeout_seconds: int,
     authorize_capability: Callable[[tuple[str, ...]], None],
+    merge_stderr: bool = False,
 ) -> int:
     if (
         not 0 < timeout_seconds <= 86400
@@ -163,4 +171,5 @@ def run_restricted_inline_eval(
             timeout_seconds=timeout_seconds,
             cwd=plan.cwd,
             node_virtual_address_space=node and plan.backend == "linux-bubblewrap",
+            merge_stderr=merge_stderr,
         )

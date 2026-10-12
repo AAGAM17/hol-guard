@@ -100,6 +100,7 @@ def run_restricted_pytest(
     platform: str | None = None,
     backend_executable: Path | None = None,
     read_only_workspace: bool = False,
+    merge_stderr: bool = False,
 ) -> int:
     """Run pytest inside the default restricted profile, with no fallback."""
 
@@ -140,6 +141,7 @@ def run_restricted_pytest(
             env=launch_env,
             timeout_seconds=timeout_seconds,
             cwd=plan.cwd,
+            merge_stderr=merge_stderr,
         )
 
 

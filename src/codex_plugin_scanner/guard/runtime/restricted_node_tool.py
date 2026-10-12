@@ -159,5 +159,11 @@ def run_restricted_node_tool(
     *,
     timeout_seconds: int,
     authorize_capability: Callable[[tuple[str, ...]], None] | None = None,
+    merge_stderr: bool = False,
 ) -> int:
-    return run_restricted_node_plan(plan, timeout_seconds=timeout_seconds, authorize_capability=authorize_capability)
+    return run_restricted_node_plan(
+        plan,
+        timeout_seconds=timeout_seconds,
+        authorize_capability=authorize_capability,
+        merge_stderr=merge_stderr,
+    )

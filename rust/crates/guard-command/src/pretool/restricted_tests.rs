@@ -43,6 +43,17 @@ fn python_test_script_args(arguments: &[String]) -> bool {
     })
 }
 
+/// `python3 -m unittest`: imports workspace test modules, which read-only is
+/// no more capable than inline evaluation, so it shares that boundary.
+fn python_unittest_args(arguments: &[String]) -> bool {
+    python_after_isolation_flags(arguments).is_some_and(|rest| {
+        matches!(rest, [flag, module, ..] if flag == "-m" && module == "unittest")
+            && rest[2..]
+                .iter()
+                .all(|argument| !argument.contains(['<', '>', '|', '&', ';', '`', '$']))
+    })
+}
+
 fn test_script_name(script: &str) -> bool {
     let name = script.rsplit('/').next().unwrap_or(script);
     let Some(stem) = name.strip_suffix(".py") else {
@@ -227,7 +238,9 @@ pub(super) fn readonly_test_reason(model: &CanonicalCommandV1) -> Option<&'stati
     match (super::executable_basename(executable), arguments) {
         (name, args)
             if python_runtime_name(name)
-                && (python_inline_eval_args(args) || python_test_script_args(args)) =>
+                && (python_inline_eval_args(args)
+                    || python_test_script_args(args)
+                    || python_unittest_args(args)) =>
         {
             return Some("native_python_eval_readonly_containment_required");
         }

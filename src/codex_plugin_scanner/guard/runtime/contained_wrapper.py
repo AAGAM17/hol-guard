@@ -1,4 +1,4 @@
-"""Peel the cd prefix and bounded output filter that native authority classified."""
+"""Peel the cd prefix, output handling and status echo that native authority classified."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import re
 import shlex
 import sys
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .restricted_pytest_validation import _path_is_within
@@ -21,15 +21,29 @@ _OPERATOR = frozenset("();<>|&\n")
 _UNQUOTED_EXPANSION = frozenset("$`*?[{")
 _DOUBLE_QUOTED_ESCAPES = frozenset('$`"\\')
 _ARGUMENT_REJECT = frozenset("<>|&;")
+# A final `; echo "<label>$?"`; a label with spaces must be double-quoted.
+_STATUS_ECHO = re.compile(
+    r'[ \t]*;[ \t]*echo[ \t]+(?:"([A-Za-z0-9_=: -]{0,32})\$\?"|([A-Za-z0-9_=:-]{0,32})\$\?)[ \t]*\Z'
+)
 
 
 @dataclass(frozen=True)
 class OutputFilter:
-    """A trailing `| head|tail -N`, applied in-process to the contained output."""
+    """A trailing `2>&1`, `| head|tail -N` or `; echo "<label>$?"`, applied in-process.
+
+    `kind` is "head" or "tail" for a bounded filter, else "all".
+    """
 
     kind: str
     count: int
     merge_stderr: bool
+    status_label: str | None = None
+
+    def status_line(self, exit_code: int) -> str | None:
+        """The echo's output; after a pipe, `$?` is the filter's own status."""
+        if self.status_label is None:
+            return None
+        return f"{self.status_label}{0 if self.kind in {'head', 'tail'} else exit_code}\n"
 
 
 def _lex(command: str) -> tuple[list[tuple[str, bool]], bool]:
@@ -149,9 +163,12 @@ def peel_contained_wrapper(
     repository (see `sibling_project_root`). Raises ValueError (or OSError for
     a missing cd target) for shapes native authority never upgrades.
     """
+    status = _STATUS_ECHO.search(command)
+    if status is not None:
+        command = command[: status.start()]
     tokens, exact = _lex(command)
     directory = workspace
-    wrapped = False
+    wrapped = status is not None
     output = None
     if tokens[:1] == [("cd", False)]:
         if len(tokens) < 4 or tokens[1][1] or tokens[2] != ("&&", True):
@@ -178,6 +195,13 @@ def peel_contained_wrapper(
             tokens = tokens[:-1]
         output = OutputFilter(program[0][0], count, merge)
         wrapped = True
+    elif tokens[-1:] == [("2>&1", True)]:
+        tokens = tokens[:-1]
+        output = OutputFilter("all", 0, True)
+        wrapped = True
+    if status is not None:
+        label = status.group(1) if status.group(1) is not None else status.group(2)
+        output = replace(output or OutputFilter("all", 0, False), status_label=label)
     if not wrapped:
         return None
     if not exact or not tokens or any(operator or set(value) & _ARGUMENT_REJECT for value, operator in tokens):
@@ -189,11 +213,16 @@ def peel_contained_wrapper(
 def bounded_output(output: OutputFilter | None) -> Iterator[None]:
     """Apply head/tail in-process; no external filter runs outside containment.
 
-    The sandbox captures stdout and stderr separately, so with `2>&1` the merged
-    stream is the run's stdout followed by its stderr, not their interleaving.
+    A bare `2>&1` is one file descriptor in the sandbox, so this wrapper does
+    not buffer that full stream. Head and tail still keep only the requested
+    lines of the replay.
     """
-    if output is None:
+    if output is None or (output.kind == "all" and not output.merge_stderr):
         yield
+        return
+    if output.kind == "all":
+        with contextlib.redirect_stderr(sys.stdout):
+            yield
         return
     destination = sys.stdout
     captured = io.StringIO()

@@ -341,8 +341,10 @@ def main(args: Any) -> int:
             else:
                 sdk_info = qualify_setup.ensure_sdk(args.cache_root, REPO, sha, run_root / "logs" / "setup.log")
             progress(f"sdk {sdk_info['omp_version']} {sdk_info['lock_sha256'][:12]}")
-            wheel_info = qualify_setup.ensure_wheel(args.cache_root, REPO, sha, run_root, wheel=args.wheel)
-            progress(f"wheel {wheel_info['sha256'][:12]} cached={wheel_info['cached']}")
+            wheel_info = qualify_setup.ensure_wheel(
+                args.cache_root, REPO, sha, run_root, wheel=args.wheel, release_profile=args.release_profile_wheel
+            )
+            progress(f"wheel {wheel_info['sha256'][:12]} cached={wheel_info['cached']} profile={wheel_info['profile']}")
             candidate = run_root / "candidate"
             candidate = prepare_candidate(REPO, sha, run_root, Path(wheel_info["path"]))
             progress("candidate installed")

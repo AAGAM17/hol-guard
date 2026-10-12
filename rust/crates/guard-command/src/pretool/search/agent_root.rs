@@ -40,5 +40,5 @@ pub(in crate::pretool) fn agent_root_listing(
     let agent = home.join(".agent");
     std::fs::symlink_metadata(&agent).is_ok_and(|metadata| metadata.is_dir())
         && std::fs::canonicalize(&root).is_ok_and(|canonical| canonical == agent)
-        && (!recursive || walk(agent, &[], &[]))
+        && (!recursive || walk(agent, &[], &[], false))
 }

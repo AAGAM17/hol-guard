@@ -1259,33 +1259,6 @@
         "evidence": "No production code calls inventory_snapshot: the only references are the method definition and tests/test_guard_aibom_detection.py, which test the method directly. The AIBOM collection, upload and CLI modules (aibom_collection, aibom_commands, aibom_cli, aibom_content_upload) are already excluded by aibom-inventory and build snapshots through their own path. Its lazy imports of inventory_contract and inventory_cisco were the only in-scope edge to the inventory_contract assembly modules (items, metadata, redaction, scans, mcp, models, constants) and, through them, skill_document_evidence and trust_metadata_boundary. aibom_detection now imports fingerprint_mapping and fingerprint_text straight from inventory_contract_fingerprints, which stay in scope because adapter detect() hashes MCP server content synchronously during launch."
       },
       {
-        "id": "mcp-contribution-authoring-validation",
-        "category": "authoring_tooling",
-        "path": "src/codex_plugin_scanner/guard/runtime/mcp_server_contribution.py",
-        "symbols": [
-          "contributions_dir",
-          "catalog_id_for_mcp_id",
-          "_reserved_direct_mcp_command",
-          "direct_mcp_command_name",
-          "_normalized_tool_name",
-          "remote_mcp_endpoint_identity",
-          "normalized_remote_server_name",
-          "load_mcp_contribution_payloads",
-          "validate_mcp_contribution_file",
-          "validate_mcp_contribution",
-          "mcp_tool_state",
-          "_load_from_directory",
-          "_frozen_runtime",
-          "_load_packaged_payloads",
-          "_finalize_payloads",
-          "_validator",
-          "_schema_bytes"
-        ],
-        "entry_points": [],
-        "reason": "The MCP server contribution loader, schema validator and catalog-id helpers serve extension authoring, the extension builder and the contributed-MCP catalog. The only runtime consumer is the remote URL normalizer used when resolving a Copilot runtime server identity, which stays in scope with its helpers.",
-        "evidence": "Only one in-scope module imports mcp_server_contribution: cli/commands_support_runtime_resolution.py, and it imports only normalized_remote_mcp_url. The excluded functions are reached from extension_builder/render_native.py, runtime/mcp_server_catalog.py and tests, none of which are in the runtime import closure. normalized_remote_mcp_url and its helpers (_valid_dns_hostname, _normalized_remote_component, _remove_remote_dot_segments, _normalized_remote_path, _normalized_remote_query) do not call any excluded function."
-      },
-      {
         "id": "adapter-copilot-setup",
         "category": "install_config",
         "path": "src/codex_plugin_scanner/guard/adapters/copilot.py",

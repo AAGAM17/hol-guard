@@ -4827,8 +4827,7 @@
     "_effective_cwd"
    ],
    "parity_fixture": "tests/fixtures/native_rich_command_model.json"
-  }
-,
+  },
   {
    "path": "src/codex_plugin_scanner/guard/runtime/restricted_pytest_model.py",
    "base_commit": "d75f7f7c590536b3116bd03643033e19ca4117f9",
@@ -4870,6 +4869,17 @@
     "rust/crates/guard-runtime/src/restricted_pytest_op.rs"
    ],
    "parity_fixture": "rust/crates/guard-command/tests/fixtures/restricted_pytest_parity.json"
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/cli/commands_support_runtime_resolution.py",
+   "base_commit": "d75f7f7c590536b3116bd03643033e19ca4117f9",
+   "source_sha256": "8336a2fff0dfde8c6666251bf7754d6e4ea3799272d1ffdcc2ad41073f95a944",
+   "remaining_role": "Public DTO and bound native transport facade; configuration selection, identity composition, and URL normalization bodies removed.",
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/cli_copilot_resolution.rs",
+    "rust/crates/guard-command/src/contributed_mcp_url.rs"
+   ],
+   "parity_fixture": "rust/crates/guard-runtime/tests/fixtures/cli_runtime_support_vectors.json"
   }
  ],
  "retired_bodies": [

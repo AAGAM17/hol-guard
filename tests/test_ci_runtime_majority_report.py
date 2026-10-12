@@ -402,7 +402,6 @@ def test_shipped_scope_keeps_synchronous_hook_path_modules_in_scope(shipped_repo
     required = [
         "runtime/package_json_scripts.py",
         "runtime/custom_extension_suggestion.py",
-        "runtime/mcp_server_contribution.py",
         "cli/render.py",
         "aibom_detection.py",
         "evaluation_json.py",

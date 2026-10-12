@@ -632,6 +632,21 @@
     "rust/crates/guard-command/src/content_sensitivity.rs",
     "rust/crates/guard-runtime/src/content_sensitivity_op.rs"
    ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/cli/commands_support_runtime_resolution.py",
+   "source_sha256": "8336a2fff0dfde8c6666251bf7754d6e4ea3799272d1ffdcc2ad41073f95a944",
+   "forbidden_symbols": [
+    "_CopilotMcpRuntimeTool",
+    "_resolve_copilot_mcp_runtime_tool",
+    "_copilot_runtime_tool_metadata",
+    "_copilot_runtime_server_environment",
+    "_copilot_runtime_match_priority"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/cli_runtime_support_op.rs",
+    "rust/crates/guard-runtime/src/cli_copilot_resolution.rs"
+   ]
   }
  ]
 }

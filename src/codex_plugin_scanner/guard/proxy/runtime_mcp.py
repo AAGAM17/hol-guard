@@ -40,8 +40,7 @@ from ..mcp_tool_calls import (
     ToolCallDecision,
     allow_tool_call,
     block_tool_call,
-    build_tool_call_artifact,
-    build_tool_call_hash,
+    build_tool_call_identity,
     evaluate_tool_call,
     tool_call_risk_categories,
     tool_call_risk_summary,
@@ -806,15 +805,12 @@ class RuntimeMcpGuardProxy:
         """
 
         authority_config = config or self.config
-        tool_definition = self._tool_catalog.get(tool_name, {})
-        tool_description_value = tool_definition.get("description")
-        tool_schema = tool_definition.get("inputSchema", tool_definition.get("input_schema"))
         # The native canonical catalog page retains `name` inside each entry.
-        # Strip it before building the public artifact so the name-matched
-        # `mcp_tool_authority_hash` is not written into hash-affecting
-        # `metadata`; the full definition is bound via
-        # `runtime_private_metadata` below without changing the exact
-        # saved-block artifact hash.
+        # Strip it before the build so the name-matched `mcp_tool_authority_hash`
+        # is not written into hash-affecting `metadata`; the resident binds the
+        # full definition in `runtime_private_metadata` without changing the
+        # exact saved-block artifact hash.
+        tool_definition = self._tool_catalog.get(tool_name, {})
         public_tool_definition = {key: value for key, value in tool_definition.items() if key != "name"}
         catalog_generation = self._tool_catalog_generation
         catalog_state = self._tool_catalog_state
@@ -822,7 +818,11 @@ class RuntimeMcpGuardProxy:
             self._tool_catalog,
             state=catalog_state,
         )
-        artifact = build_tool_call_artifact(
+        identity = build_tool_call_identity(
+            arguments=arguments,
+            workspace=self.context.workspace_dir or Path.cwd(),
+            config=authority_config,
+            guard_home=self.store.guard_home,
             harness=self.harness,
             server_name=self.server_name,
             tool_name=tool_name,
@@ -839,32 +839,14 @@ class RuntimeMcpGuardProxy:
                 "tool_catalog_fingerprint": catalog_fingerprint,
             },
             server_identity=self._session_server_identity(),
-            tool_schema=tool_schema,
-            tool_description=tool_description_value if isinstance(tool_description_value, str) else None,
             tool_definition=public_tool_definition,
             provider_catalog_hash=(
                 self.store.read_mcp_provider_authority_hash() if composio_requires_action_review(tool_name) else None
             ),
         )
-        if tool_name in self._tool_catalog:
-            from ..store_mcp_catalog import tool_definition_authority_hash
-
-            # Catalog entries omit their name because it is the map key. Bind
-            # the full definition for local grants without changing the
-            # artifact hash used by existing exact saved blocks.
-            artifact = replace(
-                artifact,
-                runtime_private_metadata={
-                    **artifact.runtime_private_metadata,
-                    "mcp_tool_authority_hash": tool_definition_authority_hash({"name": tool_name, **tool_definition}),
-                },
-            )
-        artifact_hash = build_tool_call_hash(
-            artifact,
-            arguments,
-            workspace=self.context.workspace_dir or Path.cwd(),
-            config=authority_config,
-        )
+        artifact, artifact_hash = identity.artifact, identity.artifact_hash
+        if artifact_hash is None:
+            raise ValueError("native_mcp_tool_approval_hash_unavailable")
         gate_state = self._tool_catalog_state
         folded: dict[str, Any] = {}
         evaluated = evaluate_tool_call(

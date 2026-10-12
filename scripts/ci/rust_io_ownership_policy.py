@@ -233,6 +233,9 @@ _TRANSPORT_DECODE_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/runtime/runner_native_authority.py",
         # Decodes the bounded resident MCP tool-evidence response envelope.
         "src/codex_plugin_scanner/guard/native_mcp_tool_evidence.py",
+        # Normalizes the request to plain JSON types and decodes the bounded
+        # resident tool-call identity envelope; identity and hashing stay Rust.
+        "src/codex_plugin_scanner/guard/native_mcp_tool_call_identity.py",
         # JSON-safe DTO copy shared by the native runner-authority and MCP
         # tool-evidence projections; it carries no decision.
         "src/codex_plugin_scanner/guard/runtime/json_safe_copy.py",

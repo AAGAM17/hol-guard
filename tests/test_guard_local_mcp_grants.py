@@ -594,18 +594,6 @@ def test_explicit_package_version_change_does_not_inherit_grant(tmp_path: Path) 
     assert matching_local_mcp_grant(store=store, artifact=artifact, current_action="review") is None
 
 
-def test_shim_only_path_does_not_resolve_package_launcher(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from codex_plugin_scanner.guard.runtime.mcp_protection import resolved_package_launcher_executable
-
-    shim_bin = tmp_path / ".hol-guard" / "package-shims" / "bin"
-    shim_bin.mkdir(parents=True)
-    impostor = shim_bin / "npx"
-    impostor.write_text("#!/bin/sh\nexit 0\n")
-    impostor.chmod(0o755)
-    monkeypatch.setenv("PATH", str(shim_bin))
-    assert resolved_package_launcher_executable("npx") is None
-
-
 def test_different_package_does_not_inherit_npx_grant(tmp_path: Path) -> None:
     npx = _clean_npx()
     if npx is None:

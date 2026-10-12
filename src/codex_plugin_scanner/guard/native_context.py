@@ -964,34 +964,6 @@ def context_browser_mcp(request: dict[str, Any]) -> dict[str, Any]:
     return browser
 
 
-def context_mcp_tool_approval_hash(request: dict[str, Any], *, expect_token: bool) -> tuple[str, tuple[str, ...]]:
-    """Compose the full MCP approval hash natively; no local fallback.
-
-    Requests must be plain JSON types — the worker owns canonicalization, so
-    no ``default=str`` coercion here (that would silently re-materialize big
-    ints/sets as strings and change persisted digests).  Unencodable argument
-    values hit the same ``component_invalid`` boundary the per-op adapters
-    raised before.
-    """
-    try:
-        fields = json.loads(json.dumps({"request": request}))
-    except (TypeError, ValueError) as exc:
-        _LAST_DIGEST_FAILURE.set(None)
-        raise ValueError("native_mcp_tool_approval_hash_unavailable") from exc
-    result = native_context_digest(
-        "build_mcp_tool_approval_hash",
-        fields,
-        guard_home=_resolve_digest_home(None),
-    )
-    if not isinstance(result, dict) or result.get("status") != "ok":
-        raise _unavailable("native_mcp_tool_approval_hash_unavailable")
-    categories = result.get("mcp_tool_risk")
-    field = result.get("token" if expect_token else "digest")
-    if not isinstance(categories, list) or not isinstance(field, str):
-        raise _unavailable("native_mcp_tool_approval_hash_unavailable")
-    return field, tuple(categories)
-
-
 def context_mcp_arguments_projection(tool_name: str, arguments: object) -> tuple[object, str, str]:
     """`_safe_mcp_arguments` + `_mcp_arguments_digest` + `_launch_target`, one op.
 
@@ -1042,7 +1014,6 @@ __all__ = [
     "context_mcp_arguments_projection",
     "context_mcp_identity",
     "context_mcp_redact_json",
-    "context_mcp_tool_approval_hash",
     "context_mcp_tool_catalog_fingerprint",
     "context_opaque_digest",
     "context_package_evidence",

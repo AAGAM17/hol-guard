@@ -30,6 +30,7 @@ mod git_reads;
 use git_reads::safe_git_arguments;
 mod git_helper_context;
 mod git_probe;
+mod git_push;
 mod git_routes;
 mod git_worktree;
 mod guard_diagnostics;
@@ -69,6 +70,7 @@ pub use generic::evaluate_pre_tool_envelope;
 pub use generic::evaluate_pre_tool_envelope_with_context;
 pub use generic::evaluate_pre_tool_envelope_with_execution_context;
 pub use generic::evaluate_pre_tool_envelope_with_extensions;
+pub use git_push::{install_git_push_verdict, GitPushRequest, GitPushVerdict};
 pub(crate) use segment_proof::benign_command_segments;
 
 fn executable_basename(executable: &str) -> &str {
@@ -392,6 +394,14 @@ pub(super) fn evaluate_pre_tool_with_execution_context(
             "allow",
             "native_exact_safe_worktree_add",
             "The Rust command authority proved this bounded worktree creation has a fresh contained destination, a local ref, and no executable Git routes.",
+        ));
+    }
+    if git_push::exact_safe_command(&model, context, deadline, execution_environment) {
+        return Ok(pretool_decision(
+            model,
+            "allow",
+            "native_exact_safe_git_push",
+            "The Rust command authority proved this push sends the checked-out branch to a credential-free GitHub HTTPS origin through trusted Git, credential helpers and hooks.",
         ));
     }
     if exact_safe_command_with_context(&model, false, context) {

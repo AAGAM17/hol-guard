@@ -178,6 +178,7 @@ mod direct_tool_context_op;
 mod direct_tool_context_tests;
 mod direct_tool_managed_bun;
 mod edge;
+mod edge_git_push;
 mod encrypted_secret_store;
 mod git_execution_safety_binary;
 mod git_execution_safety_checks;

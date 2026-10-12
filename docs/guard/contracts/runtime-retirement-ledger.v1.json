@@ -5642,6 +5642,34 @@
    "replacement_nodes": [
     "rust/crates/guard-command/src/content_sensitivity_tests.rs::original_python_sensitivity_and_mediation_vectors_replay"
    ]
-  }
+  },
+ {
+  "path": "src/codex_plugin_scanner/guard/continuation_payload.py",
+  "source_sha256": "59edb10a1c1aa0fdc1f5a8e646a928a573e817ca457344a525ea3b0bfb755d5a",
+  "replacement_nodes": [
+   "rust/crates/guard-runtime/src/continuation_authority_op.rs::pinned_python_projection_vectors"
+  ]
+ },
+ {
+  "path": "src/codex_plugin_scanner/guard/continuation_contract.py",
+  "source_sha256": "720a603a64ba01ccd95bfc86921337c82821db686148c0761e44140f2666c3bc",
+  "replacement_nodes": [
+   "rust/crates/guard-runtime/src/continuation_authority_op.rs::pinned_python_projection_vectors"
+  ]
+ },
+ {
+  "path": "src/codex_plugin_scanner/guard/continuation_runtime.py",
+  "source_sha256": "1b0d650716f78bf3d48564323e02874b8015c7c7fdccf395ad25b09c3497893a",
+  "replacement_nodes": [
+   "rust/crates/guard-runtime/src/continuation_authority_op.rs::pinned_python_projection_vectors"
+  ]
+ },
+ {
+  "path": "src/codex_plugin_scanner/guard/store_continuation.py",
+  "source_sha256": "4d60d9eb2881d6d45d0ac6f7f1a27c17277cb34a79f1c798375bb6db7535c580",
+  "replacement_nodes": [
+   "rust/crates/guard-runtime/src/continuation_authority_op.rs::pinned_python_projection_vectors"
+  ]
+ }
  ]
 }

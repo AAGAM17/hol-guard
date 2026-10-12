@@ -230,6 +230,7 @@ _TRANSPORT_DECODE_PATHS: Final = frozenset(
         # Decodes the bounded resident runner-authority response envelope and
         # projects typed runner state to it; Rust owns every authority answer.
         "src/codex_plugin_scanner/guard/native_runner_authority.py",
+        "src/codex_plugin_scanner/guard/native_continuation_authority.py",
         "src/codex_plugin_scanner/guard/native_decisions.py",
         "src/codex_plugin_scanner/guard/native_signal_projection.py",
         # Fused CLI input/identity DTO from the existing bound resident stream.

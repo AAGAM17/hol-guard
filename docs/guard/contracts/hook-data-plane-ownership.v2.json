@@ -350,6 +350,7 @@
     "src/codex_plugin_scanner/guard/native_runtime_detectors.py",
     "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/environment_secret_dump.py",
     "src/codex_plugin_scanner/guard/native_runner_authority.py",
+    "src/codex_plugin_scanner/guard/native_continuation_authority.py",
     "src/codex_plugin_scanner/guard/native_decisions.py",
     "src/codex_plugin_scanner/guard/native_signal_projection.py",
     "src/codex_plugin_scanner/guard/runtime/runner_native_authority.py",

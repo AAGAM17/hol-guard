@@ -16,8 +16,8 @@ use crate::pyjson::PyVal;
 
 /// The harnesses the native bridge answers for. Grok keeps extra Python
 /// steps (approval waits, prompt preparation), so it stays in Python.
-pub(crate) const NATIVE_HARNESSES: [&str; 7] = [
-    "copilot", "kimi", "devin", "zcode", "openclaw", "hermes", "cline",
+pub(crate) const NATIVE_HARNESSES: [&str; 8] = [
+    "copilot", "kimi", "devin", "zcode", "openclaw", "hermes", "cline", "opencode",
 ];
 
 pub(crate) const FAILURE_REASON: &str =

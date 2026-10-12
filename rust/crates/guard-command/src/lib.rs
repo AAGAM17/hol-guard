@@ -661,6 +661,7 @@ pub mod aibom_trust_metadata;
 pub mod archive_inspection;
 pub mod command_operation_classification;
 pub mod composition_rules;
+pub mod contained_argv;
 #[cfg(unix)]
 pub mod contained_execution;
 #[cfg(unix)]

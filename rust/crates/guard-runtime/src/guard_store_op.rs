@@ -45,6 +45,7 @@ use crate::guard_store_receipt_reads as receipt_reads;
 use crate::guard_store_receipt_rollups as receipt_rollups;
 use crate::guard_store_receipt_writes as receipt_writes;
 use crate::guard_store_sessions as sessions;
+use crate::guard_store_state_ops as state_ops;
 use crate::guard_store_storage_maintenance as storage_maintenance;
 use crate::guard_store_wfcap_wire as wfcap;
 
@@ -267,6 +268,8 @@ fn method_kind(method: &str) -> Option<Kind> {
         | "receipt_decision_counts"
         | "run_storage_housekeeping"
         | "count_receipts"
+        | "artifact_latest_diff"
+        | "oauth_sources_list"
         | "policy_source_contexts" => Kind::Read,
         "list_command_activity_page"
         | "command_activity_analytics"
@@ -318,7 +321,8 @@ fn method_kind(method: &str) -> Option<Kind> {
         | "receipt_summary_between"
         | "receipt_analytics"
         | "reconcile_receipt_events"
-        | "maintain_storage" => Kind::Write,
+        | "maintain_storage"
+        | "managed_keyring_reconcile" => Kind::Write,
         _ => return None,
     })
 }
@@ -475,6 +479,7 @@ fn dispatch(
         "reconcile_receipt_events" => receipt_reads::reconcile_events(connection, args),
         "maintain_storage" => storage_maintenance::maintain(connection, args),
         "run_storage_housekeeping" => storage_maintenance::housekeeping(connection),
+        _ if state_ops::handles(method) => state_ops::dispatch(connection, method, args),
         _ => Err(StoreError::Invalid("native_guard_store_method_unknown")),
     }
 }

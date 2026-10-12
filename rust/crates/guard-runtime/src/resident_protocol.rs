@@ -58,6 +58,7 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         "policy-snapshot-v3".into(),
         "policy-snapshot-push-v1".into(),
         "policy-snapshot-resident-generation-v1".into(),
+        "policy-snapshot-direct-lane-v1".into(),
         "native-approval-artifact-v3".into(),
         "native-approval-challenge-v3".into(),
         "native-approval-validation-v3".into(),

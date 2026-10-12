@@ -14,6 +14,7 @@ from .native_policy_snapshot_constants import (
     _REQUIRED_PUBLISH_FEATURES,
     NativePolicySnapshotError,
 )
+from .native_policy_snapshot_direct_lane import direct_lane_binding
 from .native_policy_snapshot_harness_postures import (
     HARNESS_POSTURES_BINDING_KEY,
     valid_harness_postures,
@@ -69,6 +70,7 @@ class NativePolicySnapshotPublicationMixin:
                 if publisher._closed:
                     return
                 publisher._mark_expired_locked()
+                publisher._renew_direct_lane_ack()
                 now = publisher._monotonic_clock()
                 wait_seconds = publisher._poll_interval_seconds
                 if publisher._retry_not_before_monotonic is not None:
@@ -87,6 +89,7 @@ class NativePolicySnapshotPublicationMixin:
                 if publisher._closed:
                     return
                 publisher._mark_expired_locked()
+                publisher._renew_direct_lane_ack()
                 now = publisher._monotonic_clock()
                 if (
                     publisher._acked
@@ -158,6 +161,17 @@ class NativePolicySnapshotPublicationMixin:
                     # now would make the ACKed digest disagree with the
                     # settled-only reconcile and withdraw readiness home-wide.
                     compiled_workspaces = frozenset(publisher._workspace_paths)
+                # Observe inputs before compiling: a change after this point
+                # leaves the resident with a stat mismatch, never a stale pass.
+                # The binding is optional, so an observation failure only
+                # keeps the lane closed; publication reports its own errors.
+                try:
+                    direct_lane = direct_lane_binding(
+                        inputs=publisher._current_policy_input_stats(),
+                        workspaces=compiled_workspaces,
+                    )
+                except (OSError, RuntimeError, ValueError, sqlite3.Error):
+                    direct_lane = None
                 local_cli_revision = publisher._current_local_cli_revision()
                 provider_reader = getattr(publisher.store, "read_mcp_provider_authority_hash", None)
                 provider_authority_hash = provider_reader() if callable(provider_reader) else None
@@ -185,6 +199,7 @@ class NativePolicySnapshotPublicationMixin:
                     master_key=master_key,
                     client=client,
                     renew_after_generation=renew_after_generation,
+                    direct_lane=direct_lane,
                     **(
                         {
                             "business_policy": cast(
@@ -285,6 +300,7 @@ class NativePolicySnapshotPublicationMixin:
                         postures=valid_harness_postures(config.get(HARNESS_POSTURES_BINDING_KEY)),
                     )
                     publisher._acked = True
+                    publisher._publish_direct_lane_ack(snapshot)
                     publisher._last_error = None
                     publisher._renewal_after_generation = None
                     publisher._failure_count = 0

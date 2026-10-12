@@ -36,6 +36,24 @@ mod archive_acquisition_op;
 mod archive_inspect;
 mod archive_inspect_containment;
 mod archive_verdict_seam;
+#[cfg(unix)]
+mod binding_capture_capture;
+#[cfg(unix)]
+mod binding_capture_crypto;
+#[cfg(unix)]
+mod binding_capture_fs;
+#[cfg(unix)]
+mod binding_capture_join;
+#[cfg(unix)]
+mod binding_capture_json;
+#[cfg(unix)]
+mod binding_capture_op;
+#[cfg(unix)]
+mod binding_capture_receipt;
+#[cfg(unix)]
+mod binding_capture_record;
+#[cfg(all(test, unix))]
+mod binding_capture_vectors_tests;
 #[cfg(test)]
 mod bundle_parse_reuse_tests;
 mod business_document_compile;

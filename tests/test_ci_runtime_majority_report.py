@@ -399,12 +399,14 @@ def test_shipped_scope_keeps_synchronous_hook_path_modules_in_scope(shipped_repo
     result = shipped_report
     in_scope = {item["path"] for item in result["python"]["files"]}
     guard = "src/codex_plugin_scanner/guard/"
+    # evaluation_json left with the Python capture modules; duplicate keys are
+    # rejected in the native capture parser. inventory_contract_fingerprints left
+    # when AIBOM hashing moved into the resident.
     required = [
         "runtime/package_json_scripts.py",
         "runtime/custom_extension_suggestion.py",
         "cli/render.py",
         "aibom_detection.py",
-        "evaluation_json.py",
         "store_receipt_rollup_schema.py",
         "store_storage_maintenance.py",
     ]

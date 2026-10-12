@@ -150,4 +150,10 @@ fn prompt_capability_is_portable_and_containment_matches_dispatch() {
             .any(|feature| feature == guard_contracts::CONTAINED_EXECUTION_FEATURE),
         cfg!(unix)
     );
+    assert_eq!(
+        features
+            .iter()
+            .any(|feature| feature == "codex-binding-capture-v1"),
+        cfg!(unix)
+    );
 }

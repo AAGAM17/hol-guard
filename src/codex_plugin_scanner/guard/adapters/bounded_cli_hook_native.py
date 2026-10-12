@@ -9,7 +9,7 @@ from pathlib import Path
 NATIVE_BOUNDED_HOOK_COMMAND = "bounded-hook-bridge"
 NATIVE_BOUNDED_HOOK_FEATURE = "bounded-hook-bridge-v1"
 # Harnesses whose POSIX hook the native runtime answers from the daemon itself.
-_NATIVE_BOUNDED_HOOK_HARNESSES = frozenset({"copilot", "kimi", "devin", "zcode", "openclaw", "hermes"})
+_NATIVE_BOUNDED_HOOK_HARNESSES = frozenset({"copilot", "kimi", "devin", "zcode", "openclaw", "hermes", "cline"})
 _NATIVE_ELAPSED_ENV = "HOL_GUARD_BOUNDED_NATIVE_ELAPSED_MS"
 _NATIVE_DAEMON_TRIED_ENV = "HOL_GUARD_BOUNDED_NATIVE_DAEMON_TRIED"
 

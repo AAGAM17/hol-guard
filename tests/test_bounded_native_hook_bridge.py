@@ -11,7 +11,13 @@ from pathlib import Path
 import pytest
 
 from codex_plugin_scanner.guard.adapters import bounded_cli_hook_bridge as bridge
-from codex_plugin_scanner.guard.adapters import bounded_cli_hook_daemon, copilot, devin_config, hermes_runtime_hooks
+from codex_plugin_scanner.guard.adapters import (
+    bounded_cli_hook_daemon,
+    cline_hooks,
+    copilot,
+    devin_config,
+    hermes_runtime_hooks,
+)
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.adapters.bounded_cli_hook_native import (
     NATIVE_BOUNDED_HOOK_COMMAND,
@@ -23,7 +29,7 @@ from codex_plugin_scanner.guard.codex_hook_launch_runtime import BoundedHookProc
 
 _ELAPSED_ENV = "HOL_GUARD_BOUNDED_NATIVE_ELAPSED_MS"
 _DAEMON_TRIED_ENV = "HOL_GUARD_BOUNDED_NATIVE_DAEMON_TRIED"
-_NATIVE_HARNESSES = ("copilot", "kimi", "devin", "zcode", "openclaw", "hermes")
+_NATIVE_HARNESSES = ("copilot", "kimi", "devin", "zcode", "openclaw", "hermes", "cline")
 _POSIX_ONLY = pytest.mark.skipif(sys.platform == "win32", reason="the native bounded bridge is POSIX-only")
 
 
@@ -142,6 +148,25 @@ def test_native_copilot_devin_and_hermes_commands_stay_managed(tmp_path: Path, m
     assert devin_config.is_guard_managed_hook_command(devin_command)
     hermes_command = hermes_runtime_hooks.hermes_hook_command_string(_command(tmp_path, "hermes"))
     assert hermes_runtime_hooks._legacy_guard_pretool_command(hermes_command)
+
+
+@pytest.mark.native_bounded_hook_bridge
+@_POSIX_ONLY
+def test_cline_worker_runs_the_native_bridge_once_per_payload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime = tmp_path / "hol-guard-runtime"
+    _offer_native(monkeypatch, runtime, (NATIVE_BOUNDED_HOOK_FEATURE,))
+    context = HarnessContext(home_dir=tmp_path / "h", workspace_dir=None, guard_home=tmp_path / "g")
+
+    argv = cline_hooks._bounded_hook_argv(context, sys.executable)
+    source = cline_hooks._hook_source(context, event_name="PreToolUse", guard_cli=list(argv))
+
+    assert argv[:2] == (str(runtime), NATIVE_BOUNDED_HOOK_COMMAND)
+    config = json.loads(argv[-1])
+    assert config["harness"] == "cline"
+    assert config["cli_args"][:2] == ["guard", "hook"]
+    assert config["timeout_seconds"] < cline_hooks._TIMEOUT
+    assert f"GUARD={list(argv)!r}" in source
+    assert "[*GUARD" not in source
 
 
 def test_handoff_environment_is_read_once_and_only_shortens(monkeypatch: pytest.MonkeyPatch) -> None:

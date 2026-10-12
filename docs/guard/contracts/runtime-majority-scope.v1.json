@@ -1664,6 +1664,7 @@
         "path": "src/codex_plugin_scanner/guard/adapters/cline_hooks.py",
         "symbols": [
           "install_cline_hooks",
+          "_bounded_hook_argv",
           "_slot_for_event",
           "_worker_path",
           "_write",

@@ -84,6 +84,48 @@ fn bounded_inspection(arguments: &[String]) -> bool {
             .all(|part| !matches!(part, "" | "." | ".."))
 }
 
+/// A staged-index diff that prints to stdout like `git diff HEAD`, which the
+/// ordinary diff proof already admits. The staged content is no more private
+/// than the working tree beside it, so the shared read proof (configuration
+/// probe, textconv and sensitive-pathspec screens) decides it. Forms that
+/// write a file or compare against another revision keep the index owner.
+fn bounded_cached_diff(arguments: &[String]) -> bool {
+    arguments
+        .iter()
+        .take_while(|argument| argument.as_str() != "--")
+        .all(|argument| {
+            let option = argument.as_str();
+            matches!(
+                option,
+                "--cached"
+                    | "--staged"
+                    | "HEAD"
+                    | "--check"
+                    | "--stat"
+                    | "--numstat"
+                    | "--shortstat"
+                    | "--summary"
+                    | "--name-only"
+                    | "--name-status"
+                    | "--patch"
+                    | "-p"
+                    | "--quiet"
+                    | "--exit-code"
+                    | "--no-color"
+                    | "--color=never"
+                    | "--no-ext-diff"
+                    | "--no-textconv"
+            ) || option
+                .strip_prefix("-U")
+                .or_else(|| option.strip_prefix("--unified="))
+                .is_some_and(|lines| {
+                    !lines.is_empty()
+                        && lines.len() <= 6
+                        && lines.bytes().all(|b| b.is_ascii_digit())
+                })
+        })
+}
+
 fn read_only_plumbing(arguments: &[String]) -> bool {
     let Some((command, rest)) = arguments.split_first() else {
         return false;
@@ -293,6 +335,7 @@ pub(super) fn observe_with_context(
             .iter()
             .take_while(|argument| argument.as_str() != "--")
             .any(|argument| matches!(argument.as_str(), "--cached" | "--staged"))
+        && !inspection.is_some_and(|remaining| bounded_cached_diff(&remaining[1..]))
     {
         result.rule("command.git.index-inspection", index, true);
     }
@@ -335,6 +378,41 @@ mod tests {
             "git apply --check workspace/patches/change.patch",
         ] {
             assert!(observations(command).rule_matches.is_empty(), "{command}");
+        }
+    }
+
+    #[test]
+    fn bounded_cached_diffs_leave_the_index_owner_to_the_read_proof() {
+        let owns_index = |command: &str| {
+            observations(command)
+                .rule_matches
+                .iter()
+                .any(|item| item.rule_id == "command.git.index-inspection")
+        };
+        for command in [
+            "git diff --cached",
+            "git diff --staged",
+            "git diff --cached --check",
+            "git diff --cached --numstat",
+            "git diff --cached --quiet",
+            "git diff --cached --stat",
+            "git diff --staged --name-only",
+            "git diff --cached --name-status HEAD",
+            "git diff --cached -U3 -- src/main.rs",
+            "git diff --no-ext-diff --cached --quiet",
+        ] {
+            assert!(!owns_index(command), "{command}");
+        }
+        for command in [
+            "git diff --staged --output=patch",
+            "git diff --cached -o patch",
+            "git diff --cached --ext-diff",
+            "git diff --cached --textconv",
+            "git diff --cached origin/main",
+            "git diff --cached src/main.rs",
+            "git -c diff.external=payload diff --cached",
+        ] {
+            assert!(owns_index(command), "{command}");
         }
     }
 

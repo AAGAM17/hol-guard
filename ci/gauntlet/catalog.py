@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .extension_adapters import extension_adapter
 from .fixtures import digest_file
+from .supply_chain import PACKAGE_BLOCK_REASONS
 
 CATALOG = Path(__file__).with_name("scenarios.json")
 WATCH_COMMAND = "python -I -S -c 'print(\"ordinary-watch-fixture\")'"
@@ -107,11 +108,12 @@ def load_catalog_data(data: object) -> tuple[Scenario, ...]:
             "blocked-read",
             "blocked-command",
             "blocked-extension",
+            "blocked-package",
             "native-tools",
         }:
             raise ValueError(f"unknown oracle: {scenario.oracle}")
         if (
-            scenario.oracle in {"blocked-command", "blocked-extension", "home-copy-task"}
+            scenario.oracle in {"blocked-command", "blocked-extension", "blocked-package", "home-copy-task"}
             and len(scenario.commands) != 1
         ):
             raise ValueError("single-attempt cases require one exact command")
@@ -119,6 +121,8 @@ def load_catalog_data(data: object) -> tuple[Scenario, ...]:
             raise ValueError("native-tools cases are allow-only and must name their required tools")
         if scenario.oracle == "blocked-extension":
             extension_adapter(scenario.commands[0])
+        if (scenario.oracle == "blocked-package") != (scenario.id in PACKAGE_BLOCK_REASONS):
+            raise ValueError("package protection cases must name their package evaluator verdict")
         if scenario.oracle == "commands" and not scenario.commands:
             raise ValueError("command cases cannot be empty")
         if scenario.oracle == "watch-command" and (

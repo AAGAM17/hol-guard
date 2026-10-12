@@ -49,6 +49,7 @@ from .provider import InferenceRelay, LoopbackCollector
 from .review_fixtures import GITHUB_REVIEW_CASE, GITHUB_STUB_CASES, WORKTREE_CASE, configure_github_review_controls
 from .source_identity import source_identity
 from .summary import inference_usage, render_summary_markdown
+from .supply_chain import stage_supply_chain
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
@@ -73,6 +74,7 @@ def run_case(
         realistic=first_contact and scenario.id != WORKTREE_CASE,
         linked_worktree=scenario.id == WORKTREE_CASE,
     )
+    stage_supply_chain(fixture.workspace, scenario.id)
     private = fixture.root / "private-evidence"
     private.mkdir(mode=0o700)
     raw_log, error_log = private / "omp.jsonl", private / "stderr.txt"

@@ -19,7 +19,7 @@ from .interruptions import case_interruptions, describe
 from .mixed_reads import assess_mixed_reads
 from .native_tools import native_tools_scope_error
 from .proofs import (
-    BLOCK_REASONS,
+    block_reasons,
     command_outputs_match,
     guard_inventory,
     required_checks,
@@ -242,7 +242,7 @@ def _assess_observed(
             if g.get("decision") == "deny"
             and g.get("event") == "PreToolUse"
             and isinstance(g.get("reason_code"), str)
-            and g["reason_code"] in BLOCK_REASONS
+            and g["reason_code"] in block_reasons(scenario)
         ]
         if calls[0]["is_error"] is not True or not any(
             g.get("event") == "PreToolUse" and g.get("decision") == "deny" for g in by_id[calls[0]["id"]]

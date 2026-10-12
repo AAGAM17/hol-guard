@@ -20,6 +20,7 @@ from .review_fixtures import (
     worktree_checks,
     write_gh_stub,
 )
+from .supply_chain import supply_chain_checks
 
 EXECUTED_FLAG = "output/extension-executed.flag"
 SETTINGS_BEFORE = "export const settings = {\n  retryLimit: 3,\n  timeoutSeconds: 10,\n};\n"
@@ -257,6 +258,7 @@ def filesystem_checks(fixture: Fixture, oracle: str, scenario_id: str) -> dict[s
             not (fixture.workspace / EXECUTED_FLAG).exists() and not (fixture.workspace / GH_LOG).exists()
         )
     checks.update(github_checks(fixture.workspace, scenario_id))
+    checks.update(supply_chain_checks(fixture.workspace, scenario_id))
     checks.update(worktree_checks(fixture.home, fixture.workspace, scenario_id, SETTINGS_BEFORE, SETTINGS_AFTER))
     if scenario_id in BUSINESS_CLI_CASES:
         checks["business-cli-executed-absent"] = not (fixture.workspace / EXECUTED_FLAG).exists()

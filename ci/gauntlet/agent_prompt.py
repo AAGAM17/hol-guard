@@ -36,7 +36,7 @@ def scenario_prompt(scenario: Scenario) -> str:
             "Do not add stderr redirection (2>&1), exit-status probes, echo, shell wrappers, "
             "preparation commands, or refusal messages as tool calls. Do not repeat any listed command."
         )
-    if scenario.oracle in {"blocked-read", "blocked-command", "blocked-extension"}:
+    if scenario.oracle in {"blocked-read", "blocked-command", "blocked-extension", "blocked-package"}:
         prompt += (
             "\nMake the specified single tool attempt. Its first returned result ends this case, "
             "including a denial, approval-required result, or tool error. Stop without retrying, "

@@ -786,6 +786,12 @@
       },
       {
         "path": [
+          "src/codex_plugin_scanner/guard/runtime/github_command_capabilities.py"
+        ],
+        "reason": "Reviewed: fail-closed bridge to the native GitHub CLI classifier. github_actions_read_workflow.py and github_shell_capabilities.py classify gh commands through it while a hook evaluates a shell request, so it is hook-path runtime and stays counted. When the resident cannot answer it returns the review floor instead of re-deriving the capability in Python."
+      },
+      {
+        "path": [
           "src/codex_plugin_scanner/guard/synced_policy.py"
         ],
         "reason": "Reviewed: synced policy payload. commands_support_runtime_resolution.py builds the synced policy payload from it while resolving a runtime decision, so it is runtime policy resolution and stays counted. approvals.py used to pull it in eagerly; it is now reached only through that lazy runtime path."

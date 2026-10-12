@@ -54,6 +54,10 @@ mod binding_capture_receipt;
 mod binding_capture_record;
 #[cfg(all(test, unix))]
 mod binding_capture_vectors_tests;
+#[cfg(unix)]
+mod bounded_hook_bridge;
+#[cfg(unix)]
+mod bounded_hook_bridge_render;
 #[cfg(test)]
 mod bundle_parse_reuse_tests;
 mod business_document_compile;

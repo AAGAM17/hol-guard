@@ -94,6 +94,22 @@ def _python_codex_hook_bridge(request: pytest.FixtureRequest, monkeypatch: pytes
 
 
 @pytest.fixture(autouse=True)
+def _python_bounded_hook_bridge(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Install bounded CLI hooks with the Python bridge argv unless a test opts in.
+
+    Copilot, Kimi, Devin, ZCode and OpenClaw install tests pin the Python
+    bridge contract. Tests marked ``native_bounded_hook_bridge`` keep the
+    native runtime selection.
+    """
+
+    if request.node.get_closest_marker("native_bounded_hook_bridge") is not None:
+        return
+    # Subprocess installers copy os.environ and do not see a monkeypatched
+    # function. The launcher treats this value as the Python bridge pin.
+    monkeypatch.setenv("HOL_GUARD_BOUNDED_HOOK_BRIDGE", "python")
+
+
+@pytest.fixture(autouse=True)
 def _reset_aibom_mcp_native_backoff() -> None:
     """One outage's MCP-enrichment backoff must not leak into the next test."""
 

@@ -113,6 +113,8 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         features.push(crate::claude_hook_bridge::BRIDGE_FEATURE.into());
         #[cfg(unix)]
         features.push(crate::codex_hook_bridge::BRIDGE_FEATURE.into());
+        #[cfg(unix)]
+        features.push(crate::bounded_hook_bridge::BRIDGE_FEATURE.into());
     }
     features.push(guard_contracts::SKILL_DIRECTORY_IDENTITY_FEATURE.into());
     let (program_digest, catalog_digest, trust_digest) =

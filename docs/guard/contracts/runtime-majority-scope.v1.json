@@ -575,6 +575,7 @@
         "path": [
           "src/codex_plugin_scanner/guard/adapters/capability_report.py",
           "src/codex_plugin_scanner/guard/adapters/codex.py",
+          "src/codex_plugin_scanner/guard/adapters/codex_detect_sources.py",
           "src/codex_plugin_scanner/guard/adapters/codex_lifecycle_lock.py",
           "src/codex_plugin_scanner/guard/adapters/codex_remote_control.py",
           "src/codex_plugin_scanner/guard/adapters/cursor_native_approval.py",

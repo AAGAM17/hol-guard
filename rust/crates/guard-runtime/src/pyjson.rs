@@ -212,22 +212,34 @@ pub(crate) fn float_repr(number: f64) -> String {
 }
 
 pub(crate) fn parse(text: &str) -> Result<PyVal, JsonFailure> {
-    parse_with(text, false)
+    parse_with(text, false, char::REPLACEMENT_CHARACTER)
+}
+
+/// A noncharacter standing in for a lone surrogate in a value, for callers
+/// that must tell the text CPython keeps (and cannot later encode) from a
+/// genuine U+FFFD.
+pub(crate) const LONE_SURROGATE_MARK: char = '\u{fdd0}';
+
+/// Parse like [`parse`], decoding a lone surrogate escape in a value to
+/// [`LONE_SURROGATE_MARK`] instead of U+FFFD.
+pub(crate) fn parse_marking_lone_surrogates(text: &str) -> Result<PyVal, JsonFailure> {
+    parse_with(text, false, LONE_SURROGATE_MARK)
 }
 
 /// Parse like an `object_pairs_hook` that rejects a repeated key: the failure
 /// surfaces when the object closes, so a later syntax error in the same
 /// object still wins.
 pub(crate) fn parse_unique(text: &str) -> Result<PyVal, JsonFailure> {
-    parse_with(text, true)
+    parse_with(text, true, char::REPLACEMENT_CHARACTER)
 }
 
-fn parse_with(text: &str, unique: bool) -> Result<PyVal, JsonFailure> {
+fn parse_with(text: &str, unique: bool, lone_surrogate: char) -> Result<PyVal, JsonFailure> {
     let mut parser = Parser {
         text: text.as_bytes(),
         position: 0,
         unique,
         saw_lone_surrogate: false,
+        lone_surrogate,
     };
     parser.skip_space();
     let value = parser.value(0)?;
@@ -243,6 +255,8 @@ struct Parser<'a> {
     position: usize,
     unique: bool,
     saw_lone_surrogate: bool,
+    /// What a lone surrogate escape in a value decodes to.
+    lone_surrogate: char,
 }
 
 impl Parser<'_> {
@@ -399,7 +413,7 @@ impl Parser<'_> {
                                 Some(character) => character,
                                 None => {
                                     self.saw_lone_surrogate = true;
-                                    char::REPLACEMENT_CHARACTER
+                                    self.lone_surrogate
                                 }
                             };
                             let mut buffer = [0_u8; 4];

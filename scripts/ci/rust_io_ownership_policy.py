@@ -77,6 +77,8 @@ _TRANSPORT_IDENTITY_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/daemon/pipx_import_paths.py",
         # Resident request transport; the observed git path is a fact, never a verdict.
         "src/codex_plugin_scanner/guard/native_codex_tool_output.py",
+        # Resident sensitive-request transport; the observed git path is a fact, never a verdict.
+        "src/codex_plugin_scanner/guard/native_sensitive_request.py",
         "src/codex_plugin_scanner/guard/frozen_runtime_commands.py",
     }
 )

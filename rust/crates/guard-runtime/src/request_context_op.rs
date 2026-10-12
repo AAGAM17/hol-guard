@@ -318,6 +318,9 @@ fn decide(
         RequestContextKindV1::TrustedTool(body) => {
             crate::direct_tool_context_op::trusted(body, &budget)?
         }
+        RequestContextKindV1::SensitiveRequest(body) => {
+            crate::sensitive_request_op::evaluate(request, body, &budget)?
+        }
         RequestContextKindV1::ValidateSegment {
             context,
             segment_index,

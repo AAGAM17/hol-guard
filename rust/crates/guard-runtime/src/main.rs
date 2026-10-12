@@ -462,6 +462,7 @@ mod runner_sync_url;
 mod runtime_cli;
 mod runtime_detector_run_op;
 mod secrets_cli;
+mod sensitive_request_op;
 #[cfg(all(test, unix))]
 #[allow(dead_code, clippy::pedantic)]
 #[path = "../../guard-command/tests/sfrs_support/mod.rs"]

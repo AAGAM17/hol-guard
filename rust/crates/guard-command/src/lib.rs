@@ -657,6 +657,7 @@ mod restricted_archive_peer;
 mod restricted_archive_stream;
 pub mod restricted_archive_transport;
 mod restricted_archive_write;
+pub mod restricted_command;
 #[cfg(unix)]
 pub mod restricted_pytest;
 pub mod resume_template;

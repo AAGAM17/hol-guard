@@ -65,7 +65,7 @@ fn unproven_local_commands_run_in_the_workspace_sandbox_on_macos() {
         "/Users/nobody/.nvm/versions/node/v25.2.1/bin/npm run build",
     ] {
         let got = reason("omp", command, &ws, true);
-        if cfg!(target_os = "macos") {
+        if host() {
             assert_eq!(got, CONTAINED, "{command}");
         } else {
             assert_ne!(got, CONTAINED, "{command}");
@@ -77,7 +77,7 @@ fn unproven_local_commands_run_in_the_workspace_sandbox_on_macos() {
 fn git_init_converts_only_in_a_fresh_workspace() {
     let fresh = workspace("init", false);
     let existing = workspace("init-existing", true);
-    let expected = cfg!(target_os = "macos");
+    let expected = host();
     assert_eq!(
         reason("omp", "git init", &fresh, true) == CONTAINED,
         expected
@@ -204,7 +204,7 @@ fn hostile_git_configuration_stays_at_review() {
     )
     .unwrap();
     let got = reason("omp", "./todo.py add x", &ws, true);
-    assert_eq!(got == CONTAINED, cfg!(target_os = "macos"));
+    assert_eq!(got == CONTAINED, host());
 }
 
 #[test]
@@ -218,7 +218,7 @@ fn compound_commands_with_literal_redirects_run_in_the_workspace_sandbox() {
         "npm run build > build.log 2>&1 && git add -A",
     ] {
         let got = reason("omp", command, &ws, true);
-        if cfg!(target_os = "macos") {
+        if host() {
             assert_eq!(got, CONTAINED, "{command}");
         } else {
             assert_ne!(got, CONTAINED, "{command}");
@@ -232,7 +232,7 @@ fn compound_commands_with_literal_redirects_run_in_the_workspace_sandbox() {
             &fresh,
             true
         ) == CONTAINED,
-        cfg!(target_os = "macos")
+        host()
     );
 }
 
@@ -257,4 +257,9 @@ fn redirects_the_sandbox_cannot_bound_stay_out_of_the_workspace_sandbox() {
         reason("omp", "python3 app.py > out.txt && git add -A", &ws, false),
         CONTAINED
     );
+}
+
+/// Whether this host runs the workspace sandbox at all.
+fn host() -> bool {
+    cfg!(target_os = "macos") || crate::restricted_pytest::linux_workspace_sandbox_available()
 }

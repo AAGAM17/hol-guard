@@ -14,7 +14,7 @@ use std::path::Path;
 #[cfg(unix)]
 use crate::restricted_pytest::workspace_admissible;
 
-/// The workspace sandbox is macOS-only; other platforms never admit a workspace.
+/// The workspace sandbox runs on macOS and Linux; Windows never admits a workspace.
 #[cfg(not(unix))]
 fn workspace_admissible(_cwd: &Path, _home: Option<&Path>) -> Option<std::path::PathBuf> {
     None
@@ -339,14 +339,25 @@ fn destroys_workspace(
         })
 }
 
-/// Whether this host runs the workspace sandbox for this harness hook.
+/// Whether this host runs the workspace sandbox for this harness hook: macOS
+/// Seatbelt, or a Linux bubblewrap that passed the overlay probe.
 pub(super) fn host_eligible(harness: &str, event: &str) -> bool {
-    cfg!(target_os = "macos")
-        && event == "PreToolUse"
+    event == "PreToolUse"
         && matches!(
             harness,
             "omp" | "oh-my-pi" | "zcode" | "claude-code" | "codex"
         )
+        && sandbox_available()
+}
+
+#[cfg(unix)]
+fn sandbox_available() -> bool {
+    cfg!(target_os = "macos") || crate::restricted_pytest::linux_workspace_sandbox_available()
+}
+
+#[cfg(not(unix))]
+fn sandbox_available() -> bool {
+    false
 }
 
 /// The workspace the sandbox would confine for this session, if any.

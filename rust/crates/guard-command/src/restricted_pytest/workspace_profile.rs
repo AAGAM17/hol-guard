@@ -98,7 +98,7 @@ fn alternatives(names: &[&str]) -> Result<String, RestrictedPytestError> {
 /// Git execution configuration at any depth, so nested repositories are
 /// covered. The trailing `?$` also denies creating, renaming or deleting the
 /// `.git` entry itself, which blocks gitfile redirects and directory swaps.
-pub(super) fn git_exec_pattern(workspace: &Path) -> Result<String, RestrictedPytestError> {
+pub(crate) fn git_exec_pattern(workspace: &Path) -> Result<String, RestrictedPytestError> {
     let root = ci(&workspace.to_string_lossy())?;
     let git = ci(".git")?;
     let config = format!("{}({}|{})?", ci("config")?, ci(".worktree")?, ci(".lock")?);
@@ -111,7 +111,7 @@ pub(super) fn git_exec_pattern(workspace: &Path) -> Result<String, RestrictedPyt
 
 /// A file named `HEAD` lets a later host Git take its directory for a bare
 /// repository and load the `config` beside it, so none may be planted.
-pub(super) fn bare_head_pattern(root: &Path) -> Result<String, RestrictedPytestError> {
+pub(crate) fn bare_head_pattern(root: &Path) -> Result<String, RestrictedPytestError> {
     Ok(format!(
         "^{}/(.*/)?{}$",
         ci(&root.to_string_lossy())?,
@@ -123,7 +123,7 @@ pub(super) fn bare_head_pattern(root: &Path) -> Result<String, RestrictedPytestE
 /// `.git/(logs/)?refs/remotes`. Adding `objects`, `commondir` or `config`
 /// directly beside one would complete a bare repository there, so none may be
 /// written. Deeper paths are ordinary refs, such as a branch named `fix/config`.
-pub(super) fn ref_store_repository_pattern(root: &Path) -> Result<String, RestrictedPytestError> {
+pub(crate) fn ref_store_repository_pattern(root: &Path) -> Result<String, RestrictedPytestError> {
     let config = format!("{}({}|{})?", ci("config")?, ci(".worktree")?, ci(".lock")?);
     let names = format!(
         "({config}|{}|{}|{})(/.*)?",
@@ -152,7 +152,7 @@ pub(super) fn head_carrier_pattern(root: &Path) -> Result<String, RestrictedPyte
     ))
 }
 
-pub(super) fn protected_patterns(workspace: &Path) -> Result<Vec<String>, RestrictedPytestError> {
+pub(crate) fn protected_patterns(workspace: &Path) -> Result<Vec<String>, RestrictedPytestError> {
     let root = ci(&workspace.to_string_lossy())?;
     Ok(vec![
         format!(

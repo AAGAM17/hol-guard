@@ -91,7 +91,8 @@ CONTAINED_TEST_HELPERS_SOURCE = r"""
     if (
       response.decision !== "deny" || response.policy_action !== "sandbox-required" ||
       !profileMatches || response.observe_mode === true ||
-      process.platform !== "darwin" || GUARD_CLI_WRAPPER_ACCEPTS_JSON_ARGS ||
+      (process.platform !== "darwin" && !(process.platform === "linux" && profile === "workspace-contained-v1")) ||
+      GUARD_CLI_WRAPPER_ACCEPTS_JSON_ARGS ||
       !GUARD_CLI_WRAPPER_COMMAND.startsWith("/") ||
       snapshot.payload.tool_name !== "bash" || !key || containedTestRequests.has(key) ||
       !input || typeof input !== "object" || Array.isArray(input) ||

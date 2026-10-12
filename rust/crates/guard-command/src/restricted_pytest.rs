@@ -220,6 +220,8 @@ mod profiles;
 mod toolchains;
 mod validation;
 mod workspace;
+mod workspace_linux;
+mod workspace_overlay;
 pub fn evaluate_with_deadline(
     operation: &str,
     input: &serde_json::Value,
@@ -229,6 +231,7 @@ pub fn evaluate_with_deadline(
 }
 pub use authority::evaluate;
 pub(crate) use workspace::workspace_admissible;
+pub(crate) use workspace_linux::available as linux_workspace_sandbox_available;
 #[cfg(test)]
 mod parity_tests;
 use executables::*;

@@ -143,6 +143,11 @@ def test_a_plan_that_differs_from_the_authorized_command_is_rejected(
     assert started == []
 
 
+@pytest.fixture(autouse=True)
+def macos_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(workspace_sink, "_host_backend", lambda: "macos-seatbelt")
+
+
 def test_matching_plan_launches_in_the_sandbox_backend(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     calls: list[str] = []
     sent: list[object] = []
@@ -237,3 +242,64 @@ def test_a_prefix_outside_the_authorized_command_is_rejected(monkeypatch: pytest
 
 def test_adapters_map_the_workspace_reason_to_its_profile() -> None:
     assert zcode_contained_tests._PROFILES["native_workspace_containment_required"] == "workspace-contained-v1"
+
+
+def test_linux_runs_in_an_overlay_and_applies_only_after_exit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(workspace_sink, "_host_backend", lambda: "linux-bubblewrap")
+    linux_plan = plan(tmp_path, backend="linux-bubblewrap", backend_executable="/usr/bin/bwrap")
+    calls: list[tuple[str, dict[str, object]]] = []
+    order: list[str] = []
+
+    def fake_native(operation: str, fields: dict[str, object], expected: object) -> object:
+        calls.append((operation, dict(fields)))
+        order.append(operation)
+        if operation == "workspace_bubblewrap_argv":
+            return ["/usr/bin/bwrap", "--", *fields["command"]]
+        if operation == "apply_workspace_overlay":
+            return {"applied": 1}
+        return linux_plan
+
+    monkeypatch.setattr(workspace_sink, "restricted_native", fake_native)
+    monkeypatch.setattr(workspace_sink, "trusted_git_binary_for_cwd", lambda cwd: None)
+    monkeypatch.setattr(workspace_sink, "_restricted_environment", lambda source, **kwargs: {"PATH": "/host/bin"})
+
+    def run(argv: list[str], **kwargs: object) -> int:
+        order.append("run")
+        return 3
+
+    monkeypatch.setattr(workspace_sink, "_run_backend_process", run)
+    status = workspace_sink.run_workspace_contained(
+        payload(), workspace=tmp_path, cwd=tmp_path, authorize=lambda original: receipt(), first_receipt=receipt()
+    )
+    assert status == 3
+    assert order == ["prepare_workspace_contained", "workspace_bubblewrap_argv", "run", "apply_workspace_overlay"]
+    argv_fields = calls[1][1]
+    upper = Path(str(argv_fields["upper"]))
+    assert upper.parent == Path(str(argv_fields["work"])).parent
+    assert not upper.parent.exists()
+    assert calls[2][1]["upper"] == argv_fields["upper"]
+
+
+def test_a_denied_overlay_change_fails_the_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(workspace_sink, "_host_backend", lambda: "linux-bubblewrap")
+    linux_plan = plan(tmp_path, backend="linux-bubblewrap", backend_executable="/usr/bin/bwrap")
+    roots: list[Path] = []
+
+    def fake_native(operation: str, fields: dict[str, object], expected: object) -> object:
+        if operation == "workspace_bubblewrap_argv":
+            roots.append(Path(str(fields["upper"])).parent)
+            return ["/usr/bin/bwrap"]
+        if operation == "apply_workspace_overlay":
+            raise RestrictedPytestError("workspace_contained_write_denied", "denied")
+        return linux_plan
+
+    monkeypatch.setattr(workspace_sink, "restricted_native", fake_native)
+    monkeypatch.setattr(workspace_sink, "trusted_git_binary_for_cwd", lambda cwd: None)
+    monkeypatch.setattr(workspace_sink, "_restricted_environment", lambda source, **kwargs: {"PATH": "/host/bin"})
+    monkeypatch.setattr(workspace_sink, "_run_backend_process", lambda argv, **kwargs: 0)
+    with pytest.raises(RestrictedPytestError) as raised:
+        workspace_sink.run_workspace_contained(
+            payload(), workspace=tmp_path, cwd=tmp_path, authorize=lambda original: receipt(), first_receipt=receipt()
+        )
+    assert raised.value.reason_code == "workspace_contained_write_denied"
+    assert roots and not roots[0].exists()

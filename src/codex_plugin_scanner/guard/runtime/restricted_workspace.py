@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -43,6 +44,9 @@ _PLAN_FIELDS = frozenset(
     }
 )
 _IDENTITY_KEYS = {"user.name": "NAME", "user.email": "EMAIL"}
+_BACKENDS = {"darwin": "macos-seatbelt", "linux": "linux-bubblewrap"}
+# The Linux overlay probe proves this filesystem, so overlays live here too.
+_OVERLAY_PARENT = "/tmp"
 _BOOTSTRAP_SECONDS = 30
 
 
@@ -59,6 +63,10 @@ def receipt_matches(receipt: object) -> bool:
     )
 
 
+def _host_backend() -> str | None:
+    return _BACKENDS.get(sys.platform)
+
+
 def _reject(message: str) -> RestrictedPytestError:
     return RestrictedPytestError(PYTEST_INVALID_COMMAND_REASON_CODE, message)
 
@@ -69,7 +77,7 @@ def _validated_plan(plan: object, command: str, workspace: Path) -> dict[str, ob
     argv = plan["command"]
     prefix = plan["prefix_command"]
     if (
-        plan["backend"] != "macos-seatbelt"
+        plan["backend"] != _host_backend()
         or not isinstance(argv, list)
         or len(argv) != 3
         or argv[:2] != ["/bin/sh", "-c"]
@@ -233,6 +241,18 @@ def run_workspace_contained(
             git = trusted_git_binary_for_cwd(workspace)
             if git is not None:
                 launch_env.update(_identity(workspace, git))
+            if plan["backend"] == "linux-bubblewrap":
+                return _run_overlay(
+                    plan,
+                    workspace=workspace,
+                    private_root=private_root,
+                    exec_roots=exec_roots,
+                    write_denials=write_denials,
+                    command=argv_to_run,
+                    env=launch_env,
+                    timeout_seconds=timeout_seconds,
+                    merge_stderr=merge_stderr,
+                )
             profile = restricted_native(
                 "macos_profile",
                 {
@@ -269,3 +289,59 @@ def run_workspace_contained(
             if not sandbox_argv[2]:
                 return 0
         return contained(sandbox_argv)
+
+
+def _remove_overlay(root: Path) -> None:
+    inner = root / "work" / "work"
+    if inner.is_dir() and not inner.is_symlink():
+        inner.chmod(0o700)
+    shutil.rmtree(root, ignore_errors=True)
+
+
+def _run_overlay(
+    plan: Mapping[str, object],
+    *,
+    workspace: Path,
+    private_root: Path,
+    exec_roots: list[Path],
+    write_denials: list[Path],
+    command: list[str],
+    env: Mapping[str, str],
+    timeout_seconds: int,
+    merge_stderr: bool,
+) -> int:
+    """Run in a bubblewrap overlay, then apply the changes Guard admits."""
+    overlay_root = Path(tempfile.mkdtemp(prefix="hol-guard-overlay-", dir=_OVERLAY_PARENT))
+    try:
+        upper = overlay_root / "upper"
+        work = overlay_root / "work"
+        upper.mkdir(mode=0o700)
+        work.mkdir(mode=0o700)
+        argv = restricted_native(
+            "workspace_bubblewrap_argv",
+            {
+                "backend_executable": Path(str(plan["backend_executable"])),
+                "workspace": workspace.resolve(strict=True),
+                "private_root": private_root,
+                "upper": upper,
+                "work": work,
+                "exec_roots": exec_roots,
+                "command": command,
+            },
+            list,
+        )
+        status = _run_backend_process(
+            [str(item) for item in argv],
+            env=env,
+            timeout_seconds=timeout_seconds,
+            cwd=workspace,
+            merge_stderr=merge_stderr,
+        )
+        restricted_native(
+            "apply_workspace_overlay",
+            {"workspace": workspace.resolve(strict=True), "upper": upper, "write_denials": write_denials},
+            dict,
+        )
+        return status
+    finally:
+        _remove_overlay(overlay_root)

@@ -106,6 +106,13 @@ def route_zcode_containment(
     return routed if routed is not None else response
 
 
+def _platform_contains(response: Mapping[str, object]) -> bool:
+    """macOS runs every contained profile; Linux runs the workspace sandbox."""
+    return sys.platform == "darwin" or (
+        sys.platform == "linux" and response.get("required_execution_profile") == "workspace-contained-v1"
+    )
+
+
 def contained_zcode_response(
     response: Mapping[str, object],
     *,
@@ -116,7 +123,7 @@ def contained_zcode_response(
     """Allow only the rewritten sink; native authority is rechecked at execution."""
     reason = response.get("reason_code")
     if (
-        sys.platform != "darwin"
+        not _platform_contains(response)
         or config.get("harness") not in _SINK_HARNESSES
         or response.get("decision") != "deny"
         or response.get("policy_action") != "sandbox-required"

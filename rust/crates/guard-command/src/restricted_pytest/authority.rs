@@ -31,6 +31,8 @@ pub fn evaluate(operation: &str, input: &Value) -> Value {
         .or_else(|| super::contained::evaluate(operation, input))
         .or_else(|| super::profiles::evaluate(operation, input))
         .or_else(|| super::workspace::evaluate(operation, input))
+        .or_else(|| super::workspace_linux::evaluate(operation, input))
+        .or_else(|| super::workspace_overlay::evaluate(operation, input))
         .or_else(|| super::credentials::evaluate(operation, input))
     {
         return result;

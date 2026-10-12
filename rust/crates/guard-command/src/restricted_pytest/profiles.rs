@@ -25,7 +25,7 @@ struct Input {
 }
 
 #[path = "workspace_profile.rs"]
-mod workspace_profile;
+pub(super) mod workspace_profile;
 #[cfg(test)]
 #[path = "workspace_profile_tests.rs"]
 mod workspace_profile_tests;

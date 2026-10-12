@@ -37,10 +37,15 @@ pub(crate) fn workspace_admissible(cwd: &Path, home: Option<&Path>) -> Option<Pa
 }
 
 fn prepare(input: &Input) -> Result<Value, RestrictedPytestError> {
-    if input.platform != "darwin" {
+    let host = if cfg!(target_os = "macos") {
+        input.platform == "darwin"
+    } else {
+        input.platform.starts_with("linux") && super::workspace_linux::available()
+    };
+    if !host {
         return Err(RestrictedPytestError::new(
             PYTEST_SANDBOX_UNAVAILABLE_REASON_CODE,
-            "The workspace sandbox profile is only available on macOS.",
+            "The workspace sandbox is not available on this host.",
         ));
     }
     let (backend, backend_executable) = select_backend(

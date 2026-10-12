@@ -193,6 +193,22 @@ jobs:
           } >> "$GITHUB_ENV"
         env:
           SCCACHE_MODE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') && 'READ_WRITE' || 'READ_ONLY' }}
+      - name: Provision bubblewrap for the Linux workspace sandbox tests
+        if: matrix.check == 'test'
+        # Without it the overlay sandbox tests take the unavailable-host branch
+        # and the live confinement run is skipped.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends apparmor bubblewrap
+          sudo tee /etc/apparmor.d/hol-guard-bwrap <<'EOF'
+          abi <abi/4.0>,
+          include <tunables/global>
+          /usr/bin/bwrap flags=(unconfined) {
+            userns,
+          }
+          EOF
+          sudo apparmor_parser -r /etc/apparmor.d/hol-guard-bwrap
+          /usr/bin/bwrap --version
       - name: Validate the locked Rust workspace
         env:
           CARGO_CHECK: ${{ matrix.check }}

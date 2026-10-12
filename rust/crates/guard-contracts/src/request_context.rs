@@ -162,6 +162,8 @@ pub struct ShellContextV1 {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", content = "body", rename_all = "snake_case")]
 pub enum RequestContextKindV1 {
+    /// Compile unverified portable source and report policy-change semantics.
+    PolicyDocument(RequestContextPolicyDocumentV1),
     /// Native sensitivity and structured-output authority over bounded content.
     ContentSensitivity(RequestContextContentSensitivityV1),
     RestrictedPytest {
@@ -186,6 +188,13 @@ pub enum RequestContextKindV1 {
         #[serde(default)]
         segment_index: Option<u64>,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RequestContextPolicyDocumentV1 {
+    pub query: String,
+    pub input: Value,
 }
 
 /// Caller observations; verdicts and file identities are rebuilt natively.

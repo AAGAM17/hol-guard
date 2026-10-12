@@ -296,6 +296,9 @@ fn decide(
 ) -> Result<Value, &'static str> {
     let budget = admit(request)?;
     let payload = match &request.action {
+        RequestContextKindV1::PolicyDocument(body) => {
+            crate::policy_document_op::evaluate(body, &budget, &request.guard_home)?
+        }
         RequestContextKindV1::ContentSensitivity(body) => crate::content_sensitivity_op::evaluate(
             body,
             &budget,

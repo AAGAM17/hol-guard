@@ -53,6 +53,8 @@ _TRANSPORT_IDENTITY_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/native_archive_inspection.py",
         # Native acquisition request binding and managed trust DTO transport.
         "src/codex_plugin_scanner/guard/native_archive_acquisition.py",
+        # Request identity and typed portable-policy DTO transport only.
+        "src/codex_plugin_scanner/guard/native_policy_document.py",
         "src/codex_plugin_scanner/guard/native_runtime.py",
         # Per-request status reuse. stat() only rechecks the validated binary.
         "src/codex_plugin_scanner/guard/native_runtime_request_scope.py",

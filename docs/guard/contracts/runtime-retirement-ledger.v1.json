@@ -5045,6 +5045,42 @@
    ],
    "status": "native_behavior_ported_requires_ci",
    "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_policy_document_yaml.py::test_extensions_are_preserved_and_signed",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/policy_document_tests.rs::extensions_round_trip_and_change_the_native_document_digest",
+    "rust/crates/guard-command/src/policy_document_tests.rs::original_python_policy_document_outcomes_replay"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Canonical JSON, portable hashes and extension semantics are checked against frozen original outcomes and normative cross-language vectors in Rust; YAML loader and route integration tests remain."
+  },
+  {
+   "old_node": "tests/test_policy_document_yaml.py::test_canonical_hash_vector_is_cross_language_stable[basic]",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/policy_document_tests.rs::normative_policy_hashes_and_utf16_order_are_cross_language_stable",
+    "rust/crates/guard-command/src/policy_document_tests.rs::original_python_policy_document_outcomes_replay"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Canonical JSON, portable hashes and extension semantics are checked against frozen original outcomes and normative cross-language vectors in Rust; YAML loader and route integration tests remain."
+  },
+  {
+   "old_node": "tests/test_policy_document_yaml.py::test_canonical_hash_vector_is_cross_language_stable[business-selector]",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/policy_document_tests.rs::normative_policy_hashes_and_utf16_order_are_cross_language_stable",
+    "rust/crates/guard-command/src/policy_document_tests.rs::original_python_policy_document_outcomes_replay"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Canonical JSON, portable hashes and extension semantics are checked against frozen original outcomes and normative cross-language vectors in Rust; YAML loader and route integration tests remain."
+  },
+  {
+   "old_node": "tests/test_policy_document_yaml.py::test_canonical_object_keys_use_utf16_order",
+   "replacement_nodes": [
+    "rust/crates/guard-command/src/policy_document_tests.rs::normative_policy_hashes_and_utf16_order_are_cross_language_stable",
+    "rust/crates/guard-command/src/policy_document_tests.rs::original_python_policy_document_outcomes_replay"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Canonical JSON, portable hashes and extension semantics are checked against frozen original outcomes and normative cross-language vectors in Rust; YAML loader and route integration tests remain."
   }
  ],
  "preserved_tests": [
@@ -5619,6 +5655,61 @@
     "rust/crates/guard-runtime/src/skill_identity_canon.rs"
    ],
    "parity_fixture": "rust/crates/guard-runtime/tests/fixtures/skill_directory_portable_vectors.json"
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/policy_document.py",
+   "base_commit": "55e051a711550e55d0dad5991c5bc63918946bfa",
+   "source_sha256": "c20051517d9e4c1a4ead1dea82e80bbc348adbc3082d8ae6baf7cc430157c3d3",
+   "remaining_role": "Public DTOs and resident transport, with YAML/text presentation retained where applicable; portable-policy semantics run in Rust.",
+   "native_replacements": [
+    "rust/crates/guard-command/src/policy_document.rs",
+    "rust/crates/guard-runtime/src/policy_document_op.rs"
+   ],
+   "parity_fixture": "tests/fixtures/policy_document_parity.json"
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/policy_document_compile.py",
+   "base_commit": "55e051a711550e55d0dad5991c5bc63918946bfa",
+   "source_sha256": "fe49be0d05d452542b306f91b42dac6df04a8c7036a62870a5b8ef508e59a0d6",
+   "remaining_role": "Public DTOs and resident transport, with YAML/text presentation retained where applicable; portable-policy semantics run in Rust.",
+   "native_replacements": [
+    "rust/crates/guard-command/src/policy_document.rs",
+    "rust/crates/guard-runtime/src/policy_document_op.rs"
+   ],
+   "parity_fixture": "tests/fixtures/policy_document_parity.json"
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/policy_document_diff.py",
+   "base_commit": "55e051a711550e55d0dad5991c5bc63918946bfa",
+   "source_sha256": "bb64b381dc4ae89e0a2597215dff08738b4c35627bff7216d866e092b71a3fa9",
+   "remaining_role": "Public DTOs and resident transport, with YAML/text presentation retained where applicable; portable-policy semantics run in Rust.",
+   "native_replacements": [
+    "rust/crates/guard-command/src/policy_document.rs",
+    "rust/crates/guard-runtime/src/policy_document_op.rs"
+   ],
+   "parity_fixture": "tests/fixtures/policy_document_parity.json"
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/policy_document_business_bounds.py",
+   "base_commit": "55e051a711550e55d0dad5991c5bc63918946bfa",
+   "source_sha256": "5a042e1dafd502452d6884640fcefa449e7059c666db742c3e0b982dbea43c5c",
+   "remaining_role": "Public DTOs and resident transport, with YAML/text presentation retained where applicable; portable-policy semantics run in Rust.",
+   "native_replacements": [
+    "rust/crates/guard-command/src/policy_document.rs",
+    "rust/crates/guard-runtime/src/policy_document_op.rs"
+   ],
+   "parity_fixture": "tests/fixtures/policy_document_parity.json"
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/policy_document_yaml.py",
+   "base_commit": "55e051a711550e55d0dad5991c5bc63918946bfa",
+   "source_sha256": "f2011f8a4153dfabb2bb97572ae1b5edf8afb60accfa2082c53b1dbd5e5113c2",
+   "remaining_role": "Public DTOs and resident transport, with YAML/text presentation retained where applicable; portable-policy semantics run in Rust.",
+   "native_replacements": [
+    "rust/crates/guard-command/src/policy_document.rs",
+    "rust/crates/guard-runtime/src/policy_document_op.rs"
+   ],
+   "parity_fixture": "tests/fixtures/policy_document_parity.json"
   }
  ],
  "retired_bodies": [

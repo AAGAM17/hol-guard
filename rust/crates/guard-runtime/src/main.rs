@@ -383,6 +383,7 @@ mod policy_bundle_v1_rules;
 mod policy_bundle_v2;
 mod policy_bundle_v2_ack;
 mod policy_decision_lookup_op;
+mod policy_document_op;
 mod policy_effective;
 mod policy_enforcement;
 mod policy_integrity_resolver;

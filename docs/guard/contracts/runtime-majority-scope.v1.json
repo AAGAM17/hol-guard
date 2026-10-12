@@ -1825,7 +1825,7 @@
         "path": "rust/crates/guard-command/src/native_command_source*.rs",
         "category": "offline_build_tool",
         "reason": "Build-time native command source compiler, never invoked by hook evaluation.",
-        "evidence": "The module header states it is an additive build-time source compiler never invoked by hook evaluation. Its only callers are guard-command/build.rs (compile_build_request, through the guard-command-build crate) and the guard-command-source authoring binary; no guard-runtime source and no resident op references source::, compile_matcher, compile_build_request or the source schemas. The runtime reads the already-compiled program through native_command_program::packaged_command_program."
+        "evidence": "The module header states it is an additive build-time source compiler never invoked by hook evaluation. Its callers are guard-command/build.rs (compile_build_request, through the guard-command-build crate), the guard-command-source authoring binary, and guard_command::source_cli — which the runtime binary dispatches only for explicit top-level source-compiler arguments, before any hook path. No hook evaluation path, resident op, or runtime command references source::, compile_matcher, compile_build_request or the source schemas. The runtime reads the already-compiled program through native_command_program::packaged_command_program."
       },
       {
         "path": "rust/crates/guard-google-identity/**",

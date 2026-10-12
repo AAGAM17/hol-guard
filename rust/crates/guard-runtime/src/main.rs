@@ -602,6 +602,13 @@ fn run() -> Result<(), String> {
 }
 
 fn main() {
+    // The runtime also hosts the declarative source-compiler front end so the
+    // wheel ships a single native binary. Dispatch before the panic hook so
+    // compiler behavior (including its own exit paths) stays identical.
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    if guard_command::source_cli::is_command(&arguments) {
+        std::process::exit(guard_command::source_cli::main(arguments));
+    }
     std::panic::set_hook(Box::new(|_| eprintln!("native_runtime_panicked")));
     if let Err(code) = run() {
         eprintln!("{code}");

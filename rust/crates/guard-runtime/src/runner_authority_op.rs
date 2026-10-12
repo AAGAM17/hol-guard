@@ -20,6 +20,7 @@ use super::aibom_op as aibom;
 use super::context_digest_json::write_canonical_json_with_limit;
 use super::oci_bundle_op as oci;
 use super::runner_authority_signature as signature;
+use super::zcode_detect;
 use super::{
     cloud_receipt_payload as receipt, cloud_request_snapshot as snapshot,
     cloud_sync_privacy as privacy,
@@ -94,6 +95,7 @@ pub(crate) fn dispatch(kind: &str, args: &Value) -> KindResult {
         "aibom_workspace_plan" => aibom::workspace_merge_plan(args),
         "aibom_codex_skills" => aibom::codex_skills(args),
         "aibom_mcp_metadata" => aibom::mcp_metadata(args),
+        "zcode_detect" => zcode_detect::detect(args),
         _ => Err(ERR_KIND),
     }
 }

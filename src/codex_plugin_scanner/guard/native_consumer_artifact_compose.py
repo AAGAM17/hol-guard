@@ -163,14 +163,20 @@ def native_consumer_compose(kind: str, fields: Mapping[str, object], *, guard_ho
     return payload
 
 
-def _record_health(home: Path, *, healthy: bool) -> None:
+def record_binding_health(home: Path, *, healthy: bool, reason: str) -> None:
+    """Record one resident answer-binding outcome against the running native identity."""
+
     identity = native_runtime_status().identity
     if identity is None:
         return
     if healthy:
         native_record_resident_success(identity.sha256, home)
     else:
-        native_record_resident_failure(identity.sha256, home, reason="native_consumer_artifact_compose_binding")
+        native_record_resident_failure(identity.sha256, home, reason=reason)
+
+
+def _record_health(home: Path, *, healthy: bool) -> None:
+    record_binding_health(home, healthy=healthy, reason="native_consumer_artifact_compose_binding")
 
 
 __all__ = ["CONSUMER_ARTIFACT_COMPOSE_FEATURE", "NativeConsumerComposeError", "native_consumer_compose"]

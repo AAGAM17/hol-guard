@@ -92,6 +92,13 @@ mod compound_git_paths;
 mod compound_git_segments;
 mod consumer_artifact_compose_op;
 mod consumer_artifact_compose_runtime;
+mod consumer_artifact_project_op;
+mod consumer_capabilities;
+mod consumer_capability_delta;
+mod consumer_evidence;
+mod consumer_incident;
+mod consumer_result;
+mod consumer_url;
 #[cfg(unix)]
 mod contained_op;
 mod content_sensitivity_op;

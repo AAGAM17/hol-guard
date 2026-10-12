@@ -518,6 +518,7 @@ def queue_blocked_approvals(
             policy_action=canonical_decision.policy_action,
             launch_target=launch_target,
             risk_summary=risk_summary,
+            guard_home=getattr(store, "guard_home", None),
         )
         guard_version = _current_guard_version()
         request = GuardApprovalRequest(

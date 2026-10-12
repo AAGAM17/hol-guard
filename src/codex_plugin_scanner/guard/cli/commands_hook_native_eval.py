@@ -1088,6 +1088,7 @@ def evaluate_native_artifact_hook(
         policy_action=policy_action,  # type: ignore[arg-type]
         launch_target=_runtime_request_summary(runtime_artifact),
         risk_summary=risk_summary,
+        guard_home=guard_home,
     )
     receipt = build_receipt(
         harness=args.harness,

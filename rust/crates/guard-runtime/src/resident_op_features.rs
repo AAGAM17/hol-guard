@@ -53,6 +53,7 @@ pub(crate) const RESIDENT_OP_FEATURES: &[&str] = &[
     guard_contracts::DAEMON_HANDLER_FEATURE,
     guard_contracts::HOOK_ARTIFACT_COMPOSE_FEATURE,
     guard_contracts::CONSUMER_ARTIFACT_COMPOSE_FEATURE,
+    guard_contracts::CONSUMER_ARTIFACT_PROJECT_FEATURE,
     guard_contracts::HOOK_ADAPTER_FEATURE,
     guard_contracts::MCP_TOOL_EVIDENCE_FEATURE,
     guard_contracts::LOCAL_MCP_GRANT_FEATURE,

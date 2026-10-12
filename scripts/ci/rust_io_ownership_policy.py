@@ -111,6 +111,7 @@ _TRANSPORT_INTEGRITY_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/native_hook_artifact_compose.py",
         # Same correlation-only digest for the consumer artifact composition op.
         "src/codex_plugin_scanner/guard/native_consumer_artifact_compose.py",
+        "src/codex_plugin_scanner/guard/native_consumer_artifact_project.py",
         # Same correlation-only digest for the per-harness hook adapter op.
         "src/codex_plugin_scanner/guard/native_hook_adapter.py",
         "src/codex_plugin_scanner/guard/native_hook_adapter_wire.py",
@@ -193,6 +194,7 @@ _TRANSPORT_DECODE_PATHS: Final = frozenset(
         # Decodes the bounded resident consumer artifact composition response;
         # the answer is strictly bound and validated, never reinterpreted.
         "src/codex_plugin_scanner/guard/native_consumer_artifact_compose.py",
+        "src/codex_plugin_scanner/guard/native_consumer_artifact_project.py",
         # Decodes the bounded resident hook adapter response; the answer is
         # strictly bound and validated, never reinterpreted.
         "src/codex_plugin_scanner/guard/native_hook_adapter.py",

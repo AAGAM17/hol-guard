@@ -76,6 +76,8 @@ mod hook_artifact_compose;
 pub use hook_artifact_compose::*;
 mod consumer_artifact_compose;
 pub use consumer_artifact_compose::*;
+mod consumer_artifact_project;
+pub use consumer_artifact_project::*;
 mod local_cli_grant;
 pub use local_cli_grant::*;
 mod contributed_mcp_decision;

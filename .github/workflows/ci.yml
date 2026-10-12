@@ -234,9 +234,9 @@ jobs:
 
   native-command-evaluators:
     runs-on: ubuntu-latest
-    # A cold opt-level=s release build took about four minutes and left the
-    # pytest gates short of the previous five-minute job limit.
-    timeout-minutes: 10
+    # A cold opt-level=s release build takes about four minutes, and the
+    # Gauntlet replay gate now replays 81 cases; together they overran ten.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:

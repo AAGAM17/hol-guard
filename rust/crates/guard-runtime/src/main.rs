@@ -57,6 +57,8 @@ mod binding_capture_vectors_tests;
 #[cfg(unix)]
 mod bounded_hook_bridge;
 #[cfg(unix)]
+mod bounded_hook_bridge_hermes;
+#[cfg(unix)]
 mod bounded_hook_bridge_render;
 #[cfg(test)]
 mod bundle_parse_reuse_tests;

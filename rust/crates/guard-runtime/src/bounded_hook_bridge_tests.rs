@@ -160,7 +160,7 @@ fn configs_are_accepted_only_for_the_native_harnesses() {
 #[test]
 fn configs_python_refuses_or_handles_elsewhere_are_not_native() {
     let refused: [(&str, Option<Value>); 13] = [
-        ("harness", Some(json!("hermes"))),
+        ("harness", Some(json!("Hermes"))),
         ("harness", Some(json!("grok"))),
         ("timeout_seconds", Some(json!(0))),
         ("timeout_seconds", Some(json!(-1))),
@@ -307,6 +307,29 @@ fn the_daemon_answer_is_rendered_natively() {
     assert_eq!(request.header("X-Guard-Token"), Some(TOKEN));
     let sent = parsed(std::str::from_utf8(&request.body).unwrap());
     assert_eq!(sent.get("tool_name"), Some(&PyVal::Str("Bash".to_owned())));
+}
+
+#[test]
+fn a_hermes_answer_is_the_flat_decision_hermes_reads() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let answer = r#"{"policy_action":"review","reason":" held for review "}"#;
+    let daemon = serve_once(listener, 200, answer.to_owned());
+    let home = home_with_endpoint("bounded-hermes", "127.0.0.1", port, true);
+    let pre_tool_call = br#"{"hook_event_name":"pre_tool_call","tool_name":"terminal"}"#;
+
+    let route = route_hook(&bridge_config(&home, "hermes"), pre_tool_call, soon());
+
+    assert_eq!(
+        route,
+        Route::Respond {
+            stdout: r#"{"decision":"block","reason":"held for review"}"#.to_owned(),
+            stderr: String::new(),
+            exit_code: 2,
+        }
+    );
+    let request = daemon.join().unwrap().unwrap();
+    assert_eq!(request.target, "/v1/hooks/hermes");
 }
 
 #[test]

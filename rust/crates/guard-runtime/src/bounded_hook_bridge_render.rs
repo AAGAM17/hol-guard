@@ -9,13 +9,15 @@
 
 use guard_contracts::GuardAction;
 
+use crate::bounded_hook_bridge_hermes::hermes_bridge_response;
 use crate::claude_hook_bridge_render::py_strip;
 use crate::hook_env_stamp::{dumps, set_member};
 use crate::pyjson::PyVal;
 
-/// The harnesses the native bridge answers for. Grok and Hermes keep extra
-/// Python steps (approval waits, prompt preparation), so they stay in Python.
-pub(crate) const NATIVE_HARNESSES: [&str; 5] = ["copilot", "kimi", "devin", "zcode", "openclaw"];
+/// The harnesses the native bridge answers for. Grok keeps extra Python
+/// steps (approval waits, prompt preparation), so it stays in Python.
+pub(crate) const NATIVE_HARNESSES: [&str; 6] =
+    ["copilot", "kimi", "devin", "zcode", "openclaw", "hermes"];
 
 pub(crate) const FAILURE_REASON: &str =
     "HOL Guard could not complete a trusted hook decision. Retry or repair Guard from a terminal.";
@@ -200,7 +202,9 @@ pub(crate) fn failure_payload(harness: &str, event_name: &str, reason: &str) -> 
     if !event_pauses_when_unavailable(event_name) {
         let payload = match harness {
             "copilot" => str_dict(vec![("permissionDecision", text("allow"))]),
-            "openclaw" => str_dict(vec![("decision", text("allow")), ("reason", text(reason))]),
+            "openclaw" | "hermes" => {
+                str_dict(vec![("decision", text("allow")), ("reason", text(reason))])
+            }
             _ => str_dict(vec![
                 ("continue", PyVal::Bool(true)),
                 ("systemMessage", text(reason)),
@@ -259,6 +263,12 @@ pub(crate) fn failure_payload(harness: &str, event_name: &str, reason: &str) -> 
         return (
             str_dict(vec![("decision", text("deny")), ("reason", text(reason))]),
             0,
+        );
+    }
+    if harness == "hermes" {
+        return (
+            str_dict(vec![("decision", text("block")), ("reason", text(reason))]),
+            2,
         );
     }
     if is_permission_event(event_name) {
@@ -345,7 +355,7 @@ fn has_key(entries: &[(String, PyVal)], key: &str) -> bool {
     entries.iter().any(|(name, _)| name == key)
 }
 
-fn member<'a>(entries: &'a [(String, PyVal)], key: &str) -> Option<&'a PyVal> {
+pub(crate) fn member<'a>(entries: &'a [(String, PyVal)], key: &str) -> Option<&'a PyVal> {
     entries
         .iter()
         .find(|(name, _)| name == key)
@@ -542,7 +552,7 @@ pub(crate) struct Rendered {
     pub(crate) exit_code: i32,
 }
 
-fn rendered(payload: &[(String, PyVal)], stderr: String, exit_code: i32) -> Rendered {
+pub(crate) fn rendered(payload: &[(String, PyVal)], stderr: String, exit_code: i32) -> Rendered {
     let mut stdout = String::new();
     dumps(&PyVal::Dict(payload.to_vec()), true, false, &mut stdout);
     Rendered {
@@ -559,6 +569,9 @@ pub(crate) fn daemon_response_to_native(
     harness: &str,
     event_name: &str,
 ) -> Option<Rendered> {
+    if harness == "hermes" {
+        return Some(hermes_bridge_response(daemon_response));
+    }
     let event_name = canonical_event_token(event_name).unwrap_or_else(|| event_name.to_owned());
     let event_name = event_name.as_str();
     if has_key(daemon_response, "hookSpecificOutput") || has_key(daemon_response, "decision") {

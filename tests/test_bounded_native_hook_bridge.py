@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from codex_plugin_scanner.guard.adapters import bounded_cli_hook_bridge as bridge
-from codex_plugin_scanner.guard.adapters import bounded_cli_hook_daemon, copilot, devin_config
+from codex_plugin_scanner.guard.adapters import bounded_cli_hook_daemon, copilot, devin_config, hermes_runtime_hooks
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.adapters.bounded_cli_hook_native import (
     NATIVE_BOUNDED_HOOK_COMMAND,
@@ -23,7 +23,7 @@ from codex_plugin_scanner.guard.codex_hook_launch_runtime import BoundedHookProc
 
 _ELAPSED_ENV = "HOL_GUARD_BOUNDED_NATIVE_ELAPSED_MS"
 _DAEMON_TRIED_ENV = "HOL_GUARD_BOUNDED_NATIVE_DAEMON_TRIED"
-_NATIVE_HARNESSES = ("copilot", "kimi", "devin", "zcode", "openclaw")
+_NATIVE_HARNESSES = ("copilot", "kimi", "devin", "zcode", "openclaw", "hermes")
 _POSIX_ONLY = pytest.mark.skipif(sys.platform == "win32", reason="the native bounded bridge is POSIX-only")
 
 
@@ -87,7 +87,7 @@ def test_hook_uses_the_native_bridge_when_the_runtime_offers_it(
 def test_other_harnesses_keep_the_python_bridge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _offer_native(monkeypatch, tmp_path / "hol-guard-runtime", (NATIVE_BOUNDED_HOOK_FEATURE,))
 
-    argv = _command(tmp_path, "hermes")
+    argv = _command(tmp_path, "claude")
 
     assert argv[:2] == (sys.executable, "-I")
 
@@ -130,7 +130,7 @@ def test_only_a_native_prefix_is_stripped(argv: list[object]) -> None:
 
 @pytest.mark.native_bounded_hook_bridge
 @_POSIX_ONLY
-def test_native_copilot_and_devin_commands_stay_managed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_native_copilot_devin_and_hermes_commands_stay_managed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _offer_native(monkeypatch, tmp_path / "hol guard runtime", (NATIVE_BOUNDED_HOOK_FEATURE,))
     context = HarnessContext(home_dir=tmp_path / "h", workspace_dir=None, guard_home=tmp_path / "g")
 
@@ -140,6 +140,8 @@ def test_native_copilot_and_devin_commands_stay_managed(tmp_path: Path, monkeypa
     assert NATIVE_BOUNDED_HOOK_COMMAND in copilot_command
     assert copilot._is_managed_hook_command(copilot_command)
     assert devin_config.is_guard_managed_hook_command(devin_command)
+    hermes_command = hermes_runtime_hooks.hermes_hook_command_string(_command(tmp_path, "hermes"))
+    assert hermes_runtime_hooks._legacy_guard_pretool_command(hermes_command)
 
 
 def test_handoff_environment_is_read_once_and_only_shortens(monkeypatch: pytest.MonkeyPatch) -> None:

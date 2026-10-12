@@ -106,6 +106,14 @@ mod cloud_sync_privacy;
 mod codex_app_server_socket;
 mod codex_detect;
 mod codex_hook_artifacts;
+#[cfg(unix)]
+mod codex_hook_bridge;
+#[cfg(unix)]
+mod codex_hook_bridge_transport;
+#[cfg(unix)]
+mod codex_hook_identity;
+#[cfg(unix)]
+mod codex_hook_response;
 mod codex_hooks;
 mod codex_identity;
 mod codex_proxy;

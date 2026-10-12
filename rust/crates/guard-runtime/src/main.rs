@@ -390,15 +390,11 @@ mod secrets_cli;
 mod sfrs_support;
 mod shell_helpers_op;
 mod shim_op;
-#[cfg(unix)]
 mod skill_directory_identity_op;
-#[cfg(unix)]
 mod skill_identity_canon;
-#[cfg(unix)]
 mod skill_identity_discovery;
-#[cfg(unix)]
 mod skill_identity_inspect;
-#[cfg(unix)]
+mod skill_identity_platform;
 mod skill_identity_walk;
 #[cfg(unix)]
 mod state_directory_lock;

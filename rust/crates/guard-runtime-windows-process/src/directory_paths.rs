@@ -259,9 +259,35 @@ pub(super) fn boundary_components(path: &Path) -> Vec<Component<'_>> {
 /// (`C:\` vs `\\?\C:\`, `\\server\share` vs `\\?\UNC\server\share`) and with
 /// filesystem case. Guard homes are created by this process; a case variant is
 /// the same NTFS directory, not a sibling escape. `..` is rejected earlier.
+///
+/// Comparison is ordinal and case-insensitive on the raw UTF-16 units.
+/// `OsStr::to_string_lossy` would map every unpaired surrogate to U+FFFD, so
+/// two different invalid names would compare equal and a scan could step
+/// outside its root.
 pub(super) fn os_eq_ignore_ascii_case(left: &OsStr, right: &OsStr) -> bool {
-    left.to_string_lossy()
-        .eq_ignore_ascii_case(&right.to_string_lossy())
+    use std::os::windows::ffi::OsStrExt;
+    use winapi::shared::minwindef::TRUE;
+    use winapi::um::stringapiset::CompareStringOrdinal;
+
+    const CSTR_EQUAL: i32 = 2;
+    let left: Vec<u16> = left.encode_wide().collect();
+    let right: Vec<u16> = right.encode_wide().collect();
+    if left.len() > i32::MAX as usize || right.len() > i32::MAX as usize {
+        return false;
+    }
+    // SAFETY: both buffers live for this call, and the lengths tell
+    // CompareStringOrdinal how many UTF-16 units to read. It does not
+    // require a trailing NUL.
+    let result = unsafe {
+        CompareStringOrdinal(
+            left.as_ptr(),
+            left.len() as i32,
+            right.as_ptr(),
+            right.len() as i32,
+            TRUE,
+        )
+    };
+    result == CSTR_EQUAL
 }
 
 pub(super) fn boundary_component_eq(actual: &Component<'_>, expected: &Component<'_>) -> bool {
@@ -307,4 +333,31 @@ pub(super) fn windows_prefix_kind_eq(left: Prefix<'_>, right: Prefix<'_>) -> boo
             && os_eq_ignore_ascii_case(left_share, right_share);
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+
+    use super::os_eq_ignore_ascii_case;
+
+    #[test]
+    fn unpaired_surrogates_stay_distinct() {
+        let first = OsString::from_wide(&[0xD800]);
+        let second = OsString::from_wide(&[0xD801]);
+        assert!(os_eq_ignore_ascii_case(&first, &first));
+        assert!(!os_eq_ignore_ascii_case(&first, &second));
+    }
+
+    #[test]
+    fn unicode_and_ascii_case_variants_match() {
+        let capital = OsString::from_wide(&[0x00C9]);
+        let small = OsString::from_wide(&[0x00E9]);
+        assert!(os_eq_ignore_ascii_case(&capital, &small));
+        assert!(os_eq_ignore_ascii_case(
+            OsString::from("Skill").as_os_str(),
+            OsString::from("skill").as_os_str()
+        ));
+    }
 }

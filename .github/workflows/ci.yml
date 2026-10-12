@@ -726,10 +726,11 @@ jobs:
       - uses: ./.github/actions/ci-job-cisco-full
 
   cross-platform:
-    needs: [plan, native-command-evaluators]
+    needs: [plan, native-command-evaluators, windows-native-runtime]
     if: >-
       !cancelled() &&
       needs.native-command-evaluators.result == 'success' &&
+      needs.windows-native-runtime.result == 'success' &&
       (github.event_name != 'pull_request' ||
        (needs.plan.result == 'success' && needs.plan.outputs.data_only != 'true'))
     runs-on: ${{ matrix.os }}

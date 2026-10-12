@@ -4653,6 +4653,398 @@
    ],
    "status": "native_behavior_ported_requires_ci",
    "rationale": "Original clean-forward and binding-recheck outcomes replay in compiled Rust; actual native signed receipts cover forwarding with and without a policy store. Unsigned route fixtures now assert fail-closed behavior."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[basic-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[root_mode_700-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[nested-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[unicode_nfd_and_cjk-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[lower_primary_name-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_to_file_same_dir-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_dot_slash-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_from_subdir-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_to_other_file-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_broken-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_loop-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_escape_relative-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_escape_absolute-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_directory-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[primary_missing-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[primary_is_directory-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[primary_symlink-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[root_missing-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[root_is_file-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[root_is_symlink-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[parent_symlink-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[document_outside_scope-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[special_file_fifo-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[backslash_name-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_depth_ok-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_depth_exceeded-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_entries_ok-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_entries_exceeded-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_file_bytes_exceeded-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_file_bytes_primary_exceeded-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_total_bytes_exceeded-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_total_symlink_double_count-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_zero-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[empty_primary-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[total_exceeded_after_symlink_state-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[empty_root-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[missing_root-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[root_is_file-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[root_is_symlink_dir-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[root_is_symlink_broken-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[flat_and_grouped-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[root_has_primary-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[primary_is_dir_counts_as_found-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[symlinked_dirs-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[unicode_names-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[backslash_dir-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[depth_exceeded-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[depth_ok-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[entries_exceeded-portable]",
+   "replacement_nodes": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op_tests.rs::portable_original_outcomes_replay_through_encoded_native_requests"
+   ],
+   "status": "native_behavior_ported_requires_ci",
+   "rationale": "Exact original portable outcomes and source hashes are frozen; compiled native encoded requests replace the retired executable Python oracle. Native public-caller tests remain."
   }
  ],
  "preserved_tests": [
@@ -4670,6 +5062,266 @@
    "old_node": "tests/test_native_approval_bridge.py::test_decoders_reject_floor_lowering_unknown_fields_duplicate_json_and_unknown_errors",
    "new_node": "tests/test_native_response_decoder.py::test_approval_decoders_reject_floor_lowering_and_tampering",
    "reason": "Decoder floor-lowering and tamper negatives cover the live native_approval_protocol surface; bridge-specific assertions were retired."
+  },
+  {
+   "old_node": "tests/test_guard_native_skill_directory_identity_transport.py::test_portable_python_is_required_on_windows_and_for_non_utf8_paths",
+   "new_node": "tests/test_guard_native_skill_directory_identity_transport.py::test_all_os_paths_require_native_authority",
+   "reason": "Native OS path transport replaces portable fallback routing; native outage cannot establish filesystem absence. Real native missing-root discovery remains covered."
+  },
+  {
+   "old_node": "tests/test_guard_native_skill_directory_identity_transport.py::test_wrappers_route_to_portable_python_where_native_cannot_serve",
+   "new_node": "tests/test_guard_native_skill_directory_identity_transport.py::test_wrappers_always_route_to_native",
+   "reason": "Native OS path transport replaces portable fallback routing; native outage cannot establish filesystem absence. Real native missing-root discovery remains covered."
+  },
+  {
+   "old_node": "tests/test_guard_native_skill_directory_identity_transport.py::test_missing_root_without_a_runtime_is_an_empty_discovery",
+   "new_node": "tests/test_guard_native_skill_directory_identity_transport.py::test_native_outage_cannot_claim_a_root_is_absent",
+   "reason": "Native OS path transport replaces portable fallback routing; native outage cannot establish filesystem absence. Real native missing-root discovery remains covered."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[basic-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[basic-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[root_mode_700-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[root_mode_700-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[nested-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[nested-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[unicode_nfd_and_cjk-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[unicode_nfd_and_cjk-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[lower_primary_name-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[lower_primary_name-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_to_file_same_dir-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[symlink_to_file_same_dir-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_dot_slash-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[symlink_dot_slash-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_from_subdir-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[symlink_from_subdir-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_to_other_file-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[symlink_to_other_file-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_broken-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[symlink_broken-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_loop-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[symlink_loop-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_escape_relative-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[symlink_escape_relative-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_escape_absolute-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[symlink_escape_absolute-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[symlink_directory-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[symlink_directory-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[primary_missing-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[primary_missing-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[primary_is_directory-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[primary_is_directory-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[primary_symlink-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[primary_symlink-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[root_missing-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[root_missing-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[root_is_file-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[root_is_file-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[root_is_symlink-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[root_is_symlink-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[parent_symlink-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[parent_symlink-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[document_outside_scope-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[document_outside_scope-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[special_file_fifo-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[special_file_fifo-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[backslash_name-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[backslash_name-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_depth_ok-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[limit_depth_ok-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_depth_exceeded-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[limit_depth_exceeded-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_entries_ok-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[limit_entries_ok-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_entries_exceeded-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[limit_entries_exceeded-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_file_bytes_exceeded-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[limit_file_bytes_exceeded-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_file_bytes_primary_exceeded-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[limit_file_bytes_primary_exceeded-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_total_bytes_exceeded-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[limit_total_bytes_exceeded-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_total_symlink_double_count-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[limit_total_symlink_double_count-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[limit_zero-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[limit_zero-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[empty_primary-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[empty_primary-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_inspect_matches_shared_vectors[total_exceeded_after_symlink_state-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_inspect_matches_original_vectors[total_exceeded_after_symlink_state-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[empty_root-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_discovery_matches_original_vectors[empty_root-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[missing_root-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_discovery_matches_original_vectors[missing_root-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[root_is_file-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_discovery_matches_original_vectors[root_is_file-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[root_is_symlink_dir-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_discovery_matches_original_vectors[root_is_symlink_dir-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[root_is_symlink_broken-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_discovery_matches_original_vectors[root_is_symlink_broken-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[flat_and_grouped-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_discovery_matches_original_vectors[flat_and_grouped-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[root_has_primary-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_discovery_matches_original_vectors[root_has_primary-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[primary_is_dir_counts_as_found-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_discovery_matches_original_vectors[primary_is_dir_counts_as_found-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[symlinked_dirs-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_discovery_matches_original_vectors[symlinked_dirs-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[unicode_names-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_discovery_matches_original_vectors[unicode_names-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[backslash_dir-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_discovery_matches_original_vectors[backslash_dir-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[depth_exceeded-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_discovery_matches_original_vectors[depth_exceeded-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[depth_ok-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_discovery_matches_original_vectors[depth_ok-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
+  },
+  {
+   "old_node": "tests/test_guard_skill_directory_identity_vectors.py::test_discovery_matches_shared_vectors[entries_exceeded-native]",
+   "new_node": "tests/test_guard_skill_directory_identity_vectors.py::test_native_discovery_matches_original_vectors[entries_exceeded-native]",
+   "reason": "Retained compiled native caller replay is named explicitly; obsolete portable parameter nodes are retired separately."
   }
  ],
  "unchanged_regression_suites": [
@@ -4880,6 +5532,66 @@
     "rust/crates/guard-command/src/contributed_mcp_url.rs"
    ],
    "parity_fixture": "rust/crates/guard-runtime/tests/fixtures/cli_runtime_support_vectors.json"
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/portable_skill_directory_identity.py",
+   "base_commit": "9987159fc866119d06bed1ba698dc49d06d1a6a1",
+   "source_sha256": "75835799760e43464f58ba6adebc9e31ccb128d0538d4cd679490f7cf2e7a5b2",
+   "remaining_role": "Public API compatibility imports only; portable root validation, tree traversal, symlink checks, race checks and hashing bodies are retired to the existing native inspector.",
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op.rs",
+    "rust/crates/guard-runtime/src/skill_identity_platform.rs",
+    "rust/crates/guard-runtime/src/skill_identity_inspect.rs",
+    "rust/crates/guard-runtime/src/skill_identity_discovery.rs",
+    "rust/crates/guard-runtime/src/skill_identity_walk.rs",
+    "rust/crates/guard-runtime/src/skill_identity_canon.rs"
+   ],
+   "parity_fixture": "rust/crates/guard-runtime/tests/fixtures/skill_directory_portable_vectors.json"
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/portable_skill_directory_discovery.py",
+   "base_commit": "9987159fc866119d06bed1ba698dc49d06d1a6a1",
+   "source_sha256": "b1789e9c9984282d3477befa8a28c1e21d4504d616781ea12bad9ba5e4ab6eaf",
+   "remaining_role": "Public API compatibility imports only; portable traversal, canonical path validation, issue classification and issue hashing bodies are retired to native discovery.",
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op.rs",
+    "rust/crates/guard-runtime/src/skill_identity_platform.rs",
+    "rust/crates/guard-runtime/src/skill_identity_inspect.rs",
+    "rust/crates/guard-runtime/src/skill_identity_discovery.rs",
+    "rust/crates/guard-runtime/src/skill_identity_walk.rs",
+    "rust/crates/guard-runtime/src/skill_identity_canon.rs"
+   ],
+   "parity_fixture": "rust/crates/guard-runtime/tests/fixtures/skill_directory_portable_vectors.json"
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/portable_skill_directory_support.py",
+   "base_commit": "9987159fc866119d06bed1ba698dc49d06d1a6a1",
+   "source_sha256": "bae0167a22c48559d49c10a37da8829e90e9a07b8e0377e657baad8d863af915",
+   "remaining_role": "Public compatibility import for native incomplete identities only; canonical path, digest and state-hash algorithms and their internal helper classes are removed.",
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op.rs",
+    "rust/crates/guard-runtime/src/skill_identity_platform.rs",
+    "rust/crates/guard-runtime/src/skill_identity_inspect.rs",
+    "rust/crates/guard-runtime/src/skill_identity_discovery.rs",
+    "rust/crates/guard-runtime/src/skill_identity_walk.rs",
+    "rust/crates/guard-runtime/src/skill_identity_canon.rs"
+   ],
+   "parity_fixture": "rust/crates/guard-runtime/tests/fixtures/skill_directory_portable_vectors.json"
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/native_skill_directory_identity.py",
+   "base_commit": "9987159fc866119d06bed1ba698dc49d06d1a6a1",
+   "source_sha256": "8d97e399b957a9cd42d7a2e4129ee36abd174c5dac3595c83482b976ba59103d",
+   "remaining_role": "Strict DTO transport, lossless OS path encoding, request binding and deadline propagation only; Python absence inference and portable fallback selection are removed. The existing resident transport is reused.",
+   "native_replacements": [
+    "rust/crates/guard-runtime/src/skill_directory_identity_op.rs",
+    "rust/crates/guard-runtime/src/skill_identity_platform.rs",
+    "rust/crates/guard-runtime/src/skill_identity_inspect.rs",
+    "rust/crates/guard-runtime/src/skill_identity_discovery.rs",
+    "rust/crates/guard-runtime/src/skill_identity_walk.rs",
+    "rust/crates/guard-runtime/src/skill_identity_canon.rs"
+   ],
+   "parity_fixture": "rust/crates/guard-runtime/tests/fixtures/skill_directory_portable_vectors.json"
   }
  ],
  "retired_bodies": [

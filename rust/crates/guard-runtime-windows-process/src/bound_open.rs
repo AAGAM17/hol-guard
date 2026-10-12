@@ -154,6 +154,28 @@ pub fn regular_file_id(path: &Path, follow_leaf: bool) -> io::Result<(FileId, u3
     Ok((info.id, info.links))
 }
 
+/// Identity of one existing directory, without opening its ancestors.
+///
+/// A symlink, junction, or mount point at this path is rejected. Cloud
+/// placeholders stay, because they are not aliases. Ancestor junctions are
+/// left alone so a skill under a synced folder can still be named.
+pub fn directory_file_id(path: &Path) -> io::Result<FileId> {
+    let file = open_skill_directory(path)?;
+    Ok(checked_info(&file, true)?.id)
+}
+
+/// Hold one directory open. The handle pins that directory only.
+pub fn open_skill_directory(path: &Path) -> io::Result<std::fs::File> {
+    let file = open_raw_with_flags(
+        path,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        FILE_READ_ATTRIBUTES | FILE_TRAVERSE,
+        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+    )?;
+    checked_info(&file, true)?;
+    Ok(file)
+}
+
 /// Return the identity of the file behind an open handle.
 pub fn handle_file_id(file: &std::fs::File) -> io::Result<FileId> {
     Ok(handle_info(file)?.id)

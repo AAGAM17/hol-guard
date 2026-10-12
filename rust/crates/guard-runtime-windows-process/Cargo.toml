@@ -22,6 +22,7 @@ winapi = { workspace = true, features = [
     "namedpipeapi",
     "processthreadsapi",
     "shlobj",
+    "stringapiset",
     "synchapi",
     "winbase",
     "winerror",

@@ -82,6 +82,7 @@ _RESULT_OPTIONAL_KEYS = {
     "custom_extension_suggestion",
     "managed_controls_policy_fields",
     "claude_guard_question",
+    "memory_pattern",
 }
 _RESULT_CODES = {
     "ok",

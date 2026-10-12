@@ -353,6 +353,7 @@ mod mcp_tool_policy_grants;
 mod mcp_tool_policy_lookup;
 mod mcp_tool_policy_proxy;
 mod mcp_tool_policy_revalidate;
+mod memory_pattern;
 mod native_exact_action_op;
 mod native_hook_receipt;
 mod native_runtime_admission;

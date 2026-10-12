@@ -41,7 +41,7 @@ pub(crate) struct Fields<'a> {
 }
 
 impl Scope<'_> {
-    fn wire(
+    pub(crate) fn wire(
         &self,
         artifact_id: String,
         name: &str,
@@ -116,7 +116,7 @@ fn mcp_environment(config: &PyVal) -> BTreeMap<String, String> {
     BTreeMap::new()
 }
 
-fn pair_value(pairs: &BTreeMap<String, String>) -> Value {
+pub(crate) fn pair_value(pairs: &BTreeMap<String, String>) -> Value {
     Value::Array(
         pairs
             .iter()

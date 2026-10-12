@@ -51,7 +51,7 @@ impl Found {
 /// missing, unreadable, not JSON or not an object. Text CPython would raise on
 /// instead of returning (invalid UTF-8, nesting past the recursion limit) is
 /// refused.
-fn json_payload(path: &Path) -> Result<PyVal, &'static str> {
+pub(crate) fn json_payload(path: &Path) -> Result<PyVal, &'static str> {
     let empty = PyVal::Dict(Vec::new());
     let Ok(bytes) = fs::read(path) else {
         return Ok(empty);
@@ -62,8 +62,14 @@ fn json_payload(path: &Path) -> Result<PyVal, &'static str> {
         Ok(_) | Err(JsonFailure::Syntax) => Ok(empty),
         // A top-level array is discarded whatever it holds, so only an
         // object the walkers would have to read can be unrepresentable.
-        Err(JsonFailure::Unrepresentable) if text.trim_start().starts_with('[') => Ok(empty),
-        Err(JsonFailure::Unrepresentable) => Err(ERR_UNREPRESENTABLE),
+        Err(JsonFailure::Unrepresentable | JsonFailure::IntegerLimit | JsonFailure::Duplicate)
+            if text.trim_start().starts_with('[') =>
+        {
+            Ok(empty)
+        }
+        Err(JsonFailure::Unrepresentable | JsonFailure::IntegerLimit | JsonFailure::Duplicate) => {
+            Err(ERR_UNREPRESENTABLE)
+        }
     }
 }
 
@@ -71,7 +77,7 @@ fn has_content(payload: &PyVal) -> bool {
     payload.truthy()
 }
 
-fn sort_key(name: &str) -> String {
+pub(crate) fn sort_key(name: &str) -> String {
     if cfg!(windows) {
         name.to_lowercase()
     } else {

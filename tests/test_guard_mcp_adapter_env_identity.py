@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -153,11 +155,16 @@ def _secondary_mcp_artifact(
         )
         return artifacts[0]
     if adapter_name == "hermes":
-        return HermesHarnessAdapter()._mcp_artifacts(
-            {"value-proof": server},
-            "/virtual/hermes-config.yaml",
-            source="yaml",
-        )[0]
+        hermes_config = root / "home" / ".hermes" / "mcp_servers.json"
+        hermes_config.parent.mkdir(parents=True, exist_ok=True)
+        hermes_config.write_text(json.dumps({"value-proof": server}), encoding="utf-8")
+        with mock.patch.dict(os.environ):
+            os.environ.pop("HERMES_HOME", None)
+            os.environ.pop("HERMES_HOST_HOME", None)
+            detection = HermesHarnessAdapter().detect(
+                HarnessContext(home_dir=root / "home", workspace_dir=None, guard_home=root / "guard-home")
+            )
+        return next(item for item in detection.artifacts if item.artifact_type == "mcp_server")
 
     config_path = root / "home" / ".zcode" / "cli" / "config.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)

@@ -35,6 +35,10 @@ pub(crate) enum JsonFailure {
     Syntax,
     /// Input CPython raises a non-`JSONDecodeError` exception on.
     Unrepresentable,
+    /// An integer literal over CPython's decimal digit limit (a `ValueError`).
+    IntegerLimit,
+    /// A repeated object key, with [`parse_unique`].
+    Duplicate,
 }
 
 impl PyVal {
@@ -208,9 +212,21 @@ pub(crate) fn float_repr(number: f64) -> String {
 }
 
 pub(crate) fn parse(text: &str) -> Result<PyVal, JsonFailure> {
+    parse_with(text, false)
+}
+
+/// Parse like an `object_pairs_hook` that rejects a repeated key: the failure
+/// surfaces when the object closes, so a later syntax error in the same
+/// object still wins.
+pub(crate) fn parse_unique(text: &str) -> Result<PyVal, JsonFailure> {
+    parse_with(text, true)
+}
+
+fn parse_with(text: &str, unique: bool) -> Result<PyVal, JsonFailure> {
     let mut parser = Parser {
         text: text.as_bytes(),
         position: 0,
+        unique,
         saw_lone_surrogate: false,
     };
     parser.skip_space();
@@ -225,6 +241,7 @@ pub(crate) fn parse(text: &str) -> Result<PyVal, JsonFailure> {
 struct Parser<'a> {
     text: &'a [u8],
     position: usize,
+    unique: bool,
     saw_lone_surrogate: bool,
 }
 
@@ -320,7 +337,7 @@ impl Parser<'_> {
         let integer = &literal[..integer_end - start];
         let magnitude = integer.trim_start_matches('-');
         if magnitude.len() > MAX_INT_DIGITS {
-            return Err(JsonFailure::Unrepresentable);
+            return Err(JsonFailure::IntegerLimit);
         }
         Ok(PyVal::Int(if magnitude == "0" {
             "0".to_owned()
@@ -430,6 +447,7 @@ impl Parser<'_> {
         }
         self.position += 1;
         let mut entries: Vec<(String, PyVal)> = Vec::new();
+        let mut duplicate = false;
         // Key -> entries index, so a duplicate member replaces the value at its
         // original position without rescanning every parsed key.
         let mut positions: std::collections::HashMap<String, usize> =
@@ -457,7 +475,12 @@ impl Parser<'_> {
             let value = self.value(depth + 1)?;
             self.saw_lone_surrogate = false;
             match positions.get(key.as_str()) {
-                Some(&index) => entries[index].1 = value,
+                Some(&index) => {
+                    if self.unique {
+                        duplicate = true;
+                    }
+                    entries[index].1 = value;
+                }
                 None => {
                     positions.insert(key.clone(), entries.len());
                     entries.push((key, value));
@@ -468,6 +491,9 @@ impl Parser<'_> {
                 Some(b',') => self.position += 1,
                 Some(b'}') => {
                     self.position += 1;
+                    if duplicate {
+                        return Err(JsonFailure::Duplicate);
+                    }
                     return Ok(PyVal::Dict(entries));
                 }
                 _ => return Err(JsonFailure::Syntax),

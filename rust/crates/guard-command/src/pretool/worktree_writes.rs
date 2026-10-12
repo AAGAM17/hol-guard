@@ -79,7 +79,9 @@ pub(in crate::pretool) fn linked_worktree_common_dir(workspace: &Path) -> Option
     .then_some(common)
 }
 
-fn repository_common_directory(workspace: &Path) -> Option<(PathBuf, PathBuf)> {
+pub(in crate::pretool) fn repository_common_directory(
+    workspace: &Path,
+) -> Option<(PathBuf, PathBuf)> {
     for root in workspace.ancestors() {
         let marker = root.join(".git");
         if marker.is_dir() {

@@ -206,21 +206,7 @@ pub(crate) fn benign_command_segments(
             let segment = stripped.as_ref().unwrap_or(original);
             let benign = segment_benign[index];
             let basename = executable_basename(segment.executable.as_deref().unwrap_or(""));
-            let stdin_filter = segment.pipeline_index > 0
-                && ((matches!(basename, "head" | "tail")
-                    && safe_reads::safe_head_tail_stdin_arguments(&segment.arguments))
-                    || (basename == "jq"
-                        && safe_reads::safe_jq_stdin_arguments(&segment.arguments))
-                    || (basename == "wc"
-                        && safe_reads::safe_word_count_stdin_arguments(&segment.arguments))
-                    || (basename == "od"
-                        && safe_reads::safe_byte_dump_stdin_arguments(&segment.arguments))
-                    || (basename == "grep"
-                        && search::safe_grep_stdin_arguments(&segment.arguments))
-                    || (basename == "rg" && search::safe_rg_stdin_arguments(&segment.arguments))
-                    || (basename == "sed"
-                        && safe_reads::safe_sed_stdin_arguments(&segment.arguments))
-                    || super::stdin_filters::safe_arguments(basename, &segment.arguments));
+            let stdin_filter = stdin_filter_segment(segment);
             let path_free = matches!(
                 basename,
                 "pwd"
@@ -315,6 +301,22 @@ pub(crate) fn benign_command_segments(
         .collect()
 }
 
+/// A later pipeline stage that only filters its standard input.
+pub(super) fn stdin_filter_segment(segment: &crate::CommandSegmentV1) -> bool {
+    let basename = executable_basename(segment.executable.as_deref().unwrap_or(""));
+    segment.pipeline_index > 0
+        && ((matches!(basename, "head" | "tail")
+            && safe_reads::safe_head_tail_stdin_arguments(&segment.arguments))
+            || (basename == "jq" && safe_reads::safe_jq_stdin_arguments(&segment.arguments))
+            || (basename == "wc"
+                && safe_reads::safe_word_count_stdin_arguments(&segment.arguments))
+            || (basename == "od" && safe_reads::safe_byte_dump_stdin_arguments(&segment.arguments))
+            || (basename == "grep" && search::safe_grep_stdin_arguments(&segment.arguments))
+            || (basename == "rg" && search::safe_rg_stdin_arguments(&segment.arguments))
+            || (basename == "sed" && safe_reads::safe_sed_stdin_arguments(&segment.arguments))
+            || super::stdin_filters::safe_arguments(basename, &segment.arguments))
+}
+
 pub(super) fn exact_safe_segment_with_context(
     model: &CanonicalCommandV1,
     segment: &crate::CommandSegmentV1,
@@ -389,7 +391,11 @@ pub(super) fn exact_safe_segment_with_context(
             model.segments.len() == 1
                 && (basename != "ln" && basename != "rm"
                     || super::directory_targets::home_targets_unquoted(segment))
-                && safe_reads::safe_file_mutation_arguments(basename, &segment.arguments, context)
+                && (safe_reads::safe_file_mutation_arguments(basename, &segment.arguments, context)
+                    // A session run from the directory above its checkouts can
+                    // still share a dependency directory between two of them.
+                    || (basename == "ln"
+                        && super::symlink_writes::safe_symlink_arguments(segment, context)))
         }
         // Admit stdin only when every producer in the pipeline is also proven safe.
         "head" | "tail" => safe_reads::safe_head_tail_arguments(

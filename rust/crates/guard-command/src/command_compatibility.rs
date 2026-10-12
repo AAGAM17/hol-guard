@@ -34,6 +34,20 @@ pub(crate) fn git_inspection_arguments<'a>(
     git::inspection_arguments(arguments, context)
 }
 
+/// `origin` followed by quiet/prune flags and simple named refs.
+pub(crate) fn git_fetch_origin_shaped(arguments: &[String]) -> bool {
+    git::fetch_origin_shaped(arguments)
+}
+
+/// The arguments after leading `-C` routes that stay within the workspace,
+/// whatever the subcommand. Remote and worktree proofs start from here.
+pub(crate) fn git_routed_arguments<'a>(
+    arguments: &'a [String],
+    context: crate::pretool::PathContext<'_>,
+) -> Option<&'a [String]> {
+    git::routed_arguments(arguments, context)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompatibilityMatch {
     pub rule_id: &'static str,

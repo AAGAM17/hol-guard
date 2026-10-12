@@ -4,13 +4,16 @@ pub(super) use allowances::{
     agent_skill_listing_directory, agent_state_tree_holds_only_documents, inside_agent_state_tree,
     skill_link_resolves_over_home,
 };
+#[path = "hidden_listing.rs"]
+mod hidden_listing;
 #[path = "omp_read_targets.rs"]
 mod omp_targets;
+pub(super) use hidden_listing::repository_hidden_directory;
 #[path = "private_temporary_workspace.rs"]
 mod private_temporary;
 use allowances::{
     agent_home_state, agent_skill_document, codex_notes_document, execution_output_log,
-    git_ref_document, guard_safety_doc, project_skill_document,
+    git_ref_document, guard_safety_doc, project_skill_document, worktree_gitfile,
 };
 pub(super) use omp_targets::{
     bounded_omp_directory_read_target, bounded_omp_file_read_target,
@@ -225,7 +228,8 @@ pub(super) fn resolved_path_allowed_for_operation(
                     || agent_home_state(canonical, home_dir)
                     || project_skill_document(canonical, home_dir, cwd)
                     || codex_notes_document(canonical, home_dir)
-                    || git_ref_document(canonical, home_dir, cwd)))
+                    || git_ref_document(canonical, home_dir, cwd)
+                    || worktree_gitfile(canonical)))
             || (read_only && execution_output_log(canonical, home_dir)))
     {
         return false;
@@ -305,6 +309,10 @@ pub(super) fn lexical_read_path(value: &str) -> Option<String> {
 #[cfg(test)]
 #[path = "read_output_tests.rs"]
 mod execution_output_tests;
+
+#[cfg(test)]
+#[path = "hidden_listing_tests.rs"]
+mod hidden_listing_tests;
 
 #[cfg(test)]
 #[path = "directory_read_tests.rs"]

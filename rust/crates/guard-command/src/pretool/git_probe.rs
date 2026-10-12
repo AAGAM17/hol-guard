@@ -13,7 +13,7 @@ pub(super) const PROBE_BUDGET: Duration = Duration::from_secs(5);
 /// with a few hundred thousand tracked files.
 pub(super) const LISTING_LIMIT: u64 = 16 * 1024 * 1024;
 
-type MemoKey = (String, Vec<String>, Option<String>, Option<String>, bool);
+pub(super) type MemoKey = (String, Vec<String>, Option<String>, Option<String>, bool);
 type Memo = Option<Vec<(MemoKey, Option<bool>)>>;
 
 thread_local! {
@@ -32,6 +32,18 @@ pub(crate) fn with_memo<T>(evaluate: impl FnOnce() -> T) -> T {
     }
     let _restore = Restore(MEMO.with(|memo| memo.replace(Some(Vec::new()))));
     evaluate()
+}
+
+/// Whether a proof earlier in this evaluation already settled `key` as safe.
+/// Outside an evaluation scope nothing is recorded, so this stays false.
+pub(super) fn proven(key: &MemoKey) -> bool {
+    MEMO.with(|memo| {
+        memo.borrow().as_ref().is_some_and(|entries| {
+            entries
+                .iter()
+                .any(|(entry, value)| entry == key && *value == Some(true))
+        })
+    })
 }
 
 pub(super) fn memoized(key: MemoKey, probe: impl FnOnce() -> Option<bool>) -> Option<bool> {

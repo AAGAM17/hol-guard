@@ -22,6 +22,7 @@ pub(crate) mod directory_targets;
 pub(crate) use directory_targets::safe_directory_target;
 mod base64_reads;
 mod bun_eval;
+mod compound_reason;
 mod find_reads;
 pub(crate) mod git_branch_listing;
 mod git_config;
@@ -33,7 +34,10 @@ use git_reads::safe_git_arguments;
 mod git_helper_context;
 mod git_probe;
 mod git_push;
+mod git_remote_config;
+mod git_remote_ops;
 mod git_routes;
+mod git_session_probe;
 mod git_worktree;
 mod guard_diagnostics;
 mod listing_reads;
@@ -62,8 +66,10 @@ mod search_scope_ignore;
 mod segment_proof;
 mod shell_script;
 mod stdin_filters;
+mod symlink_writes;
 mod version_probes;
 mod worktree_add;
+mod worktree_maintenance;
 mod worktree_writes;
 mod wrangler_reads;
 
@@ -76,6 +82,15 @@ pub use generic::evaluate_pre_tool_envelope_with_execution_context;
 pub use generic::evaluate_pre_tool_envelope_with_extensions;
 pub use git_push::{install_git_push_verdict, GitPushRequest, GitPushVerdict};
 pub(crate) use segment_proof::benign_command_segments;
+
+/// Whether this evaluation already proved `segment` as a safe `origin`
+/// refresh or feature push.
+pub(crate) fn verified_origin_operation(
+    segment: &crate::CommandSegmentV1,
+    context: PathContext<'_>,
+) -> bool {
+    git_remote_ops::verified(segment, context)
+}
 
 fn executable_basename(executable: &str) -> &str {
     executable.rsplit(['/', '\\']).next().unwrap_or(executable)
@@ -408,6 +423,19 @@ pub(super) fn evaluate_pre_tool_with_execution_context(
             "The Rust command authority proved this bounded worktree creation has a fresh contained destination, a local ref, and no executable Git routes.",
         ));
     }
+    if let Some((reason_code, reason)) =
+        git_remote_ops::exact_safe_command(&model, context, deadline, execution_environment)
+    {
+        return Ok(pretool_decision(model, "allow", reason_code, reason));
+    }
+    if worktree_maintenance::exact_safe_command(&model, context, deadline, execution_environment) {
+        return Ok(pretool_decision(
+            model,
+            "allow",
+            "native_exact_safe_worktree_maintenance",
+            "The Rust command authority proved this worktree maintenance targets an unlocked linked worktree of the routed checkout without force or executable Git routes.",
+        ));
+    }
     if git_push::exact_safe_command(&model, context, deadline, execution_environment) {
         return Ok(pretool_decision(
             model,
@@ -463,11 +491,14 @@ pub(super) fn evaluate_pre_tool_with_execution_context(
             "HOL Guard is checking repository Git-helper configuration before allowing this read-only command.",
         ));
     }
+    let reason = compound_reason::unproven_steps_reason(&model, context);
     Ok(pretool_decision(
         model,
         "review",
         "native_command_review_required",
-        "HOL Guard requires review because the Rust authority could not prove this command explicitly benign.",
+        reason.as_deref().unwrap_or(
+            "HOL Guard requires review because the Rust authority could not prove this command explicitly benign.",
+        ),
     ))
 }
 

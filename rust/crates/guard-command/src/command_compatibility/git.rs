@@ -171,6 +171,35 @@ pub(super) fn inspection_arguments<'a>(
     arguments: &'a [String],
     context: crate::pretool::PathContext<'_>,
 ) -> Option<&'a [String]> {
+    let remaining = routed_arguments(arguments, context)?;
+    matches!(
+        remaining.first().map(String::as_str),
+        Some(
+            "status"
+                | "diff"
+                | "log"
+                | "show"
+                | "branch"
+                | "hash-object"
+                | "rev-parse"
+                | "merge-base"
+                | "ls-files"
+                | "remote"
+                | "worktree"
+                | "config"
+        )
+    )
+    .then_some(remaining)
+}
+
+pub(super) fn fetch_origin_shaped(arguments: &[String]) -> bool {
+    git_fetch::origin_shaped_arguments(arguments)
+}
+
+pub(super) fn routed_arguments<'a>(
+    arguments: &'a [String],
+    context: crate::pretool::PathContext<'_>,
+) -> Option<&'a [String]> {
     let mut index = 0;
     let mut saw_change_directory = false;
     while let Some(argument) = arguments.get(index) {
@@ -222,25 +251,7 @@ pub(super) fn inspection_arguments<'a>(
         saw_change_directory = true;
         index += 1;
     }
-    let remaining = arguments.get(index..)?;
-    matches!(
-        remaining.first().map(String::as_str),
-        Some(
-            "status"
-                | "diff"
-                | "log"
-                | "show"
-                | "branch"
-                | "hash-object"
-                | "rev-parse"
-                | "merge-base"
-                | "ls-files"
-                | "remote"
-                | "worktree"
-                | "config"
-        )
-    )
-    .then_some(remaining)
+    arguments.get(index..)
 }
 
 pub(super) fn observe_with_context(
@@ -268,6 +279,14 @@ pub(super) fn observe_with_context(
     let inspection = inspection_arguments(arguments, context)
         .filter(|_| crate::pretool::directory_targets::drive_targets_quoted(segment))
         .filter(|_| crate::pretool::directory_targets::home_targets_unquoted(segment));
+    // A remote operation behind proven `-C` routes names its subcommand
+    // exactly, like the bare form; its own floors then apply.
+    let routed_remote = command_index != 0
+        && matches!(command, "push" | "fetch")
+        && routed_arguments(arguments, context)
+            .filter(|_| crate::pretool::directory_targets::drive_targets_quoted(segment))
+            .filter(|_| crate::pretool::directory_targets::home_targets_unquoted(segment))
+            .is_some_and(|remaining| remaining.first().map(String::as_str) == Some(command));
     let plumbing = (command_index == 0 && read_only_plumbing(arguments))
         || inspection.is_some_and(read_only_plumbing);
     if plumbing {
@@ -296,7 +315,11 @@ pub(super) fn observe_with_context(
     if let Some((_, rule)) = RULES.iter().find(|(name, _)| *name == command) {
         // Attribution is deliberately stronger than legacy Python's inert
         // matcher=None porcelain entries: disabling a permission must work.
-        result.rule(rule, index, command_index != 0 && inspection.is_none());
+        result.rule(
+            rule,
+            index,
+            command_index != 0 && inspection.is_none() && !routed_remote,
+        );
     } else if !matches!(
         command,
         "switch"
@@ -328,8 +351,13 @@ pub(super) fn observe_with_context(
         // A plain named-origin refresh is a definite review rule, though, so an
         // explicit Allow of its permission can settle it. Every wrapped,
         // option-prefixed, URL, or otherwise non-exact form stays uncertain.
-        let plain = git_fetch::plain_origin_refresh(segment, command_index);
-        result.rule("command.git.unverified-fetch", index, !plain);
+        // The hook's native proof already checked the repository's origin,
+        // transport, credential helpers and hooks for exactly this segment.
+        let plain = git_fetch::plain_origin_refresh(segment, command_index)
+            || (routed_remote && git_fetch::routed_origin_refresh(segment, command_index));
+        if !(plain && crate::pretool::verified_origin_operation(segment, context)) {
+            result.rule("command.git.unverified-fetch", index, !plain);
+        }
     }
     if command == "diff"
         && arguments[command_index + 1..]

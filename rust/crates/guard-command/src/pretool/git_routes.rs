@@ -94,6 +94,25 @@ pub(in crate::pretool) fn repository_below_home(
 /// `<repository>/.git/worktrees` registry whose `commondir` resolves back to
 /// that repository's `.git` directory and whose `gitdir` backlink names this
 /// worktree, and the owning repository must itself pass `repository_root`.
+/// The administrative directory of `worktree` when it is a linked worktree
+/// registered with the primary checkout at `repository` (both canonical).
+pub(in crate::pretool) fn linked_worktree_admin(
+    worktree: &std::path::Path,
+    repository: &std::path::Path,
+) -> Option<std::path::PathBuf> {
+    let common = repository.join(".git");
+    if worktree == repository
+        || !std::fs::symlink_metadata(&common).is_ok_and(|metadata| metadata.is_dir())
+        || !linked_worktree_of_repository(worktree, &|root| root == repository)
+    {
+        return None;
+    }
+    let pointer = bounded_git_metadata(&worktree.join(".git"))?;
+    let admin =
+        std::fs::canonicalize(worktree.join(pointer.trim().strip_prefix("gitdir: ")?)).ok()?;
+    admin.starts_with(common.join("worktrees")).then_some(admin)
+}
+
 fn linked_worktree_of_repository(
     root: &std::path::Path,
     repository_root: &dyn Fn(&std::path::Path) -> bool,

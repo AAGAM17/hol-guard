@@ -465,3 +465,6 @@ fn observe_keeps_only_a_warn_floor_over_a_proven_allow_silent() {
         assert_eq!(result.reason_code, expected, "{floor} over {intrinsic}");
     }
 }
+
+#[path = "policy_enforcement_floor_cause_tests.rs"]
+mod floor_cause;

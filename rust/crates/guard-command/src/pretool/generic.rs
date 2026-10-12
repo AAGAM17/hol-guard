@@ -4,10 +4,14 @@ use evaluate::evaluate_signals;
 
 #[path = "generic_command_rewrite.rs"]
 mod command_rewrite;
+#[path = "env_prefix_projection.rs"]
+mod env_prefix_projection;
 #[path = "generic_extract.rs"]
 mod extract;
 #[path = "generic_omp.rs"]
 mod omp;
+#[path = "open_quote.rs"]
+mod open_quote;
 #[path = "generic_pure_eval.rs"]
 mod pure_eval;
 #[path = "redirect_projection.rs"]
@@ -138,7 +142,7 @@ pub fn evaluate_pre_tool_envelope_with_execution_context(
     context: super::PathContext<'_>,
     execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
 ) -> PreToolResultV1 {
-    super::git_probe::with_memo(|| {
+    let mut result = super::git_probe::with_memo(|| {
         evaluate_envelope(
             harness,
             event,
@@ -149,7 +153,29 @@ pub fn evaluate_pre_tool_envelope_with_execution_context(
             execution_environment,
             true,
         )
-    })
+    });
+    // Name what kept the extension controls from evaluating the command, a
+    // code-loading setting or an open quote, so the agent can fix it and retry
+    // instead of guessing.
+    if result.reason_code == "native_command_extension_evaluation_failed" {
+        let command = extract_generic_signals(payload)
+            .ok()
+            .and_then(|signals| signals.command);
+        if let Some(setting) = command
+            .as_deref()
+            .and_then(env_prefix_projection::code_loading_setting)
+        {
+            result.reason = format!(
+                "HOL Guard blocked this command because the {setting} setting can load code that the installed extension controls cannot check. Run the command without it."
+            );
+        } else if command
+            .as_deref()
+            .is_some_and(open_quote::leaves_quote_open)
+        {
+            result.reason = "HOL Guard blocked this command because it leaves a quote open, so the shell cannot run it as written. Close or remove the stray quote and run it again.".into();
+        }
+    }
+    result
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -196,6 +222,84 @@ fn evaluate_envelope(
         && signals.command.as_deref().is_some_and(|patch| {
             super::apply_patch_writes::routine_apply_patch(patch, home_dir, cwd)
         });
+    // An inert environment prefix cannot change how the rest of the command
+    // runs, so the command without it carries the whole verdict.
+    if let Some(projected) = signals
+        .command
+        .as_deref()
+        .filter(|_| !search_scope_proven && !apply_patch_proven)
+        .and_then(env_prefix_projection::project)
+    {
+        let projected_payload = payload_with_command(
+            payload,
+            signals.command.as_deref().unwrap_or_default(),
+            &projected,
+        );
+        if projected_payload != *payload {
+            let projected = evaluate_envelope(
+                harness,
+                event,
+                &projected_payload,
+                controls,
+                deadline,
+                context,
+                execution_environment,
+                project_redirects,
+            );
+            // Inert settings cannot widen what an extension rule already
+            // allows, but a rule that gates the plain form keeps its own
+            // fail-closed answer for wrapped forms.
+            if projected.minimum_action == "allow" || !extension_rule_matched(&projected) {
+                return projected;
+            }
+        }
+    }
+    // A setting that may change behavior (`NODE_PATH=... node x.mjs`) leaves
+    // the command unmodeled, which the extension controls cannot bound. Judge
+    // the command without it, keep the full command's intrinsic verdict, and
+    // never settle below review. The unprojected pass runs without controls,
+    // so it cannot recurse here.
+    if let Some(reviewed) = signals
+        .command
+        .as_deref()
+        .filter(|_| controls.is_some() && !search_scope_proven && !apply_patch_proven)
+        .and_then(env_prefix_projection::project_reviewed)
+    {
+        let projected_payload = payload_with_command(
+            payload,
+            signals.command.as_deref().unwrap_or_default(),
+            &reviewed.command,
+        );
+        let projected = (projected_payload != *payload).then(|| {
+            evaluate_envelope(
+                harness,
+                event,
+                &projected_payload,
+                controls,
+                deadline,
+                context,
+                execution_environment,
+                project_redirects,
+            )
+        });
+        // An extension rule that governs the command was written for its
+        // plain form; a setting in front can change what it acts on (a target
+        // org, a profile), so that command keeps failing closed.
+        if let Some(projected) = projected.filter(|result| !extension_rule_matched(result)) {
+            let raw = evaluate_envelope(
+                harness,
+                event,
+                payload,
+                None,
+                deadline,
+                context,
+                execution_environment,
+                false,
+            );
+            return env_prefix_projection::join_reviewed(projected, raw, &reviewed.setting);
+        }
+    }
+
     if let Some(projection) = signals
         .command
         .as_deref()
@@ -492,4 +596,13 @@ fn evaluate_envelope(
         .into();
     }
     result
+}
+
+fn extension_rule_matched(result: &PreToolResultV1) -> bool {
+    result.command_extensions.as_ref().is_some_and(|batch| {
+        batch
+            .observations
+            .iter()
+            .any(|row| !row.effective_segment_indexes.is_empty())
+    })
 }

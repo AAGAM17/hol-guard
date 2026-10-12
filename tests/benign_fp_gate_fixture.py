@@ -16,6 +16,9 @@ never exercises:
   repository (``~/Code/org/app-portal`` and ``~/Code/org/service-api``), each
   with ``.github`` metadata, the layout agents use when they search a child
   repository by absolute path or inspect a sibling with ``git -C``;
+* a linked worktree of ``app-portal`` beside the ``org`` directory on a feature branch whose
+  ``origin`` is a hosted remote, and plan notes under a HOME dot directory: the shape of a session
+  started in a non-repository parent directory that works in an external worktree;
 * an installed, gitignored ``node_modules`` in the working directory with the
   project's locked CLI packages, so a runner such as ``npx`` resolves to a
   content-hashed local binary instead of a registry fetch.
@@ -76,6 +79,7 @@ class BenignFixture:
             "${GITLINK_REPO}": str(self.gitlink_repo),
             "${PRIVATE_TMP}": str(self.private_tmp),
             "${ORG}": str(self.org),
+            "${ORG_WT}": str(self.org.parent / "app-portal-fix"),
         }
 
     def cwd(self, name: str) -> Path:
@@ -134,6 +138,30 @@ def _node_toolchain(workspace: Path) -> None:
         shim = workspace / "node_modules" / ".bin" / name
         shim.parent.mkdir(parents=True, exist_ok=True)
         shim.symlink_to(Path("..") / name / "bin" / f"{name}.js")
+
+
+def _session_worktree(org: Path, home: Path) -> None:
+    """Feature worktree of ``app-portal`` outside ``org``, plus the plan notes a session reads first."""
+    portal = org / "app-portal"
+    _write(portal / "deploy.sh", "#!/bin/sh\n# cronjob rollout\necho deploy\n")
+    _write(portal / "scripts" / "report.ts", "console.log(process.env.REPORT_WINDOW ?? '24h');\n")
+    _write(portal / ".gitignore", "node_modules/\n.deploy-production.lock.d/\n")
+    _git(portal, "add", "-A", home=home)
+    _git(portal, "commit", "--quiet", "-m", "report script", home=home)
+    _git(portal, "remote", "add", "origin", "https://github.com/example-org/app-portal.git", home=home)
+    # A clone records the remote's default branch; `remote add` alone does not.
+    _git(portal, "update-ref", "refs/remotes/origin/main", "HEAD", home=home)
+    _git(portal, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main", home=home)
+    (portal / ".deploy-production.lock.d").mkdir()
+    (portal / "node_modules").mkdir()
+    worktree = org.parent / "app-portal-fix"
+    _git(portal, "worktree", "add", "--quiet", "-b", "fix/report-lane", str(worktree), home=home)
+    _write(worktree / "scripts" / "report.ts", "console.log(process.env.REPORT_WINDOW ?? '7d');\n")
+    _git(worktree, "commit", "--quiet", "-am", "widen report window", home=home)
+    for name in ("findings", "prd", "todo"):
+        _write(home / ".codex" / "plans" / f"remediation-{name}.md", f"# Remediation {name}\nSynthetic plan notes.\n")
+    _write(home / ".codex" / "plans" / "remediation-evidence.json", '{"cases": []}\n')
+    _write(home / ".codex" / "auth.json", '{"tokens": "synthetic-not-a-secret"}\n')
 
 
 def build_fixture(root: Path) -> BenignFixture:
@@ -215,4 +243,5 @@ def build_fixture(root: Path) -> BenignFixture:
         _write(repository / "README.md", f"# {name}\n")
         _git(repository, "add", "-A", home=home)
         _git(repository, "commit", "--quiet", "-m", f"{name} base", home=home)
+    _session_worktree(org, home)
     return BenignFixture(root, home, parent, worktree, nested, gitlink_repo, guard_home, private_tmp, tmp_worktree, org)

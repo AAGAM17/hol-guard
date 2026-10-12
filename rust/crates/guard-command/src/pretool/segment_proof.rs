@@ -316,6 +316,9 @@ pub(super) fn exact_safe_segment_with_context(
                 && super::directory_targets::drive_targets_quoted(segment)
         }
         "pwd" | "true" | "echo" | "printf" | "which" | "whoami" | "uname" => true,
+        "type" | "command" => {
+            super::lookup_reads::safe_lookup_arguments(basename, &segment.arguments)
+        }
         "cargo" | "rustc" => super::rust_toolchain::safe_version_probe(&segment.arguments, context),
         "date" => safe_reads::safe_date_arguments(&segment.arguments),
         "sleep" => safe_reads::safe_sleep_arguments(&segment.arguments),

@@ -551,6 +551,7 @@ fn parse_posix_command(request: &CommandModelRequestV1) -> Result<CanonicalComma
                 segments.last(),
             )
             && !parser_wrappers::is_file_shell_invocation(executable.as_deref(), &arguments)
+            && !parser_wrappers::is_command_lookup(executable.as_deref(), &arguments)
         {
             return Ok(uncertain(
                 request,

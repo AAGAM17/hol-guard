@@ -64,6 +64,9 @@ def prepare_restricted_node_tool(
     name, args = Path(argv[0]).name, argv[1:]
     expected_entry = None
     runtime_args: tuple[str, ...] = ()
+    if name == "bun" and args[:1] == ("x",):
+        # `bun x` is Bun's spelling of `bunx`.
+        name, args = "bunx", args[1:]
     if name in {"bun", "npm", "pnpm"}:
         if len(args) != 2 or args[0] != "run" or args[1] not in {"lint", "typecheck", "build"}:
             raise RestrictedPytestError(

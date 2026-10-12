@@ -24,7 +24,7 @@ pub(super) fn execution_free(
     let operation = remaining.first()?.as_str();
     if !matches!(
         operation,
-        "status" | "diff" | "log" | "show" | "branch" | "hash-object" | "config"
+        "status" | "diff" | "log" | "show" | "branch" | "hash-object" | "config" | "merge-base"
     ) {
         return None;
     }
@@ -195,7 +195,7 @@ fn probe(
     // Like status, hash-object pages only when its own pager.* key says so;
     // config pages by default only for its listing forms.
     let pages_by_default = match operation {
-        "status" | "hash-object" => false,
+        "status" | "hash-object" | "merge-base" => false,
         "config" => super::git_config_reads::pages_by_default(&remaining[1..]),
         _ => true,
     };

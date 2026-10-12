@@ -266,6 +266,7 @@ mod mcp_tool_policy_extension;
 mod mcp_tool_policy_flow;
 mod mcp_tool_policy_grants;
 mod mcp_tool_policy_revalidate;
+mod native_exact_action_op;
 mod native_hook_receipt;
 mod native_runtime_admission;
 mod native_runtime_resilience;

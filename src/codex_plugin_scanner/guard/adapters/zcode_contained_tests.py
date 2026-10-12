@@ -29,6 +29,7 @@ _PROFILES = {
     "native_git_readonly_containment_required": "git-readonly-v1",
     "native_node_tool_readonly_containment_required": "node-tool-readonly-v1",
     "native_node_build_output_containment_required": "node-build-output-v1",
+    "native_workspace_containment_required": "workspace-contained-v1",
 }
 _ROUTED_HARNESSES = frozenset({"zcode", "claude-code"})
 # Codex is routed by its hook bridge, which first confirms the running Codex applies updatedInput.

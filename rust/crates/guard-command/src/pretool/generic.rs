@@ -18,6 +18,8 @@ mod pure_eval;
 mod redirect_projection;
 #[path = "generic_result.rs"]
 mod result;
+#[path = "workspace_redirects.rs"]
+pub(crate) mod workspace_redirects;
 use command_rewrite::payload_with_command;
 
 use crate::native_command_controls::CompiledNativeCommandControls;
@@ -86,6 +88,7 @@ pub fn bounded_task_metadata_output(payload: &serde_json::Value, harness: &str) 
 }
 #[path = "generic_tools.rs"]
 mod tools;
+pub(in crate::pretool) use tools::is_package_tool;
 
 /// Evaluate the complete raw PreToolUse payload in native code. This stays
 /// separate from `evaluate_pre_tool`, the compatibility command-model
@@ -222,6 +225,25 @@ fn evaluate_envelope(
         && signals.command.as_deref().is_some_and(|patch| {
             super::apply_patch_writes::routine_apply_patch(patch, home_dir, cwd)
         });
+    if let Some(contained) = signals
+        .command
+        .as_deref()
+        .filter(|_| project_redirects && !search_scope_proven && !apply_patch_proven)
+        .and_then(|command| {
+            workspace_redirects::contained(
+                harness,
+                event,
+                payload,
+                command,
+                controls,
+                deadline,
+                context,
+                execution_environment,
+            )
+        })
+    {
+        return contained;
+    }
     // An inert environment prefix cannot change how the rest of the command
     // runs, so the command without it carries the whole verdict.
     if let Some(projected) = signals
@@ -481,6 +503,7 @@ fn evaluate_envelope(
         ),
         _ => result,
     };
+    let pre_floor = (result.reason_code.clone(), result.minimum_action.clone());
     if event == "PreToolUse"
         // Existing helper-context review may delegate only to enforced
         // read-only containment below; do not replace that protection.
@@ -595,6 +618,21 @@ fn evaluate_envelope(
         )
         .into();
     }
+    super::workspace_contained::convert(
+        &mut result,
+        &pre_floor,
+        command_model,
+        controls,
+        super::PathContext {
+            home_dir,
+            cwd,
+            ..context
+        },
+        execution_environment,
+        harness,
+        event,
+        signals.command.as_deref(),
+    );
     result
 }
 

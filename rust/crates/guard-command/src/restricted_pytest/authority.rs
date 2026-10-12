@@ -30,6 +30,7 @@ pub fn evaluate(operation: &str, input: &Value) -> Value {
     if let Some(result) = crate::contained_argv::evaluate(operation, input)
         .or_else(|| super::contained::evaluate(operation, input))
         .or_else(|| super::profiles::evaluate(operation, input))
+        .or_else(|| super::workspace::evaluate(operation, input))
         .or_else(|| super::credentials::evaluate(operation, input))
     {
         return result;

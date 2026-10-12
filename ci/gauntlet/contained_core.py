@@ -35,6 +35,7 @@ CONTAINMENT_PROFILES = {
     "native_pytest_readonly_containment_required": "pytest-readonly-v2",
     "native_vitest_readonly_containment_required": "vitest-readonly-v1",
     "native_node_test_readonly_containment_required": "node-test-readonly-v1",
+    "native_workspace_containment_required": "workspace-contained-v1",
 }
 
 

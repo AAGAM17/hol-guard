@@ -18,7 +18,11 @@ pub struct PathContext<'a> {
 }
 
 mod contained_wrapper;
+mod workspace_contained;
+pub(crate) use workspace_contained::{command_shape, PROFILE as WORKSPACE_PROFILE};
 pub(crate) mod directory_targets;
+pub(crate) mod workspace_git_config;
+pub(crate) mod workspace_git_environment;
 pub(crate) use directory_targets::safe_directory_target;
 mod base64_reads;
 mod bun_eval;
@@ -68,6 +72,9 @@ mod shell_script;
 mod stdin_filters;
 mod symlink_writes;
 mod version_probes;
+#[cfg(test)]
+#[path = "pretool/workspace_contained_tests.rs"]
+mod workspace_contained_tests;
 mod worktree_add;
 mod worktree_maintenance;
 mod worktree_writes;

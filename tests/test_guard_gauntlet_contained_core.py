@@ -228,6 +228,17 @@ def test_fully_bound_contained_run_passes_without_interruption(fixture, tmp_path
     assert assessment["interruptions"]["events"] == []
 
 
+def test_workspace_sandbox_rewrite_is_judged_like_other_containment(fixture, tmp_path):
+    case = _contained(fixture, tmp_path)
+    pre = _pre(case)
+    workspace_reason = "native_workspace_containment_required"
+    pre["reason_code"] = workspace_reason
+    pre["native_observation"]["required_execution_profile"] = "workspace-contained-v1"
+    pre["native_observation"]["native_receipt"]["reason_code"] = workspace_reason
+    assessment = assess_case(SCENARIO, case)
+    assert assessment["outcome"] == "pass", assessment["reason"]
+
+
 def _break_receipt(case, key, value):
     _pre(case)["native_observation"]["native_receipt"][key] = value
 

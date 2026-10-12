@@ -217,7 +217,9 @@ mod mapping_elf;
 mod mapping_snapshot;
 mod paths;
 mod profiles;
+mod toolchains;
 mod validation;
+mod workspace;
 pub fn evaluate_with_deadline(
     operation: &str,
     input: &serde_json::Value,
@@ -226,8 +228,10 @@ pub fn evaluate_with_deadline(
     mapping::evaluate(operation, input, deadline).unwrap_or_else(|| evaluate(operation, input))
 }
 pub use authority::evaluate;
+pub(crate) use workspace::workspace_admissible;
 #[cfg(test)]
 mod parity_tests;
 use executables::*;
 use paths::*;
+use toolchains::workspace_exec_roots;
 use validation::*;

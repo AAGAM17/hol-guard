@@ -48,7 +48,10 @@ pub(super) fn workspace_is_broad_or_sensitive(workspace: &Path) -> bool {
     workspace_is_broad_or_sensitive_for_home(workspace, None)
 }
 
-fn workspace_is_broad_or_sensitive_for_home(workspace: &Path, home: Option<&Path>) -> bool {
+pub(super) fn workspace_is_broad_or_sensitive_for_home(
+    workspace: &Path,
+    home: Option<&Path>,
+) -> bool {
     let broad_roots: HashSet<PathBuf> = [
         "/",
         "/Users",

@@ -45,7 +45,7 @@ fn is_mcp_tool(tool: &str) -> bool {
         || (tool.contains('/') && !tool.starts_with('/'))
 }
 
-fn is_package_tool(tool: &str) -> bool {
+pub(in crate::pretool) fn is_package_tool(tool: &str) -> bool {
     tool_matches(
         tool,
         &[

@@ -84,7 +84,9 @@ CONTAINED_TEST_HELPERS_SOURCE = r"""
       (profile === "git-readonly-v1" && response.reason_code === "native_git_readonly_containment_required") ||
       (profile === "pytest-readonly-v2" && response.reason_code === "native_pytest_readonly_containment_required") ||
       (profile === "vitest-readonly-v1" && response.reason_code === "native_vitest_readonly_containment_required") ||
-      (profile === "node-test-readonly-v1" && response.reason_code === "native_node_test_readonly_containment_required")
+      (profile === "node-test-readonly-v1" &&
+        response.reason_code === "native_node_test_readonly_containment_required") ||
+      (profile === "workspace-contained-v1" && response.reason_code === "native_workspace_containment_required")
     );
     if (
       response.decision !== "deny" || response.policy_action !== "sandbox-required" ||

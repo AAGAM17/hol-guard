@@ -7196,7 +7196,9 @@ def test_guard_hook_emits_copilot_native_allow_response_for_noclobber_dev_null_r
     output = json.loads(capsys.readouterr().out)
 
     assert rc == 0
-    assert output["approval_reuse"]["action"] == "block"
+    # A literal `/dev/null` redirect no longer fails native evaluation, so this
+    # read-only pipeline takes the floor of `ls` and `head`.
+    assert output == {"permissionDecision": "allow"}
 
 
 def test_guard_hook_emits_copilot_native_allow_response_for_benign_node_transform_script(

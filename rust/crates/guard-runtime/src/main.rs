@@ -254,6 +254,7 @@ mod hook_decision_settle;
 mod hook_process_spawn;
 mod hook_render_op;
 mod local_cli_grant_op;
+mod local_cli_identify;
 mod local_mcp_grant_identity;
 mod local_mcp_grant_launcher;
 mod local_mcp_grant_op;

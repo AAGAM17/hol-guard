@@ -7,7 +7,7 @@
 //! reason, so only a malformed request is an `error`.
 
 mod binding;
-mod context;
+pub(crate) mod context;
 mod fs_path;
 mod git_config;
 mod git_identity;
@@ -15,7 +15,7 @@ mod launch;
 mod launcher_sets;
 mod operands;
 mod reasons;
-mod runner_bin;
+pub(crate) mod runner_bin;
 mod token;
 mod tool_target;
 

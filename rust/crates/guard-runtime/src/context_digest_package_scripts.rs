@@ -162,7 +162,7 @@ fn parse_invocation(command_text: &str, cwd: &Path, home_dir: &Path) -> Option<I
 
 /// `unlisted_cli_invocation_is_safe`: one exact top-level invocation with no
 /// redirects, embedded commands, wrappers, environment or PATH override.
-fn invocation_is_safe(command: &CanonicalCommand) -> bool {
+pub(crate) fn invocation_is_safe(command: &CanonicalCommand) -> bool {
     if command.confidence != "exact"
         || !command.redirects.is_empty()
         || !command.embedded_commands.is_empty()

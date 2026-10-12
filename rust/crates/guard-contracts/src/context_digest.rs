@@ -8,7 +8,7 @@
 //! --stdin`.
 
 use crate::{BrowserMcpArtifactV1, BrowserMcpRequestV1, BrowserMcpResultV1};
-use crate::{LocalCliIdentitySourceV1, LocalCliIdentityV1, PackageJsonScriptsV1};
+use crate::{LocalCliIdentitySourceV1, LocalCliIdentityV1, PackageJsonScriptsV1, UnlistedCliV1};
 use crate::{McpToolPolicyRequestV1, McpToolPolicyResultV1};
 use crate::{SuggestionToolV1, SuggestionVerdictV1};
 use serde::{Deserialize, Serialize};
@@ -282,6 +282,19 @@ pub enum ContextDigestKindV1 {
         cwd: String,
         home_dir: String,
     },
+    /// Identify the unlisted CLIs a command launches; reads the filesystem
+    /// and resolves launches in `env`.
+    LocalCliIdentify {
+        command_text: String,
+        cwd: String,
+        home_dir: Option<String>,
+        /// The caller's home, for `~/` paths when `home_dir` is absent.
+        user_home: String,
+        /// Also identify scripts and runners in each compound segment.
+        compound: bool,
+        env: BTreeMap<String, String>,
+        budget_ms: u64,
+    },
     CustomExtensionSuggestion {
         tools: Vec<SuggestionToolV1>,
     },
@@ -528,6 +541,9 @@ pub struct ContextDigestResultV1 {
     /// `package_json_scripts` output; absent when nothing is recognized.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package_json_scripts: Option<PackageJsonScriptsV1>,
+    /// `local_cli_identify` output, first-seen order, unique by `cli_id`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_cli_identities: Option<Vec<UnlistedCliV1>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_extension_suggestion: Option<Vec<SuggestionVerdictV1>>,
 }

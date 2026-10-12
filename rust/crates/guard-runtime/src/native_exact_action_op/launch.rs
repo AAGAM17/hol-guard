@@ -184,7 +184,7 @@ fn segment_launch(
         let local_bin = if compound {
             None
         } else {
-            runner_local_bin(command, name, arguments, cwd, ctx)
+            runner_local_bin(command, name, arguments, cwd, ctx, true)
         };
         let local_bin = local_bin.ok_or(MUTABLE_LAUNCHER)?;
         return Ok(

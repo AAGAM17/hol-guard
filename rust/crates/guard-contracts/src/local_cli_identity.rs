@@ -43,6 +43,26 @@ pub struct LocalCliIdentityV1 {
     pub identity_hash: String,
 }
 
+/// One unlisted CLI a command launches, with the verified material its grant
+/// binds. `identity_source` is what grant decisions re-derive the identity from.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct UnlistedCliV1 {
+    pub cli_id: String,
+    pub name: String,
+    /// `script` or `executable`.
+    pub kind: String,
+    pub identity_hash: String,
+    pub example_label: String,
+    pub interpreter_name: Option<String>,
+    pub source_path: Option<String>,
+    /// Stored observation class; only set for package-runner identities.
+    pub path_class: Option<String>,
+    /// Package runner (`npx`) that launched the CLI, if any.
+    pub runner: Option<String>,
+    pub identity_source: LocalCliIdentitySourceV1,
+}
+
 /// One `package.json` script as a local CLI subcommand, before Python merges
 /// the catalog with its root and "other" entries.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

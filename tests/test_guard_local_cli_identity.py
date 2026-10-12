@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from codex_plugin_scanner.guard.runtime.custom_extension_suggestion import suggestion_tool, suggestion_verdicts
-from codex_plugin_scanner.guard.runtime.local_cli_compound import identify_unlisted_cli_identities
 from codex_plugin_scanner.guard.runtime.local_cli_identity import (
     catalog_owned_executables,
     identify_unlisted_cli,
+    identify_unlisted_cli_identities,
     is_local_cli_id,
     recognize_operator_cli,
 )

@@ -56,11 +56,11 @@ pub(crate) trait Engines {
     ) -> Option<Vec<LocalExecution>>;
 }
 
-pub(super) struct Ctx<'a> {
-    pub(super) home: Option<&'a str>,
-    pub(super) env: &'a BTreeMap<String, String>,
-    pub(super) deadline: Instant,
-    pub(super) engines: &'a dyn Engines,
+pub(crate) struct Ctx<'a> {
+    pub(crate) home: Option<&'a str>,
+    pub(crate) env: &'a BTreeMap<String, String>,
+    pub(crate) deadline: Instant,
+    pub(crate) engines: &'a dyn Engines,
 }
 
 impl Ctx<'_> {

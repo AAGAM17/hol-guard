@@ -232,6 +232,11 @@ fn suggestion_score(tool: &SuggestionToolV1, normalized: &str) -> i64 {
     score.max(0)
 }
 
+/// `is_common_shell_utility`: whether `name` is a common shell utility.
+pub(crate) fn is_common_tool_name(name: &str) -> bool {
+    is_common_utility(&normalize_tool_name(name))
+}
+
 fn is_common_utility(normalized: &str) -> bool {
     SHELL_UTILITIES.contains(&normalized)
         || SEARCH_TOOLS.contains(&normalized)

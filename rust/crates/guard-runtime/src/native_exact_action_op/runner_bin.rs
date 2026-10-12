@@ -14,26 +14,26 @@ use super::context::{Ctx, EvidenceFile};
 use super::fs_path;
 use super::launcher_sets::is_mutable_launcher;
 
-pub(super) const LOCAL_BIN_RUNNERS: [&str; 6] = ["npx", "bunx", "pnpm", "pnpx", "yarn", "npm"];
+pub(crate) const LOCAL_BIN_RUNNERS: [&str; 6] = ["npx", "bunx", "pnpm", "pnpx", "yarn", "npm"];
 const PRETARGET_OPTIONS: [&str; 2] = ["-y", "--yes"];
 const EXEC_SUBCOMMANDS: [&str; 2] = ["exec", "x"];
 const EXEC_SUBCOMMAND_RUNNERS: [&str; 3] = ["npm", "pnpm", "yarn"];
 const MAX_PACKAGE_MANIFEST_BYTES: u64 = 1_048_576;
 
-fn package_name_pattern() -> &'static Regex {
+pub(crate) fn package_name_pattern() -> &'static Regex {
     static PATTERN: OnceLock<Regex> = OnceLock::new();
     PATTERN.get_or_init(|| {
         Regex::new(r"^(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*\z").expect("static pattern")
     })
 }
 
-enum Manifest {
+pub(crate) enum Manifest {
     Absent,
     Unreadable,
     Data(Value),
 }
 
-fn read_manifest(path: &str) -> Manifest {
+pub(crate) fn read_manifest(path: &str) -> Manifest {
     if !fs_path::is_file(path) {
         return Manifest::Absent;
     }
@@ -50,7 +50,7 @@ fn read_manifest(path: &str) -> Manifest {
 }
 
 /// The bin a runner launches, or `None` for any selector form.
-fn runner_target<'a>(runner: &str, arguments: &'a [String]) -> Option<&'a str> {
+pub(crate) fn runner_target<'a>(runner: &str, arguments: &'a [String]) -> Option<&'a str> {
     let mut exec_allowed = EXEC_SUBCOMMAND_RUNNERS.contains(&runner);
     for argument in arguments {
         if argument == "--" || PRETARGET_OPTIONS.contains(&argument.as_str()) {
@@ -184,12 +184,14 @@ fn file_hashes(entries: &[EvidenceFile]) -> Vec<Value> {
 }
 
 /// `runner_local_bin`: content-hashed local-bin evidence for a runner command.
-pub(super) fn runner_local_bin(
+/// `reject_mutable` refuses targets that are themselves mutable launchers.
+pub(crate) fn runner_local_bin(
     command: &str,
     runner: &str,
     arguments: &[String],
     cwd: &str,
     ctx: &Ctx,
+    reject_mutable: bool,
 ) -> Option<Value> {
     ctx.check().ok()?;
     let executions = ctx
@@ -220,7 +222,7 @@ pub(super) fn runner_local_bin(
     // release than the local bin, so only the bare bin name binds.
     let target = runner_target(runner, arguments)?;
     if Some(target) != evidence.executable_name.as_deref()
-        || is_mutable_launcher(&target.to_lowercase())
+        || (reject_mutable && is_mutable_launcher(&target.to_lowercase()))
     {
         return None;
     }

@@ -1,6 +1,17 @@
 #![forbid(unsafe_code)]
 #![recursion_limit = "512"]
 
+mod aibom_artifact;
+mod aibom_discovery;
+mod aibom_extend;
+mod aibom_marketplace;
+mod aibom_mcp_metadata;
+mod aibom_op;
+mod aibom_paths;
+mod aibom_skill_rules;
+mod aibom_skills;
+#[cfg(all(test, unix))]
+mod aibom_vectors_tests;
 mod approval;
 mod approval_bulk_eligibility_op;
 mod approval_gate_consumers;

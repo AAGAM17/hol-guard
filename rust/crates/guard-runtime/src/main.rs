@@ -74,6 +74,22 @@ mod claim_reuse_binding_tests;
 #[cfg(test)]
 mod claim_reuse_vectors_tests;
 mod claude_guard_question;
+#[cfg(unix)]
+mod claude_hook_bridge;
+#[cfg(unix)]
+mod claude_hook_bridge_auth;
+#[cfg(all(test, unix))]
+mod claude_hook_bridge_fixture;
+#[cfg(unix)]
+mod claude_hook_bridge_http;
+#[cfg(unix)]
+mod claude_hook_bridge_http_text;
+#[cfg(unix)]
+mod claude_hook_bridge_render;
+#[cfg(unix)]
+mod claude_hook_bridge_transport;
+#[cfg(unix)]
+mod claude_hook_bridge_url;
 mod cli_copilot_resolution;
 mod cli_runtime_support_op;
 mod cloud_action_envelope;
@@ -308,6 +324,8 @@ mod hook_decision_native_facts;
 mod hook_decision_native_facts_tests;
 mod hook_decision_op;
 mod hook_decision_settle;
+#[cfg(unix)]
+mod hook_env_stamp;
 mod hook_policy_config;
 mod hook_process_spawn;
 mod hook_render_op;

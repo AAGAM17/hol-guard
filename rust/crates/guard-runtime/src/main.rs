@@ -282,6 +282,8 @@ mod mcp_sensitive_read;
 #[cfg(test)]
 mod mcp_sensitive_read_vectors_tests;
 mod mcp_stdio_session_op;
+mod mcp_tool_call_identity_build;
+mod mcp_tool_call_identity_op;
 mod mcp_tool_evidence_op;
 mod mcp_tool_policy_composio;
 mod mcp_tool_policy_decide_op;

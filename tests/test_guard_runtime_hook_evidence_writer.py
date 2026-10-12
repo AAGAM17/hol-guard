@@ -278,7 +278,11 @@ def test_writer_stops_with_bounded_sqlite_contention(tmp_path: Path) -> None:
             payload={"command": "rg safe"},
             succeeded=True,
         )
-        time.sleep(0.02)
+        # Time only the shutdown: the first contended attempt pays any cold
+        # native start-up, which is not what this bound measures.
+        attempt_deadline = time.monotonic() + 10
+        while writer.stats()["failures"] < 1 and time.monotonic() < attempt_deadline:
+            time.sleep(0.01)
         started = time.monotonic()
         assert writer.stop(timeout_seconds=1)
         assert time.monotonic() - started < 0.5

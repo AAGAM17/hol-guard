@@ -485,26 +485,9 @@ def _request_with_wrapper_context(
     raw_command_text: str,
     wrapper_chain: tuple[str, ...],
 ) -> ToolActionRequestMatch:
-    return ToolActionRequestMatch(
-        tool_name=request.tool_name,
-        normalized_tool_name=request.normalized_tool_name,
-        command_text=request.command_text,
-        action_class=request.action_class,
-        reason=request.reason,
-        raw_command_text=raw_command_text,
-        wrapper_chain=wrapper_chain,
-        canonical_command=request.canonical_command,
-        shell_execution_context_hash=request.shell_execution_context_hash,
-        shell_execution_context_reason_code=request.shell_execution_context_reason_code,
-        shell_execution_effective_cwds=request.shell_execution_effective_cwds,
-        guard_default_action=request.guard_default_action,
-        reason_code=request.reason_code,
-        restricted_profile_version=request.restricted_profile_version,
-        pytest_config_identity_sha256=request.pytest_config_identity_sha256,
-        pytest_config_sources=request.pytest_config_sources,
-        pytest_config_reason_codes=request.pytest_config_reason_codes,
-        interpreter_executable_identities=request.interpreter_executable_identities,
-    )
+    # Keep every field, including the script-read identity that binds a wrapped
+    # script's approval to its content.
+    return replace(request, raw_command_text=raw_command_text, wrapper_chain=wrapper_chain)
 
 
 def _request_with_shell_execution_context(

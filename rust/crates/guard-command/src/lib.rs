@@ -152,6 +152,13 @@ mod sfrs_benign_reads;
 #[cfg(unix)]
 mod sfrs_benign_tool_action;
 mod sfrs_constants;
+mod sfrs_credential_exfil;
+#[cfg(unix)]
+mod sfrs_destructive;
+#[cfg(unix)]
+mod sfrs_destructive_classifier;
+#[cfg(all(test, unix))]
+mod sfrs_destructive_vectors;
 mod sfrs_developer_graph;
 #[cfg(all(test, unix))]
 mod sfrs_developer_graph_vectors;
@@ -160,9 +167,17 @@ mod sfrs_developer_inspection;
 mod sfrs_developer_routines;
 #[cfg(test)]
 mod sfrs_developer_vectors;
+#[cfg(unix)]
+mod sfrs_dispatcher;
+#[cfg(unix)]
+mod sfrs_dispatcher_request;
+#[cfg(all(test, unix))]
+mod sfrs_dispatcher_vectors;
 mod sfrs_docker_args;
 #[cfg(test)]
 mod sfrs_docker_vectors;
+mod sfrs_encoded_commands;
+mod sfrs_encoded_payloads;
 mod sfrs_environment_secret;
 mod sfrs_file_identity;
 #[cfg(all(test, unix))]
@@ -173,6 +188,8 @@ mod sfrs_gh_actions_read;
 mod sfrs_gh_bindings;
 mod sfrs_gh_body_file;
 mod sfrs_gh_body_file_check;
+#[cfg(unix)]
+mod sfrs_gh_body_safety;
 mod sfrs_gh_control_flow;
 mod sfrs_gh_definitions;
 mod sfrs_gh_environment;
@@ -218,6 +235,19 @@ mod sfrs_kubernetes_support;
 mod sfrs_kubernetes_vectors;
 #[cfg(all(test, unix))]
 mod sfrs_leaf_vectors;
+#[cfg(all(test, unix))]
+mod sfrs_net_vectors;
+mod sfrs_network_upload;
+#[cfg(unix)]
+mod sfrs_node_heredoc;
+#[cfg(unix)]
+mod sfrs_node_redaction;
+#[cfg(unix)]
+mod sfrs_node_templates;
+#[cfg(all(test, unix))]
+mod sfrs_node_vectors;
+#[cfg(unix)]
+mod sfrs_node_workflows;
 mod sfrs_patterns;
 mod sfrs_perl_read_only;
 #[cfg(all(test, unix))]
@@ -256,6 +286,14 @@ mod sfrs_routines_vectors;
 mod sfrs_search_filters;
 mod sfrs_selectors;
 mod sfrs_self_approval;
+#[cfg(unix)]
+mod sfrs_sensitive_pipeline;
+#[cfg(unix)]
+mod sfrs_shell_classifier;
+#[cfg(unix)]
+mod sfrs_shell_classifier_context;
+#[cfg(unix)]
+mod sfrs_shell_initial_risk;
 mod sfrs_shell_tokens;
 mod sfrs_shlex;
 mod sfrs_source_edit;
@@ -263,10 +301,14 @@ mod sfrs_source_edit_context;
 mod sfrs_static_safety;
 #[cfg(test)]
 mod sfrs_static_vectors;
+mod sfrs_stdin_sources;
 mod sfrs_substitution;
 #[cfg(test)]
 mod sfrs_token_vectors;
 mod sfrs_tool_request;
+#[cfg(unix)]
+mod sfrs_typescript_graphql;
+mod sfrs_upload_arguments;
 mod shell_command_wrappers;
 pub mod shell_execution_context;
 mod shell_execution_context_support;

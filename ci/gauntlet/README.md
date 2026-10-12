@@ -80,9 +80,9 @@ and `quiet_case_rate`. `qualify` and `verify` fail on any benign interruption.
 ### Environment realism
 
 Native-tool cases run in a realistic first-contact environment: a non-empty login-like environment, an
-empty harmless `LD_LIBRARY_PATH` directory (`DYLD_LIBRARY_PATH` on macOS), and a global gitconfig with the
-git-lfs filter, `gpg.program` and `core.hooksPath`, a git-initialised sibling project and a tracked test
-script. The shell cases `omp-native-shell-inspect-skill-doc`, `-check-git-state` and `-build-and-test`
+empty harmless `LD_LIBRARY_PATH` directory (`DYLD_LIBRARY_PATH` on macOS; none on Windows, which loads
+DLLs through `PATH`), and a global gitconfig with the git-lfs filter, `gpg.program` and `core.hooksPath`,
+a git-initialised sibling project and a tracked test script. The shell cases `omp-native-shell-inspect-skill-doc`, `-check-git-state` and `-build-and-test`
 cover the common read, git and build/test clusters.
 
 ### Known gaps

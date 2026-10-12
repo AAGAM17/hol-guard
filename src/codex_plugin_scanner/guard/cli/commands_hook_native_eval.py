@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     )
     from .commands_support_prompts import _runtime_artifact_native_reason
     from .commands_support_runtime_policy import (
-        _runtime_artifact_policy_action,
         _runtime_data_flow_summary,
         _runtime_saved_allow_validation_reason,
         _runtime_stored_policy_decision,
@@ -45,6 +44,7 @@ from ..local_supply_chain import (
 from ..models import GuardAction
 from ..native_hook_artifact_compose import NativeHookComposeError, native_hook_compose
 from ..package_execution_context import PackageExecutionContext, build_package_execution_context
+from ..protection_posture import is_high_confidence
 from ..runtime.approval_context import approval_context_tokens_validation_reason
 from ..runtime.approval_reuse import (
     APPROVAL_REUSE_CLAIM_FAILED,
@@ -79,7 +79,12 @@ from .commands_hook_native_floor import (
 from .commands_hook_native_state import NativeArtifactHookState
 from .commands_parser_helpers import *
 from .commands_support_hook_state import _load_cursor_native_shell_allowance
-from .commands_support_runtime_artifact_policy import _runtime_artifact_has_explicit_permission_allow
+from .commands_support_runtime_artifact_policy import (
+    _runtime_artifact_has_explicit_permission_allow,
+    record_policy_auto_stops,
+    runtime_policy_artifact_facts,
+    runtime_policy_config_facts,
+)
 from .commands_support_runtime_artifacts import _hook_event_name, _optional_string
 from .commands_support_runtime_policy import (
     _remembered_rule_rejection_reason,
@@ -427,37 +432,17 @@ def evaluate_native_artifact_hook(
         runtime_workspace,
         _runtime_cisco_scanner_evidence,
     )
-    configured_data_flow_action = None
-    if data_flow_signals:
-        configured_data_flow_action = resolve_risk_action(
-            config,
-            "data_flow_exfiltration",
-            harness=policy_harness,
-        )
-        from ..protection_posture import apply_posture_confidence, is_high_confidence
-
-        if configured_data_flow_action is not None:
-            configured_data_flow_action = apply_posture_confidence(
-                posture=config.protection_posture,
-                explicit=config.protection_posture_explicit,
-                risk_class="data_flow_exfiltration",
-                action=configured_data_flow_action,
-                confidence=(
-                    "strong"
-                    if any(is_high_confidence(getattr(signal, "confidence", None)) for signal in data_flow_signals)
-                    else None
-                ),
-            )
+    data_flow_strong = any(is_high_confidence(getattr(signal, "confidence", None)) for signal in data_flow_signals)
     compound_finding_count = artifact_metadata.get("compound_finding_count")
     has_compound_findings = isinstance(compound_finding_count, int) and compound_finding_count > 1
     scanner_risk_signals = [signal.plain_language_summary for signal in scanner_evidence]
     stack = native_hook_compose(
         "policy_stack",
         {
-            "config_action": _runtime_artifact_policy_action(config, runtime_artifact, args.harness),
-            "approval_context_config_action": _runtime_artifact_policy_action(
-                config, approval_context_artifact, policy_harness
-            ),
+            "policy_config": runtime_policy_config_facts(config, args.harness),
+            "runtime": runtime_policy_artifact_facts(config, runtime_artifact, args.harness),
+            "approval_context": runtime_policy_artifact_facts(config, approval_context_artifact, policy_harness),
+            "data_flow_strong": data_flow_strong,
             "cli_action": cli_action,
             "payload_action_present": "policy_action" in payload_map,
             "payload_action": payload_map.get("policy_action"),
@@ -472,7 +457,6 @@ def evaluate_native_artifact_hook(
             "has_package": package_evaluation is not None,
             "package_policy_action": package_evaluation.policy_action if package_evaluation is not None else None,
             "has_data_flow": bool(data_flow_signals),
-            "data_flow_configured_action": configured_data_flow_action,
             "has_scanner": bool(scanner_evidence),
             "scanner_action": (
                 policy_action_for_cisco_signals(scanner_evidence, config=config, harness=policy_harness)
@@ -494,6 +478,7 @@ def evaluate_native_artifact_hook(
         },
         guard_home=guard_home,
     )
+    record_policy_auto_stops(config, stack["auto_stop_events"])
     policy_action = cast(GuardAction, stack["policy_action"])
     approval_context_policy_action = cast(GuardAction, stack["approval_context_policy_action"])
     approval_context_config_action = cast(GuardAction, stack["approval_context_config_action"])

@@ -262,6 +262,7 @@ mod hook_decision_native_facts;
 mod hook_decision_native_facts_tests;
 mod hook_decision_op;
 mod hook_decision_settle;
+mod hook_policy_config;
 mod hook_process_spawn;
 mod hook_render_op;
 mod local_cli_grant_op;

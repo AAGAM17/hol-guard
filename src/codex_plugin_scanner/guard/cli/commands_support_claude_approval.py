@@ -218,7 +218,7 @@ def _resolve_claude_permission_request_policy_action(
     runtime_artifact: GuardArtifact,
     runtime_workspace: Path | None,
 ) -> tuple[str, dict[str, object]]:
-    policy_action = _runtime_artifact_policy_action(config, runtime_artifact, args.harness)
+    policy_action = _runtime_artifact_policy_action(config, runtime_artifact, args.harness, guard_home=store.guard_home)
     package_evaluation = None
     if runtime_artifact.artifact_type == "package_request":
         package_evaluation = evaluate_package_request_artifact(

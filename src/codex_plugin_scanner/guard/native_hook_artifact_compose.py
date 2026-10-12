@@ -31,8 +31,10 @@ _TIMEOUT_SECONDS = 5.0
 _FIELDS: dict[str, frozenset[str]] = {
     "policy_stack": frozenset(
         {
-            "config_action",
-            "approval_context_config_action",
+            "policy_config",
+            "runtime",
+            "approval_context",
+            "data_flow_strong",
             "cli_action",
             "payload_action_present",
             "payload_action",
@@ -42,7 +44,6 @@ _FIELDS: dict[str, frozenset[str]] = {
             "has_package",
             "package_policy_action",
             "has_data_flow",
-            "data_flow_configured_action",
             "has_scanner",
             "scanner_action",
             "has_compound_findings",
@@ -55,6 +56,7 @@ _FIELDS: dict[str, frozenset[str]] = {
             "scanner_risk_signals",
         }
     ),
+    "config_action": frozenset({"policy_config", "artifact"}),
     "tool_grant_apply": frozenset(),
     "grant_settle": frozenset(
         {"current_action", "policy_action", "approval_context_action", "granted_action", "native_floor"}
@@ -128,6 +130,7 @@ _FIELDS: dict[str, frozenset[str]] = {
 _ANSWERS: dict[str, dict[str, str]] = {
     "policy_stack": {
         "approval_context_config_action": "a",
+        "auto_stop_events": "l",
         "approval_context_data_flow_action": "A",
         "approval_context_policy_action": "a",
         "current_config_action": "a",
@@ -145,6 +148,7 @@ _ANSWERS: dict[str, dict[str, str]] = {
         "trusted_cli_action": "A",
         "untrusted_payload_action": "A",
     },
+    "config_action": {"action": "a", "auto_stop_events": "l"},
     "tool_grant_apply": {"approval_context_policy_action": "a", "current_policy_action": "a", "policy_action": "a"},
     "grant_settle": {"approval_context_policy_action": "a", "current_policy_action": "a", "policy_action": "a"},
     "saved_reuse": {"approval_reuse": "d", "approval_reuse_source": "S", "policy_action": "a"},

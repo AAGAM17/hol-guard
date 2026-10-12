@@ -30,6 +30,11 @@ _FS_FUNCTIONS: Final = frozenset({"open", "readlink", "stat", "lstat", "listdir"
 _HASH_FUNCTIONS: Final = frozenset({"md5", "sha1", "sha224", "sha256", "sha384", "sha512", "blake2b", "blake2s"})
 _ARCHIVE_MODULES: Final = frozenset({"tarfile", "zipfile", "gzip", "bz2", "lzma", "shutil"})
 _DECODE_FUNCTIONS: Final = frozenset({"b64decode", "loads", "decode", "unpack", "decompress"})
+# This codec only encodes request bytes; the resident owns decompression,
+# command parsing, normalization and identity derivation.
+_TRANSPORT_ENCODE_OPERATIONS: Final = frozenset(
+    {("src/codex_plugin_scanner/guard/native_rich_command_model.py", ("gzip", "compress"))}
+)
 _EQUIVALENCE_FUNCTIONS: Final = frozenset({"output_equivalent", "parity_signature", "sha256_text"})
 
 _COMPATIBILITY_PATHS: Final = frozenset(
@@ -76,6 +81,7 @@ _TRANSPORT_IDENTITY_PATHS: Final = frozenset(
 _TRANSPORT_INTEGRITY_PATHS: Final = frozenset(
     {
         "src/codex_plugin_scanner/guard/native_decision_receipt.py",
+        "src/codex_plugin_scanner/guard/native_rich_command_model.py",
         "src/codex_plugin_scanner/guard/native_command_observations.py",
         "src/codex_plugin_scanner/guard/native_context.py",
         # Execution-environment digest binds transport context without carrying
@@ -132,6 +138,8 @@ _TRANSPORT_AUTHORITY_PATHS: Final = frozenset(
 )
 _TRANSPORT_DECODE_PATHS: Final = frozenset(
     {
+        # Strict DTO decoding of request-bound rich parser replies; semantics are native.
+        "src/codex_plugin_scanner/guard/native_rich_command_model.py",
         "src/codex_plugin_scanner/guard/native_hook_edge.py",
         "src/codex_plugin_scanner/guard/native_pretool.py",
         "src/codex_plugin_scanner/guard/native_resident_client.py",

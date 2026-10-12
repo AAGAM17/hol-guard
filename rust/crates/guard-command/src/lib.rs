@@ -136,6 +136,7 @@ mod powershell_floors;
 mod powershell_parser;
 mod powershell_reads;
 pub mod protect_request;
+pub mod rich_command_model_api;
 use parser_executables::*;
 use parser_segments::*;
 pub mod environment_secret_dump;
@@ -372,6 +373,12 @@ struct RawSegment {
 }
 
 pub fn parse_command(request: &CommandModelRequestV1) -> Result<CanonicalCommandV1, String> {
+    let mut command = parse_command_unbound(request)?;
+    command.security_identity = canonical_command::command_security_identity(&command);
+    Ok(command)
+}
+
+fn parse_command_unbound(request: &CommandModelRequestV1) -> Result<CanonicalCommandV1, String> {
     let raw = request.command.trim();
     if request.dialect == "powershell" && request.transport == "shell_string" && !raw.is_empty() {
         return Ok(parse_explicit_powershell(request, raw));

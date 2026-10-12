@@ -91,6 +91,9 @@ pub(crate) fn evaluate_resident_bytes(
             ResidentOperationV1::ArchiveAcquisition(request) => {
                 crate::archive_acquisition_op::evaluate_archive_acquisition_request(&request)
             }
+            ResidentOperationV1::RichCommandModel(request) => {
+                crate::rich_command_model_op::evaluate(&request)
+            }
             ResidentOperationV1::CommandModel(request) => {
                 crate::oneshot::evaluate_command_model_request(&request)
             }
@@ -507,6 +510,7 @@ fn operation_guard_home(operation: &ResidentOperationV1) -> Option<&str> {
         ResidentOperationV1::McpToolEvidence(request) => Some(&request.guard_home),
         ResidentOperationV1::LocalMcpGrantDecide(request) => Some(&request.guard_home),
         ResidentOperationV1::ContributedMcpDecide(request) => Some(&request.guard_home),
+        ResidentOperationV1::RichCommandModel(request) => Some(&request.guard_home),
         ResidentOperationV1::RequestContextBuild(request) => Some(&request.guard_home),
         ResidentOperationV1::SkillDirectoryIdentity(request) => Some(&request.guard_home),
         ResidentOperationV1::ProtectRequest(request) => Some(&request.guard_home),

@@ -4511,6 +4511,91 @@
    "parity_fixture": "tests/fixtures/direct-tool-python.v1.json"
   },
   {
+   "path": "src/codex_plugin_scanner/guard/runtime/command_model.py",
+   "base_commit": "da723a48b221c135cbce3bade1bab3ddb4959044",
+   "source_sha256": "08e5cd246e20bd6e327f77d0986ac37ad89fa1ef6dd42e336addf2dfcd9d721c",
+   "remaining_role": "Public DTOs and request-bound resident transport; original Python parsing and identity algorithms removed.",
+   "native_replacements": [
+    "rust/crates/guard-command/src/command_model.rs",
+    "rust/crates/guard-runtime/src/rich_command_model_op.rs"
+   ],
+   "retired_functions": [
+    "parse_shell_command",
+    "_execution_segment_texts",
+    "_embedded_execution",
+    "_append_substitution_execution",
+    "_segments_for_embedded"
+   ],
+   "parity_fixture": "tests/fixtures/native_rich_command_model.json"
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/command_structure.py",
+   "base_commit": "da723a48b221c135cbce3bade1bab3ddb4959044",
+   "source_sha256": "d07b8da7b625a170acee771889ea340c049731b28c032b6179931de746adef5a",
+   "remaining_role": "Public DTOs and request-bound resident transport; original Python parsing and identity algorithms removed.",
+   "native_replacements": [
+    "rust/crates/guard-command/src/command_structure.rs",
+    "rust/crates/guard-runtime/src/rich_command_model_op.rs"
+   ],
+   "retired_functions": [
+    "build_command_security_identity",
+    "extract_command_redirects",
+    "_strip_quotes"
+   ],
+   "parity_fixture": "tests/fixtures/native_rich_command_model.json"
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/command_tokens.py",
+   "base_commit": "da723a48b221c135cbce3bade1bab3ddb4959044",
+   "source_sha256": "2bb624010d3dfea8cfff5f5b16face626033b76c894e313b2221df2ecd23f358",
+   "remaining_role": "Native-backed public APIs retained; unused private _windows_shell_tokens and _after_sudo_options wrappers removed. retired_functions names the removed Python semantic bodies.",
+   "native_replacements": [
+    "rust/crates/guard-command/src/command_tokens.rs",
+    "rust/crates/guard-runtime/src/rich_command_model_op.rs"
+   ],
+   "retired_functions": [
+    "executable_name",
+    "_windows_shell_tokens",
+    "shell_tokens",
+    "leading_environment",
+    "_after_sudo_options"
+   ],
+   "parity_fixture": "tests/fixtures/native_rich_command_model.json"
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/command_segment_parsing.py",
+   "base_commit": "da723a48b221c135cbce3bade1bab3ddb4959044",
+   "source_sha256": "718973d25bf5d91943a27453c26ec505c00c0b89e827757e1ae6edf362955be5",
+   "remaining_role": "Public DTOs and request-bound resident transport; original Python parsing and identity algorithms removed.",
+   "native_replacements": [
+    "rust/crates/guard-command/src/command_segment_parsing.rs",
+    "rust/crates/guard-runtime/src/rich_command_model_op.rs"
+   ],
+   "retired_functions": [
+    "shell_tokens_without_redirects"
+   ],
+   "parity_fixture": "tests/fixtures/native_rich_command_model.json"
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/env_wrapper.py",
+   "base_commit": "da723a48b221c135cbce3bade1bab3ddb4959044",
+   "source_sha256": "e4f46e49ca92b342d9449245eb67064b749d13a844934dcc68b83a383cfe4bcd",
+   "remaining_role": "Public DTOs and request-bound resident transport; original Python parsing and identity algorithms removed.",
+   "native_replacements": [
+    "rust/crates/guard-command/src/env_wrapper.rs",
+    "rust/crates/guard-runtime/src/rich_command_model_op.rs"
+   ],
+   "retired_functions": [
+    "parse_env_wrapper",
+    "_env_assignment",
+    "_missing_operand_error",
+    "_split_expansion",
+    "_effective_cwd"
+   ],
+   "parity_fixture": "tests/fixtures/native_rich_command_model.json"
+  }
+,
+  {
    "path": "src/codex_plugin_scanner/guard/runtime/restricted_pytest_model.py",
    "base_commit": "d75f7f7c590536b3116bd03643033e19ca4117f9",
    "source_sha256": "39725279d2225a1f926db286c1f80a35bd89ed879472c071764698a936e4e522",

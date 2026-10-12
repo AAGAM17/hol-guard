@@ -99,6 +99,7 @@ mod context_digest;
 mod context_digest_json;
 mod context_digest_local_cli;
 mod context_digest_package_scripts;
+mod context_digest_result_check;
 mod contributed_mcp_decision_op;
 mod critical_floor_op;
 mod cursor_observer_proof_op;

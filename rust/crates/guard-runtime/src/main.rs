@@ -282,6 +282,8 @@ mod mcp_tool_policy_decision;
 mod mcp_tool_policy_extension;
 mod mcp_tool_policy_flow;
 mod mcp_tool_policy_grants;
+mod mcp_tool_policy_lookup;
+mod mcp_tool_policy_proxy;
 mod mcp_tool_policy_revalidate;
 mod native_exact_action_op;
 mod native_hook_receipt;

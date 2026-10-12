@@ -314,7 +314,7 @@
       {
         "id": "install-uninstall-doctor",
         "category": "install_config",
-        "reason": "Install/uninstall/doctor/connect/pairing/OAuth/desktop-bootstrap CLI flows and repair/inverse lifecycle. codex_hook_recovery.py/codex_hook_rollback.py are the hook-publication journal, called only from CodexHarnessAdapter._write_authenticated_hook_config_owned, prepare_* migration/backup functions, prepare_install, the shim and cursor prepare functions and the excluded repair/inverse modules. shell_profile_cleanup.py is reached only from shims.remove_guard_profile_blocks (uninstall). commands_remove_hooks, hook_removal_presence, daemon_stop and commands_repair back the uninstall/repair CLI commands and are imported only by the commands_support facade and the excluded parser/dispatchers.",
+        "reason": "Install/uninstall/doctor/connect/pairing/OAuth/desktop-bootstrap CLI flows and repair/inverse lifecycle. codex_hook_recovery.py/codex_hook_rollback.py are the hook-publication journal, called only from CodexHarnessAdapter._write_authenticated_hook_config_owned, prepare_* migration/backup functions, prepare_install, the shim and cursor prepare functions and the excluded repair/inverse modules. commands_remove_hooks, hook_removal_presence, daemon_stop and commands_repair back the uninstall/repair CLI commands and are imported only by the commands_support facade and the excluded parser/dispatchers.",
         "path": [
           "src/codex_plugin_scanner/guard/cli/install_*.py",
           "src/codex_plugin_scanner/guard/cli/uninstall_commands.py",
@@ -340,7 +340,6 @@
           "src/codex_plugin_scanner/guard/dashboard_launcher.py",
           "src/codex_plugin_scanner/guard/codex_hook_recovery.py",
           "src/codex_plugin_scanner/guard/codex_hook_rollback.py",
-          "src/codex_plugin_scanner/guard/shell_profile_cleanup.py",
           "src/codex_plugin_scanner/guard/hook_removal_presence.py",
           "src/codex_plugin_scanner/guard/daemon_stop.py",
           "src/codex_plugin_scanner/guard/cli/commands_remove_hooks.py",

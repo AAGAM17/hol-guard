@@ -123,6 +123,8 @@ _TRANSPORT_INTEGRITY_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/native_git_execution_safety.py",
         "src/codex_plugin_scanner/guard/native_compound_git_inspection.py",
         "src/codex_plugin_scanner/guard/native_policy_bundle.py",
+        # Gathers ambient facts for and decodes the resident package-shim admin envelope; results stay Rust.
+        "src/codex_plugin_scanner/guard/native_shim_admin.py",
         # Decodes the bounded resident MCP proxy decision envelope; verdicts stay Rust.
         "src/codex_plugin_scanner/guard/native_mcp_proxy_decision.py",
         # Decodes the bounded resident daemon-lifecycle verdict; decisions stay Rust.
@@ -209,6 +211,8 @@ _TRANSPORT_DECODE_PATHS: Final = frozenset(
         "src/codex_plugin_scanner/guard/native_compound_git_inspection.py",
         "src/codex_plugin_scanner/guard/native_codex_tool_output.py",
         "src/codex_plugin_scanner/guard/native_policy_bundle.py",
+        # Gathers ambient facts for and decodes the resident package-shim admin envelope; results stay Rust.
+        "src/codex_plugin_scanner/guard/native_shim_admin.py",
         # Decodes the bounded resident MCP proxy decision envelope; verdicts stay Rust.
         "src/codex_plugin_scanner/guard/native_mcp_proxy_decision.py",
         # Decodes the bounded resident daemon-lifecycle verdict; decisions stay Rust.

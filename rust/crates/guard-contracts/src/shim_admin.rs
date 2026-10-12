@@ -54,6 +54,10 @@ pub struct ShimAdminFactsV2 {
     pub sqlite_connect_timeout_seconds: f64,
     /// ISO-8601 UTC timestamp standing in for `datetime.now(timezone.utc)`.
     pub now: String,
+    /// `shims._is_transient_path` of the package-shim directory.
+    /// Absent: the resident applies its own transient-path check.
+    #[serde(default)]
+    pub shim_dir_transient: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

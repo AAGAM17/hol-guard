@@ -103,6 +103,9 @@ pub struct ShimFacts {
     pub sqlite_connect_timeout_seconds: f64,
     /// ISO-8601 UTC timestamp standing in for `datetime.now(timezone.utc)`.
     pub now: String,
+    /// `shims._is_transient_path` of this request's package-shim directory.
+    /// `None` means the resident applies `is_transient_path` itself.
+    pub shim_dir_transient: Option<bool>,
 }
 
 /// The `HarnessContext` the Python functions took, plus the process facts.

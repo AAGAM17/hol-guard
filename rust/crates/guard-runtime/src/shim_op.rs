@@ -42,6 +42,7 @@ fn facts_from(request: &ShimAdminFactsV2) -> ShimFacts {
         windows: request.windows,
         sqlite_connect_timeout_seconds: request.sqlite_connect_timeout_seconds,
         now: request.now.clone(),
+        shim_dir_transient: request.shim_dir_transient,
     }
 }
 
@@ -240,6 +241,7 @@ mod tests {
                 windows: cfg!(windows),
                 sqlite_connect_timeout_seconds: 30.0,
                 now: "2026-01-01T00:00:00+00:00".to_owned(),
+                shim_dir_transient: None,
             },
         }
     }

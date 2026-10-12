@@ -400,7 +400,9 @@ const CLIENT_TIMEOUT_CEILING_MS: u64 = 9_000;
 const SKILL_SCAN_TIMEOUT_CEILING_MS: u64 = 60_000;
 /// Contained local runners honour the caller's process timeout (up to ten
 /// minutes) plus a minute of transport slack for the probe and snapshot, so their budget must not be clamped to the
-/// nine-second ceiling that would abort a legitimate test run mid-flight.
+/// nine-second ceiling that would abort a legitimate test run mid-flight. The
+/// package-shim admin op shares it: a probe runs each installed shim under its
+/// own per-shim timeout.
 const CONTAINED_RUNNER_TIMEOUT_CEILING_MS: u64 = 670_000;
 /// A Codex resume retry waits up to a minute for the app server to accept
 /// the turn and up to its busy timeout for the store; the caller adds five
@@ -420,7 +422,8 @@ pub(crate) fn client_timeout(payload: &[u8]) -> Duration {
         Some(
             "contained_node_execute"
             | "contained_typescript_execute"
-            | "contained_package_script_execute",
+            | "contained_package_script_execute"
+            | "shim_admin",
         ) => CONTAINED_RUNNER_TIMEOUT_CEILING_MS,
         Some("codex_request_resume") => CODEX_REQUEST_RESUME_TIMEOUT_CEILING_MS,
         _ => CLIENT_TIMEOUT_CEILING_MS,

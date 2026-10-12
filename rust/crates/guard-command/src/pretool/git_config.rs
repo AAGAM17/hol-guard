@@ -384,13 +384,16 @@ pub(super) fn clean_environment(
             .collect(),
     };
     !names.iter().any(|name| {
-        // A loader search path the hook stamped is checked entry by entry;
-        // every other loader variable, including injection, stays a refusal.
-        if execution_environment.is_some_and(|context| {
-            context.library_search_paths.get(name).is_some_and(|value| {
-                super::trusted_location::trusted_library_search_path(value, home, cwd)
+        // Unix loader search paths are inert on Windows. Elsewhere a search
+        // path the hook stamped is checked entry by entry; every other loader
+        // variable, including injection, stays a refusal.
+        if super::trusted_location::inert_loader_search_path(name, cfg!(windows))
+            || execution_environment.is_some_and(|context| {
+                context.library_search_paths.get(name).is_some_and(|value| {
+                    super::trusted_location::trusted_library_search_path(value, home, cwd)
+                })
             })
-        }) {
+        {
             return false;
         }
         let key = name.to_ascii_uppercase();

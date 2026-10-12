@@ -111,6 +111,7 @@ fn composition(has_command_text: bool, c: &Composed) -> HookCompositionV1 {
         action_without_tool_grant: after(c.composed).as_str().to_owned(),
         permission_decision_reason: c.permission_reason.clone(),
         daemon_failure_reason: c.daemon_failure_reason.clone(),
+        verified_benign: c.verified_benign,
         token: HookTokenCompositionV1 {
             current_config_action: c.current_config.as_str().to_owned(),
             daemon_hint_disposition: c.daemon_disposition.map(str::to_owned),

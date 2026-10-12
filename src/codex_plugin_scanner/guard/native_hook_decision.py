@@ -37,6 +37,7 @@ _COMPOSITION_FIELDS: dict[str, Any] = {
     "permission_decision_reason": _OPT_STR,
     "daemon_failure_reason": _OPT_STR,
     "token": dict,
+    "verified_benign": bool,
 }
 _TOKEN_FIELDS: dict[str, Any] = {
     "current_config_action": str,

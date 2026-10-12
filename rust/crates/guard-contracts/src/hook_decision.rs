@@ -14,6 +14,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use crate::{CodexToolOutputFactsV1, NativeExtensionControlLayerV1};
+
 /// Schema discriminator for the request.
 pub const HOOK_DECISION_REQUEST_SCHEMA: &str = "guard-hook-decision-request.v1";
 /// Schema discriminator for the result.
@@ -84,6 +86,52 @@ pub struct HookCompositionInputsV1 {
     pub fail_mode: Value,
     #[serde(default)]
     pub permission_decision_reason: Value,
+    /// The raw tool call and caller facts the resident classifies itself.
+    /// Absent means the transport could not observe them; every verdict that
+    /// depends on them then fails closed (not benign).
+    /// Omitted from the wire when absent, so the request digest the transport
+    /// binds stays identical to the canonical form it sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_request: Option<HookNativeRequestV1>,
+}
+
+/// Raw tool call plus observed caller facts for resident-owned classifiers.
+///
+/// Python never recomputes these verdicts: it only forwards what the payload
+/// and the host showed. `benign_native_file_read` and
+/// `benign_tool_action` (`is_explicitly_benign_tool_action_request`) are both
+/// computed from it; the composition reports the latter as `verified_benign`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct HookNativeRequestV1 {
+    /// `payload["tool_name"]`, untyped as received.
+    #[serde(default)]
+    pub tool_name: Value,
+    /// `payload["tool_input"]`, else `payload["arguments"]`, untyped.
+    #[serde(default)]
+    pub tool_input: Value,
+    /// The runtime workspace directory, when known.
+    #[serde(default)]
+    pub cwd: Option<String>,
+    /// The caller's home directory override, when given.
+    #[serde(default)]
+    pub home_dir: Option<String>,
+    /// Observed process cwd, home, account home, groups, bounded environment
+    /// snapshot and `git` executable, as the tool-output op takes them.
+    pub host: CodexToolOutputFactsV1,
+    /// The extension-control snapshot active while the payload was handled.
+    /// Absent means none was active, so no control can block a command.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_snapshot: Option<HookControlSnapshotV1>,
+}
+
+/// Extension-control layers and authority health, as the runtime snapshot
+/// carried them. An unknown health value makes the verdict not benign.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct HookControlSnapshotV1 {
+    pub health: String,
+    pub layers: Vec<NativeExtensionControlLayerV1>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -193,6 +241,10 @@ pub struct HookCompositionV1 {
     /// The reason to write back to the payload, if any.
     pub permission_decision_reason: Option<String>,
     pub daemon_failure_reason: Option<String>,
+    /// The resident's `is_explicitly_benign_tool_action_request` verdict for
+    /// the native request; false when none was sent or it cannot be computed.
+    #[serde(default)]
+    pub verified_benign: bool,
     pub token: HookTokenCompositionV1,
 }
 

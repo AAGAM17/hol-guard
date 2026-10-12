@@ -1684,6 +1684,7 @@
           "install_cline_plugin",
           "uninstall_cline_plugin",
           "cline_plugin_syntax_probe",
+          "_bounded_hook_argv",
           "_plugin_source",
           "_package_json",
           "_atomic_write"

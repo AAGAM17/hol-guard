@@ -92,6 +92,7 @@ mod consumer_artifact_compose_op;
 mod consumer_artifact_compose_runtime;
 #[cfg(unix)]
 mod contained_op;
+mod content_sensitivity_op;
 mod context_digest;
 mod context_digest_json;
 mod context_digest_local_cli;

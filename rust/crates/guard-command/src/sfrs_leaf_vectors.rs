@@ -86,7 +86,7 @@ fn build_tree(document: &Value) -> Scratch {
     }
     for name in tree["executables"].as_array().expect("executables") {
         let path = root.join(name.as_str().expect("exe"));
-        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("mode");
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700)).expect("mode");
     }
     for (name, target) in tree["links"].as_object().expect("links") {
         symlink(target.as_str().expect("target"), root.join(name)).expect("link");
@@ -94,7 +94,7 @@ fn build_tree(document: &Value) -> Scratch {
     let bin = root.join("home/proj/bin");
     fs::create_dir_all(&bin).expect("bin");
     fs::write(bin.join("perl"), "#!/bin/sh\n").expect("perl");
-    fs::set_permissions(bin.join("perl"), fs::Permissions::from_mode(0o755)).expect("mode");
+    fs::set_permissions(bin.join("perl"), fs::Permissions::from_mode(0o700)).expect("mode");
     Scratch(root)
 }
 

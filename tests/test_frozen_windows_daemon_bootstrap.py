@@ -11,6 +11,11 @@ from pathlib import Path
 import pytest
 
 
+def _require(condition: bool, detail: object = "") -> None:
+    if not condition:
+        pytest.fail(repr(detail) if detail != "" else "requirement failed", pytrace=False)
+
+
 def _run_core(executable: Path, args: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         [str(executable), *args],
@@ -232,9 +237,9 @@ def test_packaged_windows_core_bootstrap_retry_and_repair(tmp_path: Path, native
 
     try:
         bootstrap = _json_result(_run_core(executable, bootstrap_args, env=env))
-        assert bootstrap["schema"] == "guard-desktop-bootstrap.v1"
+        _require(bootstrap["schema"] == "guard-desktop-bootstrap.v1")
         first_status = _json_result(_run_core(executable, status_args, env=env))
-        assert first_status["running"] is True, (first_status, bootstrap, _diagnostics(env))
+        _require(first_status["running"] is True, (first_status, bootstrap, _diagnostics(env)))
         first_pid = first_status["pid"]
 
         _stop_and_assert_process_stopped(
@@ -245,9 +250,9 @@ def test_packaged_windows_core_bootstrap_retry_and_repair(tmp_path: Path, native
         )
 
         retry_bootstrap = _json_result(_run_core(executable, bootstrap_args, env=env))
-        assert retry_bootstrap["schema"] == "guard-desktop-bootstrap.v1"
+        _require(retry_bootstrap["schema"] == "guard-desktop-bootstrap.v1")
         retry_status = _json_result(_run_core(executable, status_args, env=env))
-        assert retry_status["running"] is True, (retry_status, retry_bootstrap, _diagnostics(env))
+        _require(retry_status["running"] is True, (retry_status, retry_bootstrap, _diagnostics(env)))
         retry_pid = retry_status["pid"]
         _stop_and_assert_process_stopped(
             executable,
@@ -257,9 +262,9 @@ def test_packaged_windows_core_bootstrap_retry_and_repair(tmp_path: Path, native
         )
 
         repaired = _json_result(_run_core(executable, repair_args, env=env))
-        assert repaired["runtime_status"] == "restarted"
+        _require(repaired["runtime_status"] == "restarted")
         repaired_status = _json_result(_run_core(executable, status_args, env=env))
-        assert repaired_status["running"] is True
+        _require(repaired_status["running"] is True)
     except (Exception, pytest.fail.Exception) as error:
         pytest.fail(f"{error!r}\n{_full_diagnostics(env)}", pytrace=False)
     finally:

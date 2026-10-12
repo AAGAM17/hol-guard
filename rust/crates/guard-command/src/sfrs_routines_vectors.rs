@@ -65,7 +65,7 @@ fn build_tree(document: &Value) -> Scratch {
     }
     for name in tree["exec"].as_array().expect("exec") {
         let path = root.join(name.as_str().expect("exec"));
-        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("mode");
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700)).expect("mode");
     }
     for (name, target) in tree["links"].as_object().expect("links") {
         let path = root.join(name);

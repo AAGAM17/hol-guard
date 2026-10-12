@@ -181,7 +181,8 @@ def test_scrub_memo_keys_by_digest_and_stays_bounded(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(cloud, "cloud_scrub_texts", scrub)
     memo = cloud._ScrubMemo(2)
-    assert memo.get("password=a") == memo.get("password=a")
+    first = memo.get("password=a")
+    assert memo.get("password=a") == first
     assert len(calls) == 1
     memo.get("b")
     memo.get("c")

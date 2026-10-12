@@ -65,9 +65,16 @@ def required_checks(scenario: Scenario) -> set[str]:
 
 
 def guard_inventory(
-    calls: list[dict[str, Any]], observations: list[dict[str, Any]], routes: dict[str, int]
+    calls: list[dict[str, Any]],
+    observations: list[dict[str, Any]],
+    routes: dict[str, int],
+    contained: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, list[dict[str, Any]]], str | None]:
-    """Require a native pre-tool response for every actual call and post-tool coverage for execution."""
+    """Require a native pre-tool response for every actual call and post-tool coverage for execution.
+
+    ``contained`` names calls whose wrapper rewrite, post response and result were already bound to
+    the reviewed input by ``contained_core``; their by-design deny is followed by a real execution.
+    """
     by_id: dict[str, list[dict[str, Any]]] = {}
     for observation in observations:
         if (
@@ -109,6 +116,8 @@ def guard_inventory(
             return {}, "missing or duplicate native pre/post response"
         if not input_matches(call["name"], call["args"], pre[0]["input"]):
             return {}, "host execution differs from the input reviewed by Guard"
+        if call["id"] in contained:
+            continue
         if post and not post_input_matches(call["name"], pre[0]["input"], post[0]["input"], call.get("result")):
             return {}, "native pre/post tool inputs disagree"
         if pre[0]["decision"] == "allow" and len(post) != 1:

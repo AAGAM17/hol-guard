@@ -16,6 +16,7 @@ from .restricted_pytest_validation import _path_is_within
 
 _COUNT = re.compile(r"[0-9]{1,6}")
 _MERGE = re.compile(r"2>&1(?=[ \t|]|\Z)")
+_HOME_CD = re.compile(r"[ \t]*cd[ \t]+~(?=/|[ \t])")
 _OPERATOR = frozenset("();<>|&\n")
 # Characters the shell would expand; native authority only upgrades exact parses.
 _UNQUOTED_EXPANSION = frozenset("$`*?[{")
@@ -166,6 +167,11 @@ def peel_contained_wrapper(
     status = _STATUS_ECHO.search(command)
     if status is not None:
         command = command[: status.start()]
+    home_cd = home is not None and _HOME_CD.match(command) is not None
+    if home_cd:
+        # The cd target's leading `~` is the one expansion proved; lex it as `.`.
+        tilde = command.index("~")
+        command = command[:tilde] + "." + command[tilde + 1 :]
     tokens, exact = _lex(command)
     directory = workspace
     wrapped = status is not None
@@ -173,7 +179,12 @@ def peel_contained_wrapper(
     if tokens[:1] == [("cd", False)]:
         if len(tokens) < 4 or tokens[1][1] or tokens[2] != ("&&", True):
             raise ValueError("unsupported cd prefix")
-        target = Path(tokens[1][0])
+        spelled = tokens[1][0]
+        # Only an unquoted leading `~` expands, as the native proof requires.
+        # `~//x` is home/x. Joining home with a leading slash would drop home,
+        # because pathlib treats an absolute right-hand side as the whole path.
+        rest = spelled[2:].lstrip("/")
+        target = home / rest if home_cd and home is not None else Path(spelled)
         if not exact or not target.is_absolute():
             raise ValueError("relative cd target")
         directory = target.resolve(strict=True)

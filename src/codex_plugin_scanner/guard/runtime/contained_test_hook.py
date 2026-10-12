@@ -213,14 +213,9 @@ def run_authorized_contained_test(
                 len(command) > 1
                 and Path(command[0]).name in {"node", "nodejs"}
                 and any(
-                    argument.endswith(
-                        (
-                            "/node_modules/eslint/bin/eslint.js",
-                            "/node_modules/typescript/bin/tsc",
-                            "/node_modules/vite/bin/vite.js",
-                        )
-                    )
+                    restricted_node_tool.is_local_package_entry(argument, entry)
                     for argument in command[1:3]
+                    for entry in ("eslint/bin/eslint.js", "typescript/bin/tsc", "vite/bin/vite.js")
                 )
             )
         )

@@ -385,6 +385,35 @@ def test_home_itself_is_never_a_sibling_repository(tmp_path: Path) -> None:
         peel_contained_wrapper(f"cd {home / 'loose'} && pytest -q", workspace=workspace, home=home)
 
 
+def test_unquoted_home_cd_expands_from_home(tmp_path: Path) -> None:
+    home, workspace, sibling = sibling_home(tmp_path)
+    command = "cd ~/sibling-worktree/dashboard && node node_modules/vite/bin/vite.js build 2>&1 | tail -12"
+    assert peel_contained_wrapper(command, workspace=workspace, home=home) == (
+        "node node_modules/vite/bin/vite.js build",
+        (sibling / "dashboard").resolve(),
+        OutputFilter("tail", 12, merge_stderr=True),
+    )
+    assert peel_contained_wrapper("cd ~/project && pytest -q | tail -5", workspace=workspace, home=home)[1] == (
+        workspace.resolve()
+    )
+    # A quoted `~` stays a literal relative directory, and no home means no expansion.
+    for rejected in ('cd "~/project" && pytest -q', "cd '~/project' && pytest -q", "cd ~nobody && pytest -q"):
+        with pytest.raises((ValueError, OSError)):
+            peel_contained_wrapper(rejected, workspace=workspace, home=home)
+    with pytest.raises(ValueError):
+        peel_contained_wrapper("cd ~/project && pytest -q", workspace=workspace)
+    doubled = "cd ~//sibling-worktree/dashboard && node node_modules/vite/bin/vite.js build 2>&1 | tail -12"
+    assert peel_contained_wrapper(doubled, workspace=workspace, home=home)[1] == (
+        sibling / "dashboard"
+    ).resolve()
+    for mixed in (
+        'cd ~"/sibling-worktree/dashboard" && node node_modules/vite/bin/vite.js build',
+        "cd ~'/sibling-worktree/dashboard' && node node_modules/vite/bin/vite.js build",
+    ):
+        with pytest.raises((ValueError, OSError)):
+            peel_contained_wrapper(mixed, workspace=workspace, home=home)
+
+
 def test_sink_moves_the_approved_root_to_the_sibling_repository(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

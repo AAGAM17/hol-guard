@@ -12,6 +12,9 @@ pub struct PathContext<'a> {
     /// No inherited `RUSTUP_TOOLCHAIN` or `RUSTUP_HOME` can change which
     /// toolchain the rustup proxy runs. Literal contexts leave this false.
     pub rustup_override_absent: bool,
+    /// The shell expands `~` to `home_dir`: its HOME names the same
+    /// directory. Literal contexts leave this false.
+    pub shell_home_matches: bool,
 }
 
 mod contained_wrapper;

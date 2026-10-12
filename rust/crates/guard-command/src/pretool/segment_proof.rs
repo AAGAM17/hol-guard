@@ -14,6 +14,7 @@ pub(super) fn verified_cwd_compound_context(
         || !first.environment_names.is_empty()
         || first.pipeline_index != 0
         || !super::directory_targets::drive_targets_quoted(first)
+        || !super::directory_targets::home_targets_unquoted(first)
         || model.segments[1..]
             .iter()
             .any(|segment| segment.executable.as_deref() == Some("cd"))
@@ -66,6 +67,7 @@ pub(super) fn exact_safe_cwd_compound(
                 home_dir: context.home_dir,
                 cdpath_unset: context.cdpath_unset,
                 rustup_override_absent: context.rustup_override_absent,
+                shell_home_matches: context.shell_home_matches,
                 cwd: Some(&cwd),
             },
         );
@@ -116,6 +118,7 @@ pub(super) fn exact_safe_cwd_compound(
                 home_dir: context.home_dir,
                 cdpath_unset: context.cdpath_unset,
                 rustup_override_absent: context.rustup_override_absent,
+                shell_home_matches: context.shell_home_matches,
                 cwd: Some(&cwd),
             },
         )
@@ -145,6 +148,7 @@ pub(crate) fn benign_command_segments(
         home_dir: context.home_dir,
         cdpath_unset: context.cdpath_unset,
         rustup_override_absent: context.rustup_override_absent,
+        shell_home_matches: context.shell_home_matches,
         cwd: cwd.as_deref().or(context.cwd),
     };
     let segment_benign: Vec<bool> = model

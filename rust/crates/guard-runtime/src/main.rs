@@ -476,6 +476,8 @@ mod sensitive_request_op;
 #[path = "../../guard-command/tests/sfrs_support/mod.rs"]
 mod sfrs_support;
 mod shell_helpers_op;
+mod shell_request_authority_op;
+mod shell_request_inspection_host;
 mod shim_op;
 mod signal_projection_approval;
 mod signal_projection_decode;

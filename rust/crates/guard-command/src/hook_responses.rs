@@ -397,8 +397,9 @@ pub fn post_tool(harness: &str, response: &Object) -> Object {
             .and_then(Value::as_str)
             .filter(|a| matches!(*a, "allow" | "warn"))
             .unwrap_or("allow");
+        let reason_code = text_or(response, "reason_code", "");
         let mut specific = hook_output("PostToolUse");
-        if action == "warn" {
+        if action == "warn" && !SILENT_WARNING_CODES.contains(&reason_code.as_str()) {
             specific = json!({
                 "hookEventName": "PostToolUse",
                 "permissionDecisionReason": text_or(response, "reason", POST_WARN_REASON),

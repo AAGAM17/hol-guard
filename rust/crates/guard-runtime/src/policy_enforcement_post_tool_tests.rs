@@ -259,7 +259,7 @@ fn post_intrinsic_block_cannot_be_lowered_by_allow_policy() {
 }
 
 #[test]
-fn post_warning_policy_preserves_allow_with_warning() {
+fn post_warning_policy_keeps_a_silent_warn_on_a_proven_allow() {
     let request = post_request(json!({
         "tool_name": "read_file",
         "tool_response": "safe-looking output"
@@ -273,7 +273,9 @@ fn post_warning_policy_preserves_allow_with_warning() {
     .unwrap();
     assert_eq!(result.decision, "allow");
     assert_eq!(result.policy_action.as_deref(), Some("warn"));
-    assert_eq!(result.notice, "warning");
+    assert_eq!(result.reason_code, "native_policy_warning");
+    assert_eq!(result.notice, "none");
+    assert_eq!(result.reason, None);
 }
 
 #[test]

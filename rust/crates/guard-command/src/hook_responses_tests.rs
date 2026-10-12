@@ -123,3 +123,35 @@ fn edge_dispatch_routes_each_event_and_watch_posture() {
     assert!(render_edge_response("codex", "SessionStart", &allow, false).is_none());
     assert!(render_edge_response("codex", "PreToolUse", &json!("x"), false).is_none());
 }
+
+#[test]
+fn post_tool_policy_floor_warning_on_a_proven_allow_renders_no_text() {
+    let response = obj(&json!({
+        "decision": "allow",
+        "model_output_action": "allow_original",
+        "policy_action": "warn",
+        "reason_code": "native_policy_warning",
+        "notice": "none",
+    }));
+    for harness in [
+        "claude-code",
+        "codex",
+        "zcode",
+        "omp",
+        "pi",
+        "grok",
+        "cursor",
+    ] {
+        let rendered = Value::Object(post_tool(harness, &response));
+        assert_eq!(rendered["policy_action"], "warn", "{harness}");
+        let text = rendered.to_string();
+        assert!(
+            !text.contains("permissionDecisionReason"),
+            "{harness}: {text}"
+        );
+        assert!(
+            !text.contains("\"notice\":\"warning\""),
+            "{harness}: {text}"
+        );
+    }
+}

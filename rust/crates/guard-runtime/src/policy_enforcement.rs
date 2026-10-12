@@ -447,12 +447,11 @@ pub(crate) fn apply_post_tool_policy(
     }
     if effective == "warn" && response.decision == "allow" {
         if intrinsic != "warn" {
+            // A warn floor over a proven allow is the silent policy warning,
+            // as on PreToolUse: the receipt keeps the warn and its code, and
+            // the harness renders nothing.
             response.reason_code = "native_policy_warning".to_owned();
-            response.reason = Some(
-                "HOL Guard raised a non-blocking warning under the installed native policy."
-                    .to_owned(),
-            );
-            response.notice = "warning".to_owned();
+            response.reason = None;
         }
         return Ok(response);
     }

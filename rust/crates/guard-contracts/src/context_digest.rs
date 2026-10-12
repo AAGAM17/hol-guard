@@ -298,6 +298,25 @@ pub enum ContextDigestKindV1 {
     CustomExtensionSuggestion {
         tools: Vec<SuggestionToolV1>,
     },
+    /// Decide whether a Claude `AskUserQuestion` PostToolUse answers the
+    /// pending HOL Guard approval prompt, and map the chosen option to an
+    /// approval action.
+    ClaudeGuardQuestion {
+        /// Normalized hook event name.
+        event: Option<String>,
+        #[serde(default)]
+        tool_name: Value,
+        #[serde(default)]
+        tool_input: Value,
+        /// `tool_response` without its `answers` mapping.
+        #[serde(default)]
+        tool_response: Value,
+        /// `tool_response.answers` as ordered `[question, answer]` pairs, or
+        /// `None` when it was not a mapping.
+        response_answers: Option<Vec<Value>>,
+        /// The pending approval's prompt fields.
+        pending: Value,
+    },
     McpServerIdentity {
         request: McpServerIdentityRequestV1,
     },
@@ -546,4 +565,16 @@ pub struct ContextDigestResultV1 {
     pub local_cli_identities: Option<Vec<UnlistedCliV1>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_extension_suggestion: Option<Vec<SuggestionVerdictV1>>,
+    /// `claude_guard_question` answer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_guard_question: Option<ClaudeGuardQuestionVerdictV1>,
+}
+
+/// Whether a hook answers the pending HOL Guard approval prompt.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ClaudeGuardQuestionVerdictV1 {
+    pub is_question: bool,
+    /// `allow` or `block`; `None` when the answer names no approval option.
+    pub action: Option<String>,
 }

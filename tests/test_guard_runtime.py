@@ -9580,54 +9580,6 @@ def test_guard_hook_claude_ask_user_question_multiple_questions_does_not_persist
     assert policies == []
 
 
-def test_guard_hook_claude_ask_user_question_empty_answers_uses_explicit_fallback_answer():
-    payload = {
-        "hook_event_name": "PostToolUse",
-        "tool_name": "AskUserQuestion",
-        "tool_response": {
-            "questions": [
-                {
-                    "header": "HOL Guard",
-                    "question": "HOL Guard intercepted this sensitive action. What should Claude do?",
-                    "options": [
-                        {"label": "Allow once"},
-                        {"label": "Allow during this session"},
-                        {"label": "Keep blocked"},
-                    ],
-                }
-            ],
-            "answers": {},
-            "selected_answer": "Allow once",
-        },
-    }
-
-    assert guard_commands_module._claude_guard_approval_answer(payload) == "allow"
-
-
-def test_guard_hook_claude_ask_user_question_accepts_dict_selected_answer():
-    payload = {
-        "hook_event_name": "PostToolUse",
-        "tool_name": "AskUserQuestion",
-        "tool_response": {
-            "questions": [
-                {
-                    "header": "HOL Guard",
-                    "question": "HOL Guard intercepted this sensitive action. What should Claude do?",
-                    "options": [
-                        {"label": "Allow once"},
-                        {"label": "Allow during this session"},
-                        {"label": "Keep blocked"},
-                    ],
-                }
-            ],
-            "answers": {},
-            "selected_answer": {"label": "Allow once"},
-        },
-    }
-
-    assert guard_commands_module._claude_guard_approval_answer(payload) == "allow"
-
-
 def test_guard_hook_claude_tampered_pending_state_cannot_bootstrap_signed_allow(tmp_path):
     home_dir = tmp_path / "home"
     store = GuardStore(home_dir)

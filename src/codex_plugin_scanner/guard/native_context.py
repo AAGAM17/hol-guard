@@ -81,6 +81,7 @@ _RESULT_OPTIONAL_KEYS = {
     "local_cli_identities",
     "custom_extension_suggestion",
     "managed_controls_policy_fields",
+    "claude_guard_question",
 }
 _RESULT_CODES = {
     "ok",

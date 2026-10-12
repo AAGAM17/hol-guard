@@ -57,6 +57,12 @@ mod binding_capture_vectors_tests;
 #[cfg(unix)]
 mod bounded_hook_bridge;
 #[cfg(unix)]
+mod bounded_hook_bridge_grok;
+#[cfg(unix)]
+mod bounded_hook_bridge_grok_render;
+#[cfg(unix)]
+mod bounded_hook_bridge_grok_script;
+#[cfg(unix)]
 mod bounded_hook_bridge_hermes;
 #[cfg(unix)]
 mod bounded_hook_bridge_render;

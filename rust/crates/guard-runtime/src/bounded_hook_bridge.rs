@@ -4,7 +4,9 @@
 //! `guard-runtime bounded-hook-bridge <python> -I -c <bootstrap> <config>`
 //! once per hook. The native bridge reads the hook within its deadline,
 //! posts it to the loopback Guard daemon with the daemon auth token and
-//! renders the daemon's answer for the harness.
+//! renders the daemon's answer for the harness. Grok runs its generated
+//! client instead, `<python> -I <script> <config>`, which
+//! `bounded_hook_bridge_grok` answers.
 //!
 //! Only a clean daemon answer is rendered here. Every other path runs the
 //! Python bridge it was given, with the original argv and stdin:
@@ -39,7 +41,7 @@ pub(crate) const BRIDGE_FEATURE: &str = "bounded-hook-bridge-v1";
 pub(crate) const ELAPSED_ENV: &str = "HOL_GUARD_BOUNDED_NATIVE_ELAPSED_MS";
 pub(crate) const DAEMON_TRIED_ENV: &str = "HOL_GUARD_BOUNDED_NATIVE_DAEMON_TRIED";
 
-const MAX_HOOK_INPUT_BYTES: usize = 1_000_000;
+pub(crate) const MAX_HOOK_INPUT_BYTES: usize = 1_000_000;
 const READ_CHUNK: usize = 65_536;
 const MAX_POLL_WAIT: Duration = Duration::from_secs(60);
 const MAX_STATE_BYTES: u64 = 64 * 1024;
@@ -351,7 +353,7 @@ fn exit_code(status: ExitStatus) -> i32 {
 
 /// Run the Python bridge. `stdin` is the hook already read, or `None` to
 /// let Python read the hook itself.
-fn run_python(
+pub(crate) fn run_python(
     argv: &[String],
     stdin: Option<&[u8]>,
     elapsed: Duration,
@@ -378,7 +380,7 @@ fn run_python(
     child.wait().ok().map(exit_code)
 }
 
-fn write_stdout(text: &str) {
+pub(crate) fn write_stdout(text: &str) {
     let mut stdout = io::stdout().lock();
     let _ = stdout
         .write_all(text.as_bytes())
@@ -401,6 +403,9 @@ fn fail(harness: &str, event_name: &str) -> i32 {
 
 pub(crate) fn run(python_argv: &[String]) -> i32 {
     let started = Instant::now();
+    if python_argv.len() == 4 && python_argv[1] == "-I" && python_argv[2] != "-c" {
+        return crate::bounded_hook_bridge_grok::run(python_argv, started);
+    }
     let config = config_argument(python_argv).and_then(parse_config);
     let Some(config) = config else {
         return run_python(python_argv, None, started.elapsed(), false)

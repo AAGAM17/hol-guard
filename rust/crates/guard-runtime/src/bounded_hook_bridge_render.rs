@@ -14,8 +14,8 @@ use crate::claude_hook_bridge_render::py_strip;
 use crate::hook_env_stamp::{dumps, set_member};
 use crate::pyjson::PyVal;
 
-/// The harnesses the native bridge answers for. Grok keeps extra Python
-/// steps (approval waits, prompt preparation), so it stays in Python.
+/// The harnesses whose Python bridge the native bridge answers for. Grok
+/// runs its own generated client, which `bounded_hook_bridge_grok` answers.
 pub(crate) const NATIVE_HARNESSES: [&str; 8] = [
     "copilot", "kimi", "devin", "zcode", "openclaw", "hermes", "cline", "opencode",
 ];

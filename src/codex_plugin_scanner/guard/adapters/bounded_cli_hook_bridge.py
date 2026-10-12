@@ -183,15 +183,23 @@ def bounded_cli_hook_command(
             raise RuntimeError("trusted Desktop hook proxy is unavailable")
     elif require_desktop_proxy:
         raise RuntimeError("trusted Desktop hook proxy requires a frozen launcher")
-    if frozen_launcher or harness.strip().lower() == "grok":
+    grok = harness.strip().lower() == "grok"
+    if frozen_launcher or grok:
         isolated_command = _isolated_bounded_hook_command(
             guard_home=guard_home,
             harness=harness,
             timeout_seconds=timeout_seconds,
             prepared_files=prepared_files,
         )
+        if isolated_command is not None and not grok:
+            return isolated_command
         if isolated_command is not None:
-            return (*isolated_command, config_json) if harness.strip().lower() == "grok" else isolated_command
+            # The native runtime answers the generated Grok client itself and
+            # runs that same client for anything it does not answer.
+            native_executable = None if frozen_launcher else native_bridge_executable("grok")
+            if native_executable is not None:
+                return (str(native_executable), NATIVE_BOUNDED_HOOK_COMMAND, *isolated_command, config_json)
+            return (*isolated_command, config_json)
         if frozen_launcher:
             return (
                 python_executable,
@@ -199,7 +207,7 @@ def bounded_cli_hook_command(
                 config_json,
             )
     python_argv = (python_executable, "-I", "-c", bootstrap, config_json)
-    native_executable = native_bridge_executable(harness)
+    native_executable = None if grok else native_bridge_executable(harness)
     if native_executable is not None:
         return (str(native_executable), NATIVE_BOUNDED_HOOK_COMMAND, *python_argv)
     return python_argv

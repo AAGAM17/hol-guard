@@ -152,3 +152,43 @@ fn omp_document_searches_refuse_hidden_descendants_and_benign_symlinks() {
         json!({"path":artifacts,"pattern":"Inert"})
     )));
 }
+
+fn bash_allowed(fixture: &Fixture, command: String) -> bool {
+    allowed(&omp(fixture, "bash", json!({ "command": command })))
+}
+
+#[test]
+fn omp_agent_root_listings_allow_names_only_and_keep_descendant_floors() {
+    let f = fixture();
+    write(f.home.join(".agent/artifacts/report.md"), "Inert report\n");
+    let agent = f.home.join(".agent");
+    let agent = agent.display();
+    assert!(bash_allowed(&f, format!("ls {agent}")));
+    assert!(bash_allowed(&f, format!("ls -R {agent}")));
+    assert!(!bash_allowed(&f, format!("grep -r Inert {agent}")));
+    assert!(!bash_allowed(
+        &f,
+        format!("ls -R {}", f.home.join(".ssh").display())
+    ));
+    for path in [".agent/artifacts/.hidden/report.md", ".agent/auth.json"] {
+        let target = f.home.join(path);
+        write(target.clone(), "synthetic sensitive fixture\n");
+        assert!(!bash_allowed(&f, format!("ls -R {agent}")), "{path}");
+        std::fs::remove_file(&target).unwrap();
+    }
+    let link = f.home.join(".agent/artifacts/linked.md");
+    std::os::unix::fs::symlink(f.home.join(".ssh/id_rsa"), &link).unwrap();
+    assert!(!bash_allowed(&f, format!("ls -R {agent}")));
+}
+
+#[test]
+fn omp_agent_root_listing_refuses_a_linked_agent_root() {
+    let f = fixture();
+    let elsewhere = f.root.join("elsewhere");
+    std::fs::rename(f.home.join(".agent"), &elsewhere).unwrap();
+    std::os::unix::fs::symlink(&elsewhere, f.home.join(".agent")).unwrap();
+    let agent = f.home.join(".agent");
+    // A plain `ls` of a linked directory is an older names-only listing; the
+    // agent-root allowance only widens the recursive form, which still asks.
+    assert!(!bash_allowed(&f, format!("ls -R {}", agent.display())));
+}

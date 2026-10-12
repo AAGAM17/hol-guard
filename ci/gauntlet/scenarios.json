@@ -587,7 +587,7 @@
       "commands": [
         "cat {{home}}/.agent/skills/x/SKILL.md",
         "ls {{home}}/.agent/artifacts",
-        "grep -rln retry {{home}}/other-project",
+        "grep -rln --exclude-dir=.git retry {{home}}/other-project",
         "find {{home}}/other-project -name '*.md'",
         "wc -l {{home}}/other-project/notes.md",
         "cd src && ls",

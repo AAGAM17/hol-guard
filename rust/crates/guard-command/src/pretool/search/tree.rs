@@ -40,6 +40,7 @@ pub(in crate::pretool) const SECRET_EXTENSIONS: &[&str] = &[
 /// Names-only recursive listing (`ls -R`).
 pub(in crate::pretool) fn safe_recursive_target(value: &str, context: ReadContext<'_>) -> bool {
     safe_walk_target(value, context, &[], &[])
+        || super::agent_root::agent_root_listing(value, context, true)
 }
 
 /// Recursive content search (`grep -r`, `rg`). Oh My Pi agent-state trees are
@@ -284,7 +285,7 @@ pub(super) fn descendant_allowed(path: &Path, root: &Path, is_file: bool) -> boo
         && !guard_secure_fs::credential_named_path(relative)
 }
 
-fn walk(root: PathBuf, excluded_files: &[&str], excluded_directories: &[&str]) -> bool {
+pub(super) fn walk(root: PathBuf, excluded_files: &[&str], excluded_directories: &[&str]) -> bool {
     let mut pending = vec![(root.clone(), 0_usize)];
     let mut inspected = 0_usize;
     // Inspect metadata only. Never follow links or read a secret to classify it.

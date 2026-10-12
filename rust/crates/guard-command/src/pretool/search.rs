@@ -1,6 +1,7 @@
 use super::sensitive_read_path_argument as sensitive_path_argument;
 use glob_class::glob_class_matches;
 use std::collections::{HashSet, VecDeque};
+mod agent_root;
 mod fd;
 mod glob_class;
 mod grep;
@@ -8,6 +9,7 @@ mod hint;
 mod options;
 mod sibling;
 mod tree;
+pub(super) use agent_root::agent_root_listing;
 use options::unsafe_search_value;
 pub(super) use tree::{
     safe_glob_operand, safe_literal_bracket_tree, safe_recursive_search_target,

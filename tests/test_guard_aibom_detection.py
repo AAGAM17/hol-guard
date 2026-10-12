@@ -16,7 +16,6 @@ from codex_plugin_scanner.guard.aibom_detection import (
     NativeAibomError,
     discover_codex_skill_artifacts,
     discover_shared_workspace_aibom_artifacts,
-    enrich_mcp_server_metadata,
     extend_codex_runtime_inventory,
     extend_detection_with_workspace_aibom,
     instruction_role_for_path,
@@ -585,7 +584,7 @@ def test_workspace_skills_excluded_for_hermes_inventory_snapshot(tmp_path: Path)
 
 
 def _unavailable_native(monkeypatch: pytest.MonkeyPatch) -> None:
-    def refuse(kind: str, args: object, guard_home: object = None) -> dict[str, object]:
+    def refuse(kind: str, args: object, guard_home: object = None, **_kwargs: object) -> dict[str, object]:
         raise NativeRunnerAuthorityError("native_runner_authority_unavailable")
 
     monkeypatch.setattr(aibom_detection, "native_runner_authority", refuse)
@@ -597,8 +596,10 @@ def _recording_native(
 ) -> list[tuple[str, dict[str, object]]]:
     calls: list[tuple[str, dict[str, object]]] = []
 
-    def answer_with(kind: str, args: dict[str, object], guard_home: object = None) -> dict[str, object]:
-        calls.append((kind, args))
+    def answer_with(
+        kind: str, args: dict[str, object], guard_home: object = None, **kwargs: object
+    ) -> dict[str, object]:
+        calls.append((kind, {**args, **kwargs}))
         return answer
 
     monkeypatch.setattr(aibom_detection, "native_runner_authority", answer_with)
@@ -632,27 +633,6 @@ def test_discovery_fails_closed_when_native_is_unavailable(tmp_path: Path, monke
         extend_detection_with_workspace_aibom(_detection(), home_dir=tmp_path, workspace_dir=tmp_path)
     with pytest.raises(NativeAibomError):
         extend_codex_runtime_inventory(_detection(harness="codex"), home_dir=tmp_path, workspace_dir=tmp_path)
-
-
-def test_mcp_metadata_degrades_to_unbound_sentinels_without_native(monkeypatch: pytest.MonkeyPatch) -> None:
-    _unavailable_native(monkeypatch)
-    explicit = "sha256:" + "a" * 64
-
-    enriched = enrich_mcp_server_metadata(
-        {"name": "svc", "env": {"TOKEN": "secret"}, "header_values_hash": f"  {explicit} "},
-        command="npx",
-        args=("-y", "svc"),
-        url=None,
-        transport="stdio",
-    )
-
-    assert enriched["env_keys"] == ["TOKEN"]
-    assert enriched["env_values_hash"] == "guard-context-unbound:configured-environment"
-    assert enriched["header_values_hash"] == explicit
-    assert str(enriched["content_hash"]).startswith("guard-context-unbound:")
-    assert "secret" not in json.dumps(enriched["versionInfo"])
-    assert enriched["versionInfo"]["versionLabel"] == "svc"
-    assert enriched["versionInfo"]["contentHash"] == enriched["content_hash"]
 
 
 def test_merge_applies_native_plan_to_callers_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

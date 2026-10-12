@@ -124,6 +124,8 @@ mod native_command_extension_evidence_tests;
 pub mod native_command_program;
 pub mod npm_source_spec;
 pub mod ordered_json;
+#[cfg(unix)]
+pub mod package_context_build;
 pub mod package_execution_context;
 pub mod package_intent_common;
 pub mod package_intent_parser;

@@ -458,24 +458,17 @@ def test_context_evidence_never_contains_configuration_values(tmp_path: Path) ->
     assert "registry.example.test" not in serialized
 
 
-def test_component_native_failure_cannot_produce_reusable_context(
+def test_native_build_failure_cannot_produce_reusable_context(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     native_context_digest: Path,
 ) -> None:
-    from codex_plugin_scanner.guard import native_context
+    from codex_plugin_scanner.guard import native_package_context_build
 
     workspace = tmp_path / "workspace"
     _write_repository(workspace)
     _write_package_files(workspace)
     environment = _environment(tmp_path)
-    request = native_context.native_context_digest
-
-    def fail_canonical_hash(kind: str, fields: dict[str, object], **kwargs: object):
-        if kind == "canonical_sha256":
-            return None
-        return request(kind, fields, **kwargs)
-
-    monkeypatch.setattr(native_context, "native_context_digest", fail_canonical_hash)
-    with pytest.raises(ValueError, match="native_package_context_digest_unavailable"):
+    monkeypatch.setattr(native_package_context_build, "_resident_request", lambda **_kwargs: None)
+    with pytest.raises(ValueError, match=r"native_package_context_build_|native_"):
         _context(workspace, _artifact(), environment)

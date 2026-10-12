@@ -962,28 +962,6 @@ def context_opaque_digest(
     return hashlib.sha256(material.encode("utf-8")).hexdigest()  # codeql[py/weak-sensitive-data-hashing]
 
 
-def context_package_environment_values(
-    manager: str,
-    environment: Mapping[str, str],
-    referenced_names: Sequence[str],
-    *,
-    guard_home: Path | None = None,
-) -> dict[str, str | None] | None:
-    """Transport native package environment selection without a local fallback."""
-
-    result = native_context_digest(
-        "package_environment_policy",
-        {
-            "manager": manager,
-            "environment": dict(environment),
-            "referenced_names": list(referenced_names),
-        },
-        guard_home=_resolve_digest_home(guard_home),
-    )
-    values = result.get("environment_values") if isinstance(result, dict) else None
-    return values if isinstance(values, dict) else None
-
-
 def context_mcp_launch_environment(
     inherited: Mapping[str, str],
     configured: Mapping[str, str],
@@ -1357,7 +1335,6 @@ __all__ = [
     "context_mcp_tool_approval_hash",
     "context_mcp_tool_catalog_fingerprint",
     "context_opaque_digest",
-    "context_package_environment_values",
     "context_package_evidence",
     "context_runtime_executable_identity",
     "context_runtime_launch_identity",

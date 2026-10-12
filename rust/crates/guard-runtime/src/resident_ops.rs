@@ -413,6 +413,9 @@ pub(crate) fn evaluate_resident_bytes(
             ResidentOperationV1::ShimAdmin(request) => {
                 crate::shim_op::evaluate_shim_admin(&request)
             }
+            ResidentOperationV1::PackageContextBuild(request) => {
+                crate::package_context_build_op::evaluate_package_context_build(&request)
+            }
             ResidentOperationV1::McpStdioProbe(request) => {
                 crate::mcp_probe_op::evaluate_mcp_stdio_probe(&request)
             }
@@ -512,6 +515,7 @@ fn operation_guard_home(operation: &ResidentOperationV1) -> Option<&str> {
         ResidentOperationV1::ContainedWorkspaceWriteExecute(request) => Some(&request.guard_home),
         ResidentOperationV1::ContainedExecute(request) => Some(&request.guard_home),
         ResidentOperationV1::ShimAdmin(request) => Some(&request.guard_home),
+        ResidentOperationV1::PackageContextBuild(request) => Some(&request.guard_home),
         ResidentOperationV1::McpStdioProbe(request) => Some(&request.guard_home),
         ResidentOperationV1::PromptAnalyze(request) => Some(&request.guard_home),
         ResidentOperationV1::McpRuntimeEvidence(request) => Some(&request.guard_home),

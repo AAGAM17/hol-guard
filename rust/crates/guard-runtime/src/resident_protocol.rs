@@ -21,7 +21,7 @@ use guard_contracts::{
     McpStdioSessionRecvRequestV1, McpStdioSessionSendRequestV1, McpToolCallIdentityRequestV1,
     McpToolEvidenceRequestV1, McpToolPolicyDecideRequestV1, NativeExactActionRequestV1,
     NativeHookRequestV1, PackageAdvisoryIdsRequestV1, PackageApprovalHashRequestV1,
-    PackageAuditProjectionRequestV1, PackageAuthorityDecideRequestV1,
+    PackageAuditProjectionRequestV1, PackageAuthorityDecideRequestV1, PackageContextBuildRequestV1,
     PackageEvaluationComposeRequestV1, PackageIntentParseRequestV1, PackagePolicyResolveRequestV1,
     PackagePostureRequestV1, PolicyBundleAuthorityRequestV1, PolicyDecisionLookupRequestV1,
     PromptAnalyzeRequestV1, ProtectRequestRequestV1, RequestContextRequestV1,
@@ -173,6 +173,7 @@ pub(crate) enum ResidentOperationV1 {
     #[allow(dead_code)]
     ContainedExecute(ContainedExecuteRequestV1),
     ShimAdmin(ShimAdminRequestV2),
+    PackageContextBuild(PackageContextBuildRequestV1),
     McpStdioProbe(McpStdioProbeRequestV1),
     McpStdioCancel(McpStdioCancelRequest),
     McpStdioSessionOpen(McpStdioSessionOpenRequestV1),

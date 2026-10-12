@@ -416,7 +416,7 @@ pub(crate) fn client_timeout(payload: &[u8]) -> Duration {
         .as_ref()
         .and_then(|value| value.get("operation")?.as_str())
     {
-        Some("skill_directory_identity") => SKILL_SCAN_TIMEOUT_CEILING_MS,
+        Some("skill_directory_identity" | "package_context_build") => SKILL_SCAN_TIMEOUT_CEILING_MS,
         Some(
             "contained_node_execute"
             | "contained_typescript_execute"

@@ -162,6 +162,8 @@ mod contained_execution;
 pub use contained_execution::*;
 mod shim_admin;
 pub use shim_admin::*;
+mod package_context_build;
+pub use package_context_build::*;
 mod data_flow_analyze;
 pub use data_flow_analyze::*;
 mod prompt_requests;

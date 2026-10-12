@@ -288,7 +288,10 @@ def test_package_local_saved_allow_without_exact_hash_is_rejected(tmp_path: Path
     assert store.claimed is False
 
 
-def test_package_equal_legacy_hash_cannot_prove_complete_approval_context(tmp_path: Path) -> None:
+def test_package_equal_legacy_hash_cannot_prove_complete_approval_context(
+    tmp_path: Path,
+    native_context_digest: Path,
+) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     artifact = _package_artifact(workspace)
@@ -460,7 +463,7 @@ def test_tool_call_hash_cannot_mint_approval_when_native_digest_is_unavailable(
     config = GuardConfig(workspace=tmp_path, guard_home=tmp_path / "guard-home") if configured else None
     monkeypatch.setattr(native_context, "native_context_digest", lambda *_args, **_kwargs: None)
 
-    with pytest.raises(ValueError, match="^native_mcp_tool_approval_hash_unavailable$"):
+    with pytest.raises(ValueError, match=r"^native_mcp_tool_approval_hash_unavailable$"):
         build_tool_call_hash(artifact, {"path": "data.txt"}, config=config)
 
 

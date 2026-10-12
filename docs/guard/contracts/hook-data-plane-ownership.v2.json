@@ -401,6 +401,7 @@
     "src/codex_plugin_scanner/guard/native_approval_v4_portal.py",
     "src/codex_plugin_scanner/guard/native_approval_v4_protocol.py",
     "src/codex_plugin_scanner/guard/native_context.py",
+    "src/codex_plugin_scanner/guard/native_hook_approval_context.py",
     "src/codex_plugin_scanner/guard/native_local_cli_identity.py",
     "src/codex_plugin_scanner/guard/native_local_cli_grant.py",
     "src/codex_plugin_scanner/guard/native_guard_store.py",

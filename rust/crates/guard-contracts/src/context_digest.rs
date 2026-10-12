@@ -388,6 +388,17 @@ pub enum ContextDigestKindV1 {
         /// Catalog schema/version token baked into the fingerprint.
         version: String,
     },
+    /// Compose a runtime hook's saved-approval context (paths, shell
+    /// execution context, configured environment, launch identity, nonces)
+    /// and return its token. `inputs` is the transport projection of one
+    /// evaluation; the worker owns every derived component.
+    RuntimeHookApprovalContext {
+        inputs: Value,
+    },
+    /// The generic fallback hook's saved-approval context and token.
+    GenericHookApprovalContext {
+        inputs: Value,
+    },
 }
 
 // `deny_unknown_fields` cannot combine with `flatten` (serde rejects the

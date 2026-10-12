@@ -784,6 +784,12 @@ fn evaluate_request(
             result.digest = digest;
             result.tool_catalog = canonical;
         }
+        ContextDigestKindV1::RuntimeHookApprovalContext { inputs } => {
+            result.token = Some(crate::hook_approval_context::runtime_hook_token(inputs)?);
+        }
+        ContextDigestKindV1::GenericHookApprovalContext { inputs } => {
+            result.token = Some(crate::hook_approval_context::generic_hook_token(inputs)?);
+        }
     }
     Ok(())
 }

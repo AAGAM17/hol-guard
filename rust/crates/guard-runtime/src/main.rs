@@ -384,6 +384,7 @@ mod secrets_cli;
 #[allow(dead_code, clippy::pedantic)]
 #[path = "../../guard-command/tests/sfrs_support/mod.rs"]
 mod sfrs_support;
+mod shell_helpers_op;
 mod shim_op;
 #[cfg(unix)]
 mod skill_directory_identity_op;

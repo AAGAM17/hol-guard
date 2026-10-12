@@ -182,6 +182,7 @@ def run_authorized_contained_test(
     vitest = bool(command) and (
         Path(command[0]).name in {"bunx", "npx", "vitest"}
         or restricted_vitest.bun_vitest_invocation(command) is not None
+        or restricted_vitest.tsx_test_invocation(command) is not None
         or (
             len(command) > 1
             and Path(command[0]).name in {"node", "nodejs"}

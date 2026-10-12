@@ -22,18 +22,35 @@ from .restricted_pytest_sandbox import _backend_argv, _restricted_environment, _
 from .restricted_pytest_validation import _normalized_command
 
 _TEST_SCRIPT_NAME = re.compile(r"(?:test_[A-Za-z0-9_-]*|[A-Za-z0-9_-]*_test|test|tests|runtests|run_tests)\.py")
+_NODE_TEST_SCRIPT_NAME = re.compile(
+    r"(?:[A-Za-z0-9_.-]*(?:\.test|\.spec|_test)|test_[A-Za-z0-9_.-]*|tests?)\.(?:js|mjs|cjs|jsx|ts|mts|cts|tsx)"
+)
+# Type stripping and warning filters change how Node loads and reports a
+# script, not what the script can reach.
+_NODE_SCRIPT_FLAGS = re.compile(
+    r"--experimental-strip-types|--experimental-transform-types|--no-warnings|--disable-warning=[A-Za-z0-9_]{1,64}"
+)
 
 
-def _test_script(script: str) -> bool:
+def _test_script(script: str, *, node: bool = False) -> bool:
     """A lexical workspace-relative, test-named script; the plan resolves it."""
     parts = script.rstrip("/").split("/")
+    name = _NODE_TEST_SCRIPT_NAME if node else _TEST_SCRIPT_NAME
     return (
         bool(script)
         and not script.startswith(("-", "/", "~", "$"))
         and not any(character in script for character in "\\$`")
         and all(part and part != ".." for part in parts)
-        and _TEST_SCRIPT_NAME.fullmatch(script.rsplit("/", 1)[-1]) is not None
+        and name.fullmatch(script.rsplit("/", 1)[-1]) is not None
     )
+
+
+def _node_script_index(command: Sequence[str], start: int) -> int | None:
+    """The index of a test-named script after neutral Node flags, if any."""
+    index = start
+    while index < len(command) and _NODE_SCRIPT_FLAGS.fullmatch(command[index]) is not None:
+        index += 1
+    return index if index < len(command) and _test_script(command[index], node=True) else None
 
 
 def _python_runtime_args(command: Sequence[str]) -> tuple[str, ...] | None:
@@ -62,7 +79,8 @@ def is_inline_eval(command: Sequence[str]) -> bool:
         return False
     runtime_args = _node_runtime_args(command)
     eval_index = 1 + len(runtime_args)
-    return len(command) == eval_index + 2 and command[eval_index] in {"-e", "--eval"}
+    inline = len(command) == eval_index + 2 and command[eval_index] in {"-e", "--eval"}
+    return inline or _node_script_index(command, eval_index) is not None
 
 
 def prepare_restricted_inline_eval(
@@ -74,11 +92,16 @@ def prepare_restricted_inline_eval(
     node = Path(argv[0]).name in {"node", "nodejs"}
     runtime_args = _node_runtime_args(argv) if node else _python_runtime_args(argv) or ()
     eval_index = 1 + len(runtime_args)
-    if not node and argv[eval_index] != "-c":
+    script_index = None
+    if node and argv[eval_index] not in {"-e", "--eval"}:
+        script_index = _node_script_index(argv, eval_index)
+    elif not node and argv[eval_index] != "-c":
+        script_index = eval_index
+    if script_index is not None:
         # A test script runs from the workspace, never from a link out of it.
         outside = RestrictedPytestError("inline_eval_invalid_command", "Test script is not in the workspace.")
         try:
-            script = ((cwd or workspace) / argv[eval_index]).resolve(strict=True)
+            script = ((cwd or workspace) / argv[script_index]).resolve(strict=True)
         except OSError as error:
             raise outside from error
         if not script.is_relative_to(workspace.resolve()) or not script.is_file():

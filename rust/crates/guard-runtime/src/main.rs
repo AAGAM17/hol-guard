@@ -100,6 +100,7 @@ mod context_digest_package_scripts;
 mod contributed_mcp_decision_op;
 mod critical_floor_op;
 mod cursor_observer_proof_op;
+mod custom_extension_continuity;
 mod custom_extension_suggestion;
 mod daemon_handler_digits;
 mod daemon_handler_fields;

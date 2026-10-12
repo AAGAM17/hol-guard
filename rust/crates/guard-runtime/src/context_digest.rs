@@ -648,6 +648,10 @@ fn evaluate_request(
                 request,
             )?);
         }
+        ContextDigestKindV1::CustomExtensionContinuity { request } => {
+            result.custom_extension_continuity =
+                Some(super::custom_extension_continuity::evaluate(request)?);
+        }
         ContextDigestKindV1::ManagedControlsPolicyFields { request } => {
             result.managed_controls_policy_fields =
                 Some(super::managed_controls_policy_fields::evaluate(request)?);
@@ -857,6 +861,7 @@ fn evaluate_context_digest_request_inner(
         runtime_resolved_argv: None,
         tool_catalog: None,
         local_cli_identity: None,
+        custom_extension_continuity: None,
         managed_controls_policy_fields: None,
         package_json_scripts: None,
         custom_extension_suggestion: None,

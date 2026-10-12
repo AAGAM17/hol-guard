@@ -48,6 +48,7 @@ use crate::guard_store_receipt_writes as receipt_writes;
 use crate::guard_store_sessions as sessions;
 use crate::guard_store_state_ops as state_ops;
 use crate::guard_store_storage_maintenance as storage_maintenance;
+use crate::guard_store_tool_call_evidence as tool_call_evidence;
 use crate::guard_store_wfcap_wire as wfcap;
 
 const MAX_BUSY_TIMEOUT_MS: u64 = 600_000;
@@ -317,6 +318,7 @@ fn method_kind(method: &str) -> Option<Kind> {
         | "upsert_provenance_cache"
         | "next_aibom_trust_attestation_sequence"
         | "add_receipt"
+        | "record_tool_call_evidence"
         | "set_receipt_action_envelope"
         | "update_receipt_policy_decision"
         | "update_receipt_approval_context"
@@ -458,6 +460,9 @@ fn dispatch(
             inventory::next_attestation_sequence(connection, args)
         }
         "add_receipt" => receipt_writes::add_receipt(connection, args),
+        "record_tool_call_evidence" => {
+            tool_call_evidence::record_tool_call_evidence(connection, args)
+        }
         "set_receipt_action_envelope" => receipt_writes::set_action_envelope(connection, args),
         "update_receipt_policy_decision" => {
             receipt_writes::update_policy_decision(connection, args)

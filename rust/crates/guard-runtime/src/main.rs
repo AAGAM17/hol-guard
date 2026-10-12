@@ -215,6 +215,9 @@ mod guard_store_state_ops_vectors_tests;
 mod guard_store_storage_maintenance;
 #[cfg(test)]
 mod guard_store_storage_maintenance_vectors_tests;
+mod guard_store_tool_call_evidence;
+#[cfg(test)]
+mod guard_store_tool_call_evidence_tests;
 #[cfg(test)]
 mod guard_store_vectors_tests;
 mod guard_store_wfcap_authority;

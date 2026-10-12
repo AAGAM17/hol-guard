@@ -2865,7 +2865,7 @@
       ],
       "tool": "shell",
       "tool_input": {
-        "command": "command git status"
+        "command": "command rm -rf ~/shared-cache"
       },
       "cwd": "worktree",
       "expect": "not_allow"

@@ -517,11 +517,14 @@ fn parse_posix_command(request: &CommandModelRequestV1) -> Result<CanonicalComma
             environment_names.push(name.to_owned());
             executable_index += 1;
         }
-        let (executable_index, wrapper_chain) =
-            match parser_wrappers::unwrap_sudo(&tokens, executable_index) {
-                Ok(value) => value,
-                Err(reason) => return Ok(uncertain(request, raw, reason)),
-            };
+        let (executable_index, wrapper_chain) = match parser_wrappers::unwrap_wrappers(
+            &tokens,
+            executable_index,
+            &mut environment_names,
+        ) {
+            Ok(value) => value,
+            Err(reason) => return Ok(uncertain(request, raw, reason)),
+        };
         let mut tokens = tokens;
         let mut executable = tokens.get(executable_index).cloned();
         let mut arguments = if executable.is_some() {

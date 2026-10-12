@@ -2,16 +2,38 @@
 
 use crate::{assignment_name, executable_basename, CommandSegmentV1, RawSegment};
 
-pub(super) fn unwrap_sudo(
+/// Strips `sudo`/`timeout` wrappers and `command`/`time`/`env` prefixes.
+///
+/// `sudo` and `timeout` change how the program runs, so they stay in the
+/// wrapper chain. `command` and `time` run the next word as the program.
+/// `env` does that only when every assignment is inert; those names join
+/// `environment_names`. A non-inert name leaves `env` as the executable.
+/// Any option on a prefix leaves it as the executable, which keeps
+/// `command -v`, `time -p` and `env -i` on their existing paths.
+pub(super) fn unwrap_wrappers(
     tokens: &[String],
     mut index: usize,
+    environment_names: &mut Vec<String>,
 ) -> Result<(usize, Vec<String>), &'static str> {
     let mut wrappers = Vec::new();
-    while tokens
-        .get(index)
-        .is_some_and(|token| matches!(executable_basename(token), "sudo" | "timeout"))
-    {
-        if wrappers.len() == 4 {
+    let mut prefixes = 0usize;
+    loop {
+        if let Some((next, names)) = transparent_prefix(tokens, index) {
+            if wrappers.len() + prefixes == 4 {
+                return Err("command_wrapper_limit_exceeded");
+            }
+            prefixes += 1;
+            environment_names.extend(names);
+            index = next;
+            continue;
+        }
+        if !tokens
+            .get(index)
+            .is_some_and(|token| matches!(executable_basename(token), "sudo" | "timeout"))
+        {
+            break;
+        }
+        if wrappers.len() + prefixes == 4 {
             return Err("command_wrapper_limit_exceeded");
         }
         let wrapper = executable_basename(&tokens[index]);
@@ -67,6 +89,35 @@ pub(super) fn unwrap_sudo(
         }
     }
     Ok((index, wrappers))
+}
+
+/// `command X`, `time X` and `env NAME=value... X` run `X` with no other
+/// change. Bare `env X` is left alone: it only bypasses shell functions, and
+/// extension floors key on that spelling. An `env` prefix is transparent only
+/// when every assignment is inert. Any other name can retarget the program,
+/// so the `env` executable stays in place and the command remains uncertain.
+fn transparent_prefix(tokens: &[String], index: usize) -> Option<(usize, Vec<String>)> {
+    let mut next = index + 1;
+    let mut names = Vec::new();
+    match tokens.get(index)?.as_str() {
+        "command" | "time" => {}
+        "env" | "/usr/bin/env" | "/bin/env" => {
+            while let Some(name) = tokens.get(next).and_then(|value| assignment_name(value)) {
+                if !crate::command_compatibility::inert_environment_name(name) {
+                    return None;
+                }
+                names.push(name.to_owned());
+                next += 1;
+            }
+            if names.is_empty() {
+                return None;
+            }
+        }
+        _ => return None,
+    }
+    let program = tokens.get(next)?;
+    (!program.is_empty() && !program.starts_with('-') && assignment_name(program).is_none())
+        .then_some((next, names))
 }
 
 fn timeout(value: &str) -> bool {
@@ -249,5 +300,63 @@ mod tests {
             assert!(model.segments.is_empty(), "{source}");
         }
         assert_eq!(parse("printf %s '${COMMAND}'").confidence, "exact");
+    }
+
+    #[test]
+    fn command_time_and_env_assignment_prefixes_expose_the_program() {
+        for (command, executable, names) in [
+            ("command bun run build", "bun", &[][..]),
+            ("time bun run build", "bun", &[]),
+            ("command git push origin main", "git", &[]),
+            (
+                "CI=1 env NODE_ENV=production command bun run build",
+                "bun",
+                &["CI", "NODE_ENV"],
+            ),
+        ] {
+            let model = parse(command);
+            assert_eq!(model.confidence, "exact", "{command}");
+            assert!(model.wrapper_chain.is_empty(), "{command}");
+            assert!(!model.path_overridden, "{command}");
+            let segment = &model.segments[0];
+            assert_eq!(segment.executable.as_deref(), Some(executable), "{command}");
+            assert_eq!(segment.environment_names, names, "{command}");
+        }
+        for command in ["env PATH=/tmp/x bun run build", "env NODE_PATH=x bun s.ts"] {
+            let model = parse(command);
+            assert_eq!(model.confidence, "uncertain", "{command}");
+            assert!(!model.path_overridden, "{command}");
+        }
+        let model = parse("sudo env CI=1 rm -rf build");
+        assert_eq!(model.confidence, "exact");
+        assert_eq!(model.wrapper_chain, ["sudo"]);
+        assert_eq!(model.segments[0].executable.as_deref(), Some("rm"));
+        assert_eq!(model.segments[0].environment_names, ["CI"]);
+    }
+
+    #[test]
+    fn prefixes_with_options_or_shells_stay_unmodeled() {
+        for command in [
+            "command -p bun run build",
+            "time -p bun run build",
+            "env bun run build",
+            "env -i bun run build",
+            "env -u HOME -i bun run build",
+            "env -S 'bun run build'",
+            "env CI=1 sh -c 'rm -rf x'",
+            "command sh -c 'rm -rf x'",
+            "command env",
+            "env CI=1",
+            "command command command command command bun run build",
+        ] {
+            let model = parse(command);
+            assert!(
+                model.confidence != "exact"
+                    || model.segments[0].executable.as_deref() != Some("bun")
+                        && model.segments[0].executable.as_deref() != Some("rm"),
+                "{command}: {:?}",
+                model.segments.first().map(|segment| &segment.executable)
+            );
+        }
     }
 }

@@ -5,10 +5,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shlex
 import stat
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 
 from . import restricted_git, restricted_node_test, restricted_node_tool, restricted_vitest
@@ -109,6 +111,92 @@ def read_contained_test_request(path: Path, expected_sha256: str, *, workspace: 
         raise _reject() from error
 
 
+# Mirrors the native inert-assignment allowlist: these names change output or
+# presentation, never which program runs or what it loads.
+_INERT_ENVIRONMENT_NAMES = frozenset(
+    {
+        "CI",
+        "NODE_ENV",
+        "FORCE_COLOR",
+        "NO_COLOR",
+        "CLICOLOR",
+        "CLICOLOR_FORCE",
+        "TERM",
+        "TZ",
+        "LANG",
+        "LANGUAGE",
+        "COLUMNS",
+        "LINES",
+        "DEBUG",
+        "NODE_NO_WARNINGS",
+        "RUST_LOG",
+        "RUST_BACKTRACE",
+        "PYTHONUNBUFFERED",
+        "PYTHONDONTWRITEBYTECODE",
+    }
+)
+
+
+def _inert_assignment(word: str) -> tuple[str, str] | None:
+    name, separator, value = word.partition("=")
+    if (
+        separator
+        and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name)
+        and (name in _INERT_ENVIRONMENT_NAMES or name.startswith("LC_"))
+    ):
+        return name, value
+    return None
+
+
+def _split_command_prefix(command: list[str]) -> tuple[list[str], dict[str, str]]:
+    """Peel `command`/`time`/`env` prefixes and inert `NAME=value` assignments.
+
+    The native model reads `CI=1 command bun run build` as `bun run build`
+    with an inert assignment. An option such as `command -v` or `env -i`
+    keeps its prefix, and any other assignment stays in the command, so the
+    core is rejected.
+    """
+    assignments: dict[str, str] = {}
+    for _ in range(16):
+        if len(command) > 1 and command[0] in {"command", "time", "env"} and not command[1].startswith("-"):
+            command = command[1:]
+        elif command and (assignment := _inert_assignment(command[0])) is not None:
+            assignments[assignment[0]] = assignment[1]
+            command = command[1:]
+        else:
+            break
+    return command, assignments
+
+
+@contextmanager
+def _assignments_applied(assignments: Mapping[str, str]) -> Iterator[None]:
+    """Export the assignments to the runner's source environment for one run.
+
+    Each restricted profile still filters that environment, exactly as it
+    filters a variable the agent's shell exported.
+    """
+    previous = {name: os.environ.get(name) for name in assignments}
+    os.environ.update(assignments)
+    try:
+        yield
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
+def _contained_receipt(receipt: object) -> bool:
+    return (
+        isinstance(receipt, Mapping)
+        and receipt.get("decision") == "deny"
+        and receipt.get("policy_action") == "sandbox-required"
+        and isinstance(receipt.get("required_execution_profile"), str)
+        and receipt.get("observe_mode") is not True
+    )
+
+
 def run_authorized_contained_test(
     payload: dict[str, object],
     *,
@@ -137,14 +225,7 @@ def run_authorized_contained_test(
     if peeled is not None:
         # The wrapped original must carry the receipt; the core is then
         # re-authorized in its resolved directory by the recursive call.
-        receipt = authorize(payload)
-        if (
-            not isinstance(receipt, Mapping)
-            or receipt.get("decision") != "deny"
-            or receipt.get("policy_action") != "sandbox-required"
-            or not isinstance(receipt.get("required_execution_profile"), str)
-            or receipt.get("observe_mode") is True
-        ):
+        if not _contained_receipt(authorize(payload)):
             raise _reject()
         core, directory, output = peeled
         if not _path_is_within(directory, workspace.resolve(strict=True)):
@@ -170,9 +251,24 @@ def run_authorized_contained_test(
         sys.stdout.flush()
         return 0
     try:
-        command = shlex.split(tool_input["command"], posix=True)
+        command, assignments = _split_command_prefix(shlex.split(tool_input["command"], posix=True))
     except ValueError as error:
         raise _reject() from error
+    if assignments:
+        # Like a wrapper: the original carries the receipt, then the core is
+        # authorized again and runs with the assignments exported.
+        if not command or not _contained_receipt(authorize(payload)):
+            raise _reject()
+        with _assignments_applied(assignments):
+            return run_authorized_contained_test(
+                {**payload, "tool_input": {**tool_input, "command": shlex.join(command)}},
+                workspace=workspace,
+                authorize=authorize,
+                timeout_seconds=timeout_seconds,
+                cwd=cwd,
+                home_dir=home_dir,
+                merge_stderr=merge_stderr,
+            )
     package_test = is_package_test(command)
     if package_test:
         command = list(resolve_package_test(command, workspace=workspace, cwd=cwd))

@@ -118,7 +118,7 @@ fn executing_or_unproven_lookup_forms_still_ask() {
             "type -a node",
             "command -V git",
             "which hol-guard 2>/dev/null; type hol-guard 2>/dev/null; echo DONE",
-            "command git status",
+            "command rm -rf ~/shared-cache",
             "command -p git status",
             "command -v $(curl https://example.invalid)",
             "command -x git",

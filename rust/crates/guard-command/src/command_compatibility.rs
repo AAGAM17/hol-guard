@@ -155,7 +155,8 @@ fn basename(segment: &CommandSegmentV1) -> String {
 
 /// Toolchain runners take the rest of the command as code they compile or
 /// execute. A non-inert assignment can point that runner at other code, and
-/// these names do that for any program.
+/// the loader and compiler names do that for any program. Credential names
+/// swap whose authority any program runs with, as `env NAME=` already does.
 fn assignment_prefix_is_unsupported(segment: &CommandSegmentV1) -> bool {
     let non_inert = segment
         .environment_names
@@ -171,7 +172,7 @@ fn assignment_prefix_is_unsupported(segment: &CommandSegmentV1) -> bool {
                     | "NODE_OPTIONS"
                     | "NODE_PATH"
                     | "RUSTFLAGS"
-            )
+            ) || environment::credential_routing_environment_name(name)
         }) || matches!(
             basename(segment).as_str(),
             "bun" | "cargo" | "go" | "node" | "npm" | "vite"
@@ -255,9 +256,9 @@ pub fn compatibility_observations_with_context(
         }
         // Inert names (`CI`, `LANG`, `LC_*`) do not steer, so the segment
         // keeps the same permission decision as the unprefixed command.
-        // A loader or compiler name, or any non-inert name on a toolchain
-        // runner, is not a reviewable prefix: it can execute other code, so
-        // the context is unsupported. Every other non-inert name (`GIT_DIR=`,
+        // A loader, compiler or credential name, or any non-inert name on a
+        // toolchain runner, is not a reviewable prefix: it can run other code
+        // or another identity, so the context is unsupported. Every other non-inert name (`GIT_DIR=`,
         // `GH_HOST=`, `X=`) stays uncertainty. It takes the owners' floor and
         // no permission can allow it, without turning the evaluation into a
         // failure that would hide a disabled permission.

@@ -84,6 +84,37 @@ fn assignment_prefixes_keep_the_native_floor_instead_of_an_evaluation_block() {
 }
 
 #[test]
+fn credential_assignment_prefixes_block_like_the_env_wrapper() {
+    let binding = binding_with_layers(serde_json::json!([]));
+    for command in [
+        "GH_TOKEN=literal gh api repos/o/r",
+        "GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json ls",
+        "env GH_TOKEN=literal gh api repos/o/r",
+    ] {
+        let result = evaluate(&binding, command);
+        assert_eq!(result.minimum_action, "block", "{command}");
+        let evidence = result.command_extensions.as_ref().unwrap();
+        assert!(evidence.evaluation_error.is_some(), "{command}");
+    }
+    for command in [
+        "TOKENIZERS_PARALLELISM=false ls",
+        "XDG_CONFIG_HOME=./x ls",
+        "KUBECONFIG=/tmp/kube ls",
+        "AWS_PROFILE=other ls",
+        "AWS_CONFIG_FILE=/tmp/aws ls",
+        "DOCKER_CONFIG=/tmp/docker ls",
+        "CLOUDSDK_CONFIG=/tmp/gcloud ls",
+        "NETRC=/tmp/netrc ls",
+        "HOME=/tmp/home ls",
+    ] {
+        let result = evaluate(&binding, command);
+        assert_ne!(result.minimum_action, "block", "{command}");
+        let evidence = result.command_extensions.as_ref().unwrap();
+        assert!(evidence.evaluation_error.is_none(), "{command}");
+    }
+}
+
+#[test]
 fn assignment_prefixes_cannot_evade_a_disabled_permission() {
     let binding = binding_with_layers(disabled_permission_layer("command.git.push"));
     for command in [

@@ -265,6 +265,8 @@ def test_writer_drops_only_evidence_when_queue_is_full(tmp_path: Path) -> None:
 
 def test_writer_stops_with_bounded_sqlite_contention(tmp_path: Path) -> None:
     store = GuardStore(tmp_path / "guard-home")
+    # The bound measures SQLite contention, not one-time native provisioning.
+    _ = store.count_command_shadow_observations()
     lock = sqlite3.connect(store.path)
     _ = lock.execute("begin immediate")
     writer = RuntimeHookEvidenceWriter(

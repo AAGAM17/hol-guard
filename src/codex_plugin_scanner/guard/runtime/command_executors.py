@@ -192,7 +192,9 @@ def _execute_package_shim_operation(
         )
         audit_payload["exit_code"] = exit_code
         if exit_code == 0:
-            record_package_shim_audit_result(command_context, audited_at=generated_at)
+            proof = record_package_shim_audit_result(command_context, audited_at=generated_at)
+            if isinstance(proof, dict):
+                audit_payload.update(proof)
         return _result(audit_payload, generated_at=generated_at)
     return {
         "failureCode": "unsupported_operation",

@@ -112,6 +112,9 @@ fn dispatch(request: &ShimAdminRequestV2) -> Result<Value, Failure> {
             )
             .map(object)
         }
+        "record_audit" => {
+            shims::record_package_shim_audit_result(&context, request.generated_at.as_deref())
+        }
         "supported_managers" => Ok(json!(shims::package_shim_supported_managers())),
         "ensure_package_shim_profile" => shims::ensure_package_shim_path_in_shell_profile(&context),
         "remove_guard_profile_blocks" => shims::remove_guard_profile_blocks(&context),

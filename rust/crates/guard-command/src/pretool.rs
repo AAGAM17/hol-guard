@@ -33,6 +33,7 @@ mod base64_reads;
 mod bun_eval;
 mod compound_reason;
 mod find_reads;
+mod for_loop_unroll;
 pub(crate) mod git_branch_listing;
 mod git_config;
 pub(crate) mod git_config_reads;
@@ -347,6 +348,48 @@ pub(super) fn evaluate_pre_tool_with_execution_context(
     deadline: Option<std::time::Instant>,
     execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
 ) -> Result<PreToolDecisionV1, String> {
+    let decision =
+        evaluate_single_command(request, home_dir, cwd, deadline, execution_environment)?;
+    if request.dialect != "posix" || decision.minimum_action != "review" {
+        return Ok(decision);
+    }
+    // A loop over literal words is its unrolled command list. The unrolled
+    // form goes through the same proofs and replaces the loop's decision: an
+    // allow there admits the loop, a block is never softened, and a review
+    // carries the unrolled model so later layers judge modeled commands.
+    let Some(unrolled) = for_loop_unroll::unroll(&request.command) else {
+        return Ok(decision);
+    };
+    let unrolled_request = CommandModelRequestV1 {
+        command: unrolled,
+        ..request.clone()
+    };
+    match evaluate_single_command(
+        &unrolled_request,
+        home_dir,
+        cwd,
+        deadline,
+        execution_environment,
+    ) {
+        Ok(unrolled)
+            if matches!(
+                unrolled.minimum_action.as_str(),
+                "allow" | "review" | "block"
+            ) =>
+        {
+            Ok(unrolled)
+        }
+        _ => Ok(decision),
+    }
+}
+
+fn evaluate_single_command(
+    request: &CommandModelRequestV1,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+    deadline: Option<std::time::Instant>,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> Result<PreToolDecisionV1, String> {
     let model = parse_command(request)?;
     let normalized = model.normalized_text.as_str();
     let context = PathContext::for_session(home_dir, cwd, execution_environment);
@@ -526,6 +569,9 @@ pub(super) fn evaluate_pre_tool_with_execution_context(
     ))
 }
 
+#[cfg(test)]
+#[path = "pretool/for_loop_tests.rs"]
+mod for_loop_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

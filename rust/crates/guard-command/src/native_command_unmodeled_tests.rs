@@ -15,11 +15,11 @@ const GITHUB_PERMISSIONS: &[&str] = &[
 
 /// Ordinary review work the canonical parser cannot model exactly.
 const UNMODELED_GITHUB: &[&str] = &[
-    "for id in PRRT_kwDOexample1234 PRRT_kwDOexample5678; do gh api graphql -f query='mutation($t: ID!) { resolveReviewThread(input: { threadId: $t }) { thread { isResolved } } }' -f t=\"$id\"; done",
+    "for id in PRRT_kwDOexample*; do gh api graphql -f query='mutation($t: ID!) { resolveReviewThread(input: { threadId: $t }) { thread { isResolved } } }' -f t=\"$id\"; done",
     "gh pr comment 12 --body-file - <<'EOF'\nFixed in the latest push.\nEOF",
     // Program names in comment text are data, not commands.
     "gh pr comment 12 --body-file - <<'EOF'\nUpdated the build script and env handling.\nEOF",
-    "for n in 12 13; do gh pr comment $n --body \"Fixed the node script's env handling.\"; done",
+    "for n in 1*; do gh pr comment $n --body \"Fixed the node script's env handling.\"; done",
 ];
 
 fn controls(controls: serde_json::Value, lockdown: bool) -> CompiledNativeCommandControls {
@@ -129,7 +129,7 @@ fn unmodeled_commands_take_the_strongest_floor_of_their_possible_owners() {
     let controls = controls(serde_json::json!([]), false);
     // A named program brings its extension's strongest rule floor.
     assert_eq!(
-        decision(&controls, "for d in disk2 disk3; do diskutil info $d; done"),
+        decision(&controls, "for d in disk*; do diskutil info $d; done"),
         (
             "block".to_owned(),
             "native_command_extension_uncertain".to_owned()
@@ -138,8 +138,13 @@ fn unmodeled_commands_take_the_strongest_floor_of_their_possible_owners() {
     // An interpreter could reach any extension, so all of them are consulted.
     assert_eq!(decision(&controls, "sh -c 'gh pr view 12'").0, "block");
     assert_eq!(
-        decision(&controls, "for f in a b; do echo $f; done").0,
+        decision(&controls, "for f in *; do echo $f; done").0,
         "review"
+    );
+    // A loop over literal words is proven as its unrolled command list.
+    assert_eq!(
+        decision(&controls, "for f in a b; do echo $f; done").0,
+        "allow"
     );
 }
 
@@ -152,10 +157,15 @@ fn a_disabled_extension_naming_the_program_still_blocks_unmodeled_commands() {
     for command in UNMODELED_GITHUB {
         assert_eq!(decision(&controls, command).0, "block", "{command}");
     }
+    // A loop over literal words is judged as its unrolled commands, which
+    // resolve review threads under their own enabled permission.
+    let literal = "for id in PRRT_kwDOexample1234 PRRT_kwDOexample5678; do gh api graphql -f query='mutation($t: ID!) { resolveReviewThread(input: { threadId: $t }) { thread { isResolved } } }' -f t=\"$id\"; done";
+    let unrolled = "gh api graphql -f query='mutation($t: ID!) { resolveReviewThread(input: { threadId: $t }) { thread { isResolved } } }' -f t=\"PRRT_kwDOexample1234\"; gh api graphql -f query='mutation($t: ID!) { resolveReviewThread(input: { threadId: $t }) { thread { isResolved } } }' -f t=\"PRRT_kwDOexample5678\"";
+    assert_eq!(decision(&controls, literal), decision(&controls, unrolled));
     // Quoting or a path does not hide the program name.
     for command in [
-        "for x in a; do g\"\"h pr view 12; done",
-        "for x in a; do /usr/local/bin/gh pr view 12; done",
+        "for x in *; do g\"\"h pr view 12; done",
+        "for x in *; do /usr/local/bin/gh pr view 12; done",
     ] {
         assert_eq!(decision(&controls, command).0, "block", "{command}");
     }

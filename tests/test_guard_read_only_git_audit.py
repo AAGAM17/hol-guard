@@ -181,9 +181,11 @@ def test_ancestry_audit_never_reads_arbitrary_numeric_file(tmp_path: Path) -> No
 @pytest.mark.parametrize(
     ("replacement", "status", "minimum_action"),
     (
-        # The loop's only redirects are literal, so it is reviewable at the review floor.
-        ("git checkout --detach $commit", "no_match", "review"),
-        ("git merge-base --is-ancestor $commit HEAD && cat .env", "no_match", "review"),
+        # Literal loops now carry the unrolled model's status. Unsafe variants
+        # remain at the review floor, but are modeled as "review" rather than
+        # returning the old unmodeled "no_match" status.
+        ("git checkout --detach $commit", "review", "review"),
+        ("git merge-base --is-ancestor $commit HEAD && cat .env", "review", "review"),
         # Command substitution still fails native evaluation.
         ("git merge-base --is-ancestor $(payload) HEAD", "native_unavailable", "block"),
     ),

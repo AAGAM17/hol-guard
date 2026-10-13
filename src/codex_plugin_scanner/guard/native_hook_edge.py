@@ -25,6 +25,7 @@ from .native_runtime_resilience import (
 _EDGE_FEATURE = "hook-envelope-v2"
 _CLIENT_FEATURE = "native-resident-client-v1"
 _RESPONSE_FEATURE = "hook-harness-response-v1"
+_UNSUPPORTED_EVENT_CODE = "native_hook_event_unsupported"
 _GENERIC_PRE_TOOL_SCHEMA = "guard-pre-tool-result.v1"
 _GENERIC_PRE_TOOL_ACTION_SCHEMA = "guard-pre-tool-action.v1"
 _MAX_REQUEST_BYTES = 6 * 1024 * 1024
@@ -396,9 +397,14 @@ def review_raw_hook_native(
             reason="native_hook_edge_unavailable",
         )
         return record_native_hook_result("native_fail_safe", None)
+    error_code: str | None = None
     try:
         response_payload = json.loads(output)
         error_code = _native_error_code(response_payload)
+        if error_code == _UNSUPPORTED_EVENT_CODE:
+            # A lifecycle event the edge does not review. The resident
+            # answered, so this neither counts against its health nor proves it.
+            return record_native_hook_result("native_fail_safe", None)
         if error_code is not None:
             record_native_resident_client_failure_code(error_code)
         decoded = _decode_edge(response_payload)

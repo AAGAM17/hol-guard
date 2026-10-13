@@ -42,9 +42,6 @@ use crate::cursor_hook_bridge_script::read_ported_script;
 use crate::hook_env_stamp::{current_environment, stamp_hook_input_text, Stamp};
 
 pub(crate) const BRIDGE_COMMAND: &str = "cursor-hook-bridge";
-/// Advertised only on unix (`resident_protocol::capabilities`) until the
-/// Windows bridge is enabled.
-#[cfg_attr(not(unix), allow(dead_code))]
 pub(crate) const BRIDGE_FEATURE: &str = "cursor-hook-bridge-v1";
 const EVENT_FLAG: &str = "--cursor-hook-event";
 const PROJECT_DIR_ENV: &str = "CURSOR_PROJECT_DIR";

@@ -42,9 +42,6 @@ mod input;
 pub(crate) use input::read_hook_input;
 
 pub(crate) const BRIDGE_COMMAND: &str = "bounded-hook-bridge";
-/// Advertised only on unix (`resident_protocol::capabilities`) until the
-/// Windows bridge is enabled.
-#[cfg_attr(not(unix), allow(dead_code))]
 pub(crate) const BRIDGE_FEATURE: &str = "bounded-hook-bridge-v1";
 pub(crate) const ELAPSED_ENV: &str = "HOL_GUARD_BOUNDED_NATIVE_ELAPSED_MS";
 pub(crate) const DAEMON_TRIED_ENV: &str = "HOL_GUARD_BOUNDED_NATIVE_DAEMON_TRIED";

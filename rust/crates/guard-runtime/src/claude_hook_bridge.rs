@@ -28,9 +28,6 @@ use crate::hook_process_spawn::{isolated_hook_environment, run_isolated_hook_pro
 
 /// argv marker that selects the bridge, mirroring the Python module path.
 pub(crate) const BRIDGE_MARKER: &str = "HOL_GUARD_CLAUDE_DAEMON_HOOK";
-/// Advertised only on unix (`resident_protocol::capabilities`) until the
-/// Windows bridge is enabled.
-#[cfg_attr(not(unix), allow(dead_code))]
 pub(crate) const BRIDGE_FEATURE: &str = "claude-hook-bridge-v1";
 
 const HOOK_DEADLINE: Duration = Duration::from_secs(8);

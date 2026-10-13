@@ -37,9 +37,6 @@ use crate::hook_env_stamp::{
 use crate::pyjson::{self, in_surrogate_plane, PyVal};
 
 pub(crate) const BRIDGE_COMMAND: &str = "codex-hook-bridge";
-/// Advertised only on unix (`resident_protocol::capabilities`) until the
-/// Windows bridge is enabled.
-#[cfg_attr(not(unix), allow(dead_code))]
 pub(crate) const BRIDGE_FEATURE: &str = "codex-hook-bridge-v1";
 pub(crate) const HANDOFF_FLAG: &str = "--native-handoff";
 pub(crate) const HANDOFF_SCHEMA: &str = "hol-guard.codex-native-handoff.v1";

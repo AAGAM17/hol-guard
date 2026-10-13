@@ -39,6 +39,14 @@ VERIFIED_NPM_VERSION_KEY = "verified_npm_version"
 # A word may not start with `~` or `=`, which shells expand to paths.
 _WORD = r"[A-Za-z0-9@/._^:+,-][A-Za-z0-9@/._~^:=+,-]*"
 _SIMPLE_COMMAND = re.compile(rf"{_WORD}(?: +{_WORD})*")
+# Agents trim install output with `2>&1 | tail -3`. These filters read only
+# the pipe: none takes a file operand, and a grep pattern may not start with
+# `-`, so it cannot name a pattern file.
+_PATTERN = r"[A-Za-z0-9@/._^:+,][A-Za-z0-9@/._~^:=+,-]*"
+_OUTPUT_FILTER = rf"(?:tail|head)(?: +-[0-9]+| +-n *[0-9]+)?|grep(?: +-[iEFvcnw]+)* +{_PATTERN}"
+_FILTERED_COMMAND = re.compile(
+    rf"(?P<command>{_SIMPLE_COMMAND.pattern})(?: +2>&1)?(?P<filters>(?: *\| *(?:{_OUTPUT_FILTER}))*)"
+)
 _MAX_PACKAGE_JSON_BYTES = 256 * 1024
 _MAX_NPMRC_BYTES = 64 * 1024
 # npm settings that move where packages come from or how transport is trusted.
@@ -89,13 +97,15 @@ def native_package_review_response(
     ):
         return None
     command = pre_tool_command(payload)
-    if not command or not _SIMPLE_COMMAND.fullmatch(command.strip()):
+    shape = _FILTERED_COMMAND.fullmatch(command.strip()) if command else None
+    if shape is None:
         return None
-    tokens = command.split()
+    tokens = shape.group("command").split()
     if tokens[0] != "npm":
         return None
-    version = verified_npm_version(payload.get(HOOK_EXECUTION_ENVIRONMENT_KEY), workspace=workspace)
-    if version is None:
+    environment = payload.get(HOOK_EXECUTION_ENVIRONMENT_KEY)
+    version = verified_npm_version(environment, workspace=workspace)
+    if version is None or not _filters_outside_workspace(shape.group("filters"), environment, workspace):
         return None
     try:
         evaluation = _evaluate(
@@ -137,6 +147,27 @@ def native_package_review_response(
     response = render_pre_tool(harness, blocked, guard_home=guard_home, deadline=deadline)
     response["prompted"] = False
     return response
+
+
+def _filters_outside_workspace(filters: str, environment: object, workspace: Path) -> bool:
+    """Whether each output filter resolves to a program outside the workspace.
+
+    A workspace could otherwise put its own `tail` on ``PATH`` ahead of the
+    real one and run code through an install that never runs package code.
+    """
+
+    names = {segment.split()[0] for segment in filters.split("|") if segment.strip()}
+    if not names:
+        return True
+    search_path = environment.get("path") if isinstance(environment, Mapping) else None
+    if not isinstance(search_path, str) or not search_path:
+        return False
+    try:
+        root = workspace.resolve(strict=True)
+        programs = [_resolve_executable(name, search_path) for name in names]
+    except (OSError, RuntimeError):
+        return False
+    return all(program is not None and not program.is_relative_to(root) for program in programs)
 
 
 def _script_free_watch(evaluation: PackageRequestEvaluation) -> bool:

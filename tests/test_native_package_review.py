@@ -168,6 +168,74 @@ def test_only_a_plain_npm_package_review_is_settled(tmp_path: Path, command: str
     assert response is None
 
 
+def _settle_piped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: str, path: str) -> list[list[str]]:
+    """The npm tokens the evaluator saw for ``command``."""
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(exist_ok=True)
+    seen: list[list[str]] = []
+    monkeypatch.setattr(package_review.os, "name", "posix")
+    monkeypatch.setattr(package_review, "verified_npm_version", lambda *_args, **_kwargs: "11.9.0")
+    monkeypatch.setattr(
+        package_review,
+        "_evaluate",
+        lambda *_args, tokens, **_kwargs: seen.append(tokens) or None,
+    )
+    package_review.native_package_review_response(
+        object(),
+        harness="omp",
+        payload={"tool_input": {"command": command}, package_review.HOOK_EXECUTION_ENVIRONMENT_KEY: {"path": path}},
+        native_result={"reason_code": "native_package_review", "minimum_action": "review"},
+        workspace=workspace,
+        guard_home=tmp_path / "guard",
+    )
+    return seen
+
+
+@pytestmark_posix
+@pytest.mark.parametrize(
+    "suffix",
+    ["2>&1", "2>&1 | tail -3", "| tail -n 5", "2>&1|grep -i added", "| head -20 | tail -n3"],
+)
+def test_output_filters_after_an_install_are_evaluated_without_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str
+) -> None:
+    seen = _settle_piped(tmp_path, monkeypatch, f"npm install zod {SAFE_FLAGS} {suffix}", "/usr/bin:/bin")
+
+    assert seen == [["npm", "install", "zod", *SAFE_FLAGS.split()]]
+
+
+@pytestmark_posix
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "| grep -f/etc/passwd",
+        "| grep x /etc/passwd",
+        "| tail /etc/passwd",
+        "| tail -f log",
+        "| tee log",
+        "| sh",
+        "> out.txt",
+        "2>&1 | tail -3 > out.txt",
+        "&& tail -3",
+    ],
+)
+def test_other_trailing_commands_keep_review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str) -> None:
+    assert _settle_piped(tmp_path, monkeypatch, f"npm install zod {SAFE_FLAGS} {suffix}", "/usr/bin:/bin") == []
+
+
+@pytestmark_posix
+def test_a_filter_from_the_workspace_keeps_review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tools = tmp_path / "workspace" / "bin"
+    tools.mkdir(parents=True)
+    (tools / "tail").write_text("#!/bin/sh\n", encoding="utf-8")
+    (tools / "tail").chmod(0o755)
+    command = f"npm install zod {SAFE_FLAGS} 2>&1 | tail -3"
+
+    assert _settle_piped(tmp_path, monkeypatch, command, f"{tools}:/usr/bin:/bin") == []
+    assert _settle_piped(tmp_path, monkeypatch, command, "") == []
+
+
 SCRIPT_FREE = {"name": "zod", "scriptFreeRegistryInstall": True}
 
 

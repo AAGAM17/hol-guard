@@ -1662,6 +1662,70 @@
         "evidence": "rg -n 'MCPolicyRequestRepository|PendingPolicyRequest|StageRequestInput' src -g '*.py' lists only mcp/policy_apply.py, mcp/policy_tools.py, mcp/tools.py, daemon/mcp_policy_decisions.py, daemon/business_policy_recovery.py and daemon/server_dashboard_support.py outside mcp/policy_store.py; none of them is in the runtime import closure."
       },
       {
+        "id": "daemon-peer-update-and-cli-endpoint",
+        "category": "install_config",
+        "path": "src/codex_plugin_scanner/guard/daemon/runtime_peer.py",
+        "symbols": [
+          "live_desktop_owned_daemon",
+          "load_guard_daemon_endpoint",
+          "load_guard_daemon_endpoint_url",
+          "retained_newer_runtime_payload",
+          "daemon_refresh_outcome_succeeded",
+          "retained_desktop_owner_payload",
+          "retained_desktop_owner_note"
+        ],
+        "entry_points": [],
+        "reason": "Desktop-owned daemon detection, retained-runtime payloads and refresh outcomes serve Guard self-update and desktop apply; the endpoint loaders serve CLI commands that talk to a running daemon. None of them runs on a hook or proxy request. daemon_source_is_desktop_core stays counted because retained runtime code reads it.",
+        "evidence": "rg -n 'live_desktop_owned_daemon|load_guard_daemon_endpoint|retained_newer_runtime_payload|daemon_refresh_outcome_succeeded|retained_desktop_owner_(payload|note)' src -g '*.py' lists only cli/update_commands.py, cli/update_desktop_apply.py, daemon/dashboard_update_runner.py and daemon/update_refresh_program.py (self-update), and cli/commands_dispatch_trust.py, cli/commands_support_service.py, cli/extension_controls_commands.py and cli/product.py outside daemon/runtime_peer.py; none of them is in the runtime import closure."
+      },
+      {
+        "id": "policy-document-file-io",
+        "category": "cli_only",
+        "path": "src/codex_plugin_scanner/guard/policy_document_io.py",
+        "symbols": [
+          "_POLICY_FILE_MODE",
+          "_POLICY_DIRECTORY_MODE_MASK",
+          "PolicyFileTrustError",
+          "_assert_trusted_parent_metadata",
+          "_open_trusted_parent",
+          "_assert_trusted_file_metadata",
+          "read_trusted_policy_bytes",
+          "read_trusted_policy_text",
+          "write_private_policy_text",
+          "load_trusted_policy_document"
+        ],
+        "entry_points": [],
+        "reason": "Trusted reads and private writes of policy document files back the hol-guard policy import and export commands. Policy compilation (compile_policy_document, CompiledPolicyRow) stays counted because Cloud sync and the policy store use it.",
+        "evidence": "rg -n 'PolicyFileTrustError|read_trusted_policy_text|write_private_policy_text|load_trusted_policy_document' src -g '*.py' lists only cli/commands_dispatch_policy_document.py outside policy_document_io.py; mcp/policy_tools.py, runtime/runner.py and store_policy_document.py import only CompiledPolicyRow, PolicyCompilationError and compile_policy_document."
+      },
+      {
+        "id": "mdm-local-integrity-snapshot",
+        "category": "async_control_plane",
+        "path": "src/codex_plugin_scanner/guard/mdm/contracts.py",
+        "symbols": [
+          "AssuranceLevel",
+          "IntegrityState",
+          "SupervisorState",
+          "RemediationClass",
+          "IntegrityReasonCode",
+          "SnapshotComponent",
+          "SnapshotKeyComponent",
+          "SnapshotSupervisorComponent",
+          "IntegrityComponent",
+          "KeyProtectionStatus",
+          "SupervisorStatus",
+          "SnapshotProduct",
+          "SnapshotIdentifiers",
+          "SnapshotContinuity",
+          "HarnessCoverage",
+          "SnapshotComponents",
+          "LocalIntegritySnapshot"
+        ],
+        "entry_points": [],
+        "reason": "The local integrity snapshot models and reason codes describe managed-device health reports. They are built by mdm/integrity.py, mdm/supervisor.py, mdm/device_key.py and mdm/harness_coverage.py and consumed by the health lease and the mdm CLI, all of which run on the health-reporting cadence rather than a hook request. Managed-policy contracts in this module stay counted.",
+        "evidence": "rg -ln 'IntegrityReasonCode|LocalIntegritySnapshot|SnapshotComponents|KeyProtectionStatus|SupervisorStatus|IntegrityComponent' src -g '*.py' lists only mdm/integrity.py, mdm/supervisor.py, mdm/device_key.py, mdm/harness_coverage.py, mdm/health_lease.py, mdm/health_snapshot_validation.py and cli/commands_dispatch_mdm.py besides mdm/contracts.py; the adapters' HarnessCoverageSummary comes from adapters/contracts.py. None of those mdm modules is in the runtime import closure."
+      },
+      {
         "id": "store2-oauth-connect-lifecycle",
         "category": "async_control_plane",
         "path": "src/codex_plugin_scanner/guard/store_oauth.py",

@@ -107,6 +107,43 @@ pub(super) fn exact_safe_command(
     worktree_seen
 }
 
+/// A review reason for a lone `git worktree add` whose new checkout would sit
+/// outside home, where the proof above never admits it. Agents told only that
+/// the command "could not be confirmed read-only" tend to copy the repository
+/// by hand instead; naming the home-directory bound lets them pick a
+/// destination the proof accepts. `None` for every other command.
+pub(super) fn outside_home_reason(
+    model: &CanonicalCommandV1,
+    context: super::PathContext<'_>,
+) -> Option<String> {
+    let [segment] = model.segments.as_slice() else {
+        return None;
+    };
+    if model.confidence != "exact"
+        || model.path_overridden
+        || !model.wrapper_chain.is_empty()
+        || !segment.environment_names.is_empty()
+        || super::executable_basename(segment.executable.as_deref()?) != "git"
+    {
+        return None;
+    }
+    let spec = parse(segment)?;
+    let home = std::fs::canonicalize(Path::new(context.home_dir?)).ok()?;
+    let supplied = Path::new(spec.destination);
+    let target = if supplied.is_absolute() {
+        supplied.to_path_buf()
+    } else {
+        Path::new(context.cwd?).join(supplied)
+    };
+    let parent = std::fs::canonicalize(target.parent()?).ok()?;
+    if parent.starts_with(&home) {
+        return None;
+    }
+    Some(
+        "HOL Guard requires review because `git worktree add` runs without review only when the new checkout's parent directory is inside your home directory. Repeat it with a destination under your home directory, such as a sibling of the repository, or ask the user to approve it in the HOL Guard inbox.".to_owned(),
+    )
+}
+
 pub(super) struct WorktreeCwdProof {
     pub(super) cd_index: usize,
     pub(super) cwd: String,

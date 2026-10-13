@@ -514,7 +514,8 @@ pub(super) fn evaluate_pre_tool_with_execution_context(
         ));
     }
     let reason = compound_reason::unproven_steps_reason(&model, context)
-        .or_else(|| repo_create_reason::private_alternative_reason(&model));
+        .or_else(|| repo_create_reason::private_alternative_reason(&model))
+        .or_else(|| worktree_add::outside_home_reason(&model, context));
     Ok(pretool_decision(
         model,
         "review",

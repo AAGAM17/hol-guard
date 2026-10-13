@@ -171,6 +171,13 @@ fn worktree_proof_follows_the_session_git_configuration() {
     ] {
         let result = evaluate(&repository, command, None, true);
         assert_ne!(result.minimum_action, "allow", "{command}");
+        // Only the checkout that would leave home is told about the bound.
+        assert_eq!(
+            result.reason.contains("inside your home directory"),
+            command.contains("outside-home"),
+            "{command}: {}",
+            result.reason
+        );
     }
 
     let xdg = root.join("xdg");

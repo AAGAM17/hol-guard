@@ -9,7 +9,9 @@
 //! both flags on a verified npm 11.9 or later, the install only writes
 //! registry package files. A registry name that resolves on the public
 //! registry is then identified well enough to continue without review;
-//! anything that later executes those files is reviewed on its own.
+//! anything that later executes those files is reviewed on its own. Older
+//! releases qualify with `--ignore-scripts` alone once the tree is proven to
+//! hold no git dependency (`registry_install_tree`).
 
 use super::*;
 
@@ -18,6 +20,9 @@ const MAX_NPMRC_BYTES: u64 = 64 * 1024;
 
 /// The first npm release with `--allow-git`. Older releases ignore the option.
 const MIN_ALLOW_GIT_NPM: (u64, u64, u64) = (11, 9, 0);
+/// The first npm release that installs peer dependencies and writes the
+/// `packages` lock layout the git-free tree proof reads.
+const MIN_TREE_PROOF_NPM: (u64, u64, u64) = (7, 0, 0);
 
 /// Metadata the hook stamps after resolving the agent's `npm` executable. Other
 /// callers never set it, so the rule below stays off for them.
@@ -46,11 +51,64 @@ pub(super) fn script_free_registry_install(
 ) -> bool {
     let tokens = command_tokens(artifact);
     registry_install_candidate(artifact, workspace_dir)
+        && verified_npm_supports_allow_git(artifact)
         && lifecycle_scripts_disabled(&tokens)
         && git_dependencies_refused(&tokens)
 }
 
-/// Whether the same request would qualify once both flags are added.
+/// The same outcome on an npm without `--allow-git`: scripts are off and
+/// registry metadata proves no git dependency can enter the tree.
+pub(super) fn script_free_older_npm_install(
+    deps: &SupplyChainEvalDeps<'_>,
+    artifact: &GuardArtifact,
+    workspace_dir: Option<&Path>,
+    targets: &[Map<String, Value>],
+) -> bool {
+    let tokens = command_tokens(artifact);
+    if !registry_install_candidate(artifact, workspace_dir)
+        || verified_npm_supports_allow_git(artifact)
+        || !lifecycle_scripts_disabled(&tokens)
+    {
+        return false;
+    }
+    let Some(root) = optional_string(artifact.metadata.get("effective_cwd"))
+        .map(PathBuf::from)
+        .or_else(|| workspace_dir.map(Path::to_path_buf))
+    else {
+        return false;
+    };
+    let requested: Option<Vec<(String, String)>> = targets
+        .iter()
+        .map(|target| Some((target_package_name(target)?, registry_selector(target)?)))
+        .collect();
+    requested.is_some_and(|requested| {
+        !requested.is_empty() && git_free_install_tree(deps, &root, requested)
+    })
+}
+
+/// Whether the agent should be told which flags let this install continue:
+/// it is a candidate and lacks a flag the proof for its npm requires.
+pub(super) fn registry_install_needs_flags(
+    artifact: &GuardArtifact,
+    workspace_dir: Option<&Path>,
+) -> bool {
+    let tokens = command_tokens(artifact);
+    registry_install_candidate(artifact, workspace_dir)
+        && (!lifecycle_scripts_disabled(&tokens)
+            || verified_npm_supports_allow_git(artifact) && !git_dependencies_refused(&tokens))
+}
+
+fn target_package_name(target: &Map<String, Value>) -> Option<String> {
+    let name = optional_string(target.get("name"))?;
+    Some(match optional_string(target.get("namespace")) {
+        Some(namespace) => format!("{namespace}/{name}"),
+        None => name,
+    })
+}
+
+/// Whether the same request could qualify once the flags its npm needs are
+/// added: npm 11.9 or later needs both, and an older npm needs
+/// `--ignore-scripts` plus a git-free tree.
 pub(super) fn registry_install_candidate(
     artifact: &GuardArtifact,
     workspace_dir: Option<&Path>,
@@ -58,7 +116,7 @@ pub(super) fn registry_install_candidate(
     let tokens = command_tokens(artifact);
     optional_string(artifact.metadata.get("intent_kind")).as_deref() == Some("install")
         && optional_string(artifact.metadata.get("package_manager")).as_deref() == Some("npm")
-        && verified_npm_supports_allow_git(artifact)
+        && verified_npm_release(artifact).is_some_and(|version| version >= MIN_TREE_PROOF_NPM)
         && only_recording_options(&tokens)
         && !command_uses_alternate_package_index(artifact)
         && !command_overrides_registry(&tokens)
@@ -67,9 +125,12 @@ pub(super) fn registry_install_candidate(
 }
 
 fn verified_npm_supports_allow_git(artifact: &GuardArtifact) -> bool {
+    verified_npm_release(artifact).is_some_and(|version| version >= MIN_ALLOW_GIT_NPM)
+}
+
+fn verified_npm_release(artifact: &GuardArtifact) -> Option<(u64, u64, u64)> {
     optional_string(artifact.metadata.get(VERIFIED_NPM_VERSION_KEY))
         .and_then(|version| release_triple(&version))
-        .is_some_and(|version| version >= MIN_ALLOW_GIT_NPM)
 }
 
 /// `major.minor.patch`; a prerelease or build suffix on the patch is ignored.
@@ -102,7 +163,7 @@ pub(super) fn registry_selector(target: &Map<String, Value>) -> Option<String> {
 
 /// `name`, `@scope/name`, either followed by `@selector`, where the selector
 /// is a version, range or dist-tag with no source syntax in it.
-fn plain_registry_spec(spec: &str) -> bool {
+pub(super) fn plain_registry_spec(spec: &str) -> bool {
     let (scope, rest) = match spec.strip_prefix('@') {
         Some(scoped) => match scoped.split_once('/') {
             Some((scope, rest)) => (Some(scope), rest),
@@ -146,7 +207,14 @@ pub(super) fn lifecycle_scripts_enabled_reason(artifact: &GuardArtifact) -> Map<
         "message".to_string(),
         Value::String(format!(
             "This install could run package code. Rerun the same {manager} command with \
-             --ignore-scripts --allow-git=none and HOL Guard will let it continue without review."
+             {flags}",
+            flags = if verified_npm_supports_allow_git(artifact) {
+                "--ignore-scripts --allow-git=none and HOL Guard will let it continue without review."
+            } else {
+                "--ignore-scripts and HOL Guard will let it continue without review when every \
+                 dependency it can install comes from the npm registry. npm 11.9 or later also \
+                 takes --allow-git=none, which removes that condition."
+            }
         )),
     );
     reason.insert("severity".to_string(), Value::String("medium".to_string()));

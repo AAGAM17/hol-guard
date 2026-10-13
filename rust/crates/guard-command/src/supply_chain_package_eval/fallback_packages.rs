@@ -25,9 +25,10 @@ pub(super) fn fallback_package_results(
         .into_iter()
         .collect();
     let alternate_index = command_uses_alternate_package_index(artifact);
-    let script_free_install = script_free_registry_install(artifact, workspace_dir);
+    let script_free_install = script_free_registry_install(artifact, workspace_dir)
+        || script_free_older_npm_install(deps, artifact, workspace_dir, targets);
     let scripts_guidance =
-        !script_free_install && registry_install_candidate(artifact, workspace_dir);
+        !script_free_install && registry_install_needs_flags(artifact, workspace_dir);
     let mut results: Vec<Map<String, Value>> = Vec::new();
     for target in targets {
         if !alternate_index {

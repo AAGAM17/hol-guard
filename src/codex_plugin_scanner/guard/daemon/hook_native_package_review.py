@@ -2,10 +2,12 @@
 
 The native edge sends every package install to review because it cannot see
 what the install will run. The package evaluator can: an npm 11.9+ install
-with ``--ignore-scripts --allow-git=none`` only writes registry package files,
-and a target that resolves on the public registry is identified well enough
-to continue. This module proves which npm the agent will run, hands the
-request to the evaluator, and settles the review from its verdict.
+with ``--ignore-scripts --allow-git=none``, or an older npm install with
+``--ignore-scripts`` whose dependency tree registry metadata proves free of git
+dependencies, only writes registry package files, and a target that resolves
+on the public registry is identified well enough to continue. This module
+proves which npm the agent will run, hands the request to the evaluator, and
+settles the review from its verdict.
 """
 
 from __future__ import annotations

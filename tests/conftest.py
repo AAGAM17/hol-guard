@@ -111,6 +111,14 @@ def _python_bounded_hook_bridge(request: pytest.FixtureRequest, monkeypatch: pyt
 
 
 @pytest.fixture(autouse=True)
+def _reset_registry_cache() -> None:
+    """A registry document one test cached must not answer another test."""
+    from codex_plugin_scanner.guard.native_supply_chain_registry_cache import REGISTRY_CACHE
+
+    REGISTRY_CACHE.clear()
+
+
+@pytest.fixture(autouse=True)
 def _reset_aibom_mcp_native_backoff() -> None:
     """One outage's MCP-enrichment backoff must not leak into the next test."""
 

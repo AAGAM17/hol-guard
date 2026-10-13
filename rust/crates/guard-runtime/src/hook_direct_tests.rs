@@ -412,11 +412,10 @@ fn other_harnesses_and_homes_defer() {
 
 #[test]
 fn daemon_only_state_in_the_binding_defers() {
+    // The daemon checks custom rules only against an allow floor, and this
+    // fixture policy warns on commands.
     let rules = lane("rules", json!({ "local_cli_block_rules": true }));
-    assert_eq!(
-        deferred(&run(&rules, allowed_payload(&rules))),
-        "direct_hook_local_cli_rules"
-    );
+    assert_eq!(run(&rules, allowed_payload(&rules))["outcome"], "answer");
     for (label, missing) in [
         ("no-home", "home_dir"),
         ("no-postures", "harness_postures"),
@@ -438,9 +437,38 @@ fn daemon_only_state_in_the_binding_defers() {
     }
 }
 
+/// A package script run in `lane`'s workspace: a command that launches a
+/// local CLI a custom rule can name.
+fn package_script_payload(lane: &Lane) -> Value {
+    fs::write(
+        std::path::Path::new(&lane.workspace).join("package.json"),
+        br#"{"name": "demo", "scripts": {"build": "tsc"}}"#,
+    )
+    .unwrap();
+    json!({
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": { "command": "npm run build" },
+        "cwd": lane.workspace,
+    })
+}
+
 #[test]
-fn a_block_rule_saved_after_the_publish_defers() {
-    let lane = lane("stored-rules", json!({}));
+fn custom_rules_still_answer_a_command_that_launches_no_local_cli() {
+    let rules = allowing_lane("cli-rules", json!({ "local_cli_block_rules": true }));
+    // `pwd` launches no local CLI, so no custom rule can block it.
+    assert_eq!(run(&rules, allowed_payload(&rules))["outcome"], "answer");
+    // The edge reviews a launch it cannot prove benign, so the daemon
+    // renders that verdict whether or not a rule names the CLI.
+    assert_eq!(
+        deferred(&run(&rules, package_script_payload(&rules))),
+        "direct_hook_not_allow"
+    );
+}
+
+#[test]
+fn a_block_rule_saved_after_the_publish_still_answers_a_command_without_a_cli() {
+    let lane = allowing_lane("stored-rules", json!({}));
     let store = lane.fixture.root.join("guard.db");
     let connection = rusqlite::Connection::open(&store).unwrap();
     connection
@@ -453,8 +481,6 @@ fn a_block_rule_saved_after_the_publish_defers() {
              insert into local_cli_command_grant values ('cli', 'run', 'allow');",
         )
         .unwrap();
-    // The fixture policy warns on commands, and a warned allow is answered.
-    // A block rule is still read before that edge decision.
     assert_eq!(run(&lane, allowed_payload(&lane))["outcome"], "answer");
     for statement in [
         "update local_cli_command_grant set state = 'block'",
@@ -463,8 +489,8 @@ fn a_block_rule_saved_after_the_publish_defers() {
     ] {
         connection.execute_batch(statement).unwrap();
         assert_eq!(
-            deferred(&run(&lane, allowed_payload(&lane))),
-            "direct_hook_local_cli_rules",
+            run(&lane, allowed_payload(&lane))["outcome"],
+            "answer",
             "{statement}"
         );
     }

@@ -12,7 +12,10 @@
 //! in Watch. The daemon never changes those responses. Every other request,
 //! and every `PreToolUse` verdict the daemon turns into an approval, a
 //! repair link or a Claude Code contained run outside Watch, defers so the
-//! caller takes the daemon path, which is unchanged.
+//! caller takes the daemon path, which is unchanged. While custom extension
+//! block rules exist, an allowed `PreToolUse` whose command launches a local
+//! CLI, or whose launch cannot be derived, also defers so the daemon reads
+//! that CLI's grant.
 //!
 //! The daemon also records evidence after it answers. An answer is returned
 //! only once that evidence is queued for the daemon to drain.
@@ -235,13 +238,10 @@ fn answer(
     if home_dir != request_home {
         return Err(HookDirectDefer::HomeMismatch);
     }
-    match binding.local_cli_block_rules {
-        None => return Err(HookDirectDefer::BindingIncomplete),
-        // The daemon checks these rules before a `PreToolUse` edge; only it
-        // applies them.
-        Some(true) if pre_tool => return Err(HookDirectDefer::LocalCliRules),
-        Some(_) => {}
-    }
+    // The daemon checks custom block rules against an allowed `PreToolUse`.
+    let mut custom_rules = binding
+        .local_cli_block_rules
+        .ok_or(HookDirectDefer::BindingIncomplete)?;
     // The binding is only as fresh as its last publish, while the daemon reads
     // the rules and the managed installs from the store before every hook.
     // A change saved since then lives only in the store, so read it there
@@ -255,9 +255,7 @@ fn answer(
         // own permission flow; a direct answer would replace that flow.
         return Err(HookDirectDefer::HarnessUnmanaged);
     }
-    if pre_tool && store.local_cli_block_rules {
-        return Err(HookDirectDefer::LocalCliRules);
-    }
+    custom_rules |= store.local_cli_block_rules;
     let postures = binding
         .harness_postures
         .as_ref()
@@ -275,6 +273,8 @@ fn answer(
         return Err(HookDirectDefer::EvidenceUndrained);
     }
 
+    // Only a `PreToolUse` under custom rules reads its payload after the edge.
+    let rule_payload = (pre_tool && custom_rules).then(|| payload.clone());
     let envelope = GuardHookEnvelopeV2 {
         schema: GUARD_HOOK_ENVELOPE_V2_SCHEMA.to_owned(),
         request_id: None,
@@ -312,6 +312,14 @@ fn answer(
         POST_TOOL_USE => post_tool_answer(&edge)?,
         _ => prompt_answer(&edge, prompt_notice)?,
     };
+    if local_cli::defers_for_custom_rule(
+        &answered,
+        rule_payload.as_ref(),
+        &workspace,
+        &request_home,
+    ) {
+        return Err(HookDirectDefer::LocalCliRules);
+    }
     let evidence = json!({
         "event": event,
         "harness": request.harness,
@@ -350,7 +358,7 @@ fn reviewed_edge(edge: &[u8], event: &str) -> Result<Value, HookDirectDefer> {
 ///   link to a command-control authority block and, with `contained`, routes
 ///   a sandbox requirement to contained execution; any other denial keeps
 ///   the edge's harness response. A saved approval never lowers a terminal
-///   action, and the custom block rules the daemon reads already defer.
+///   action, and the daemon checks custom block rules only against an allow.
 fn pre_tool_answer(edge: &[u8], contained: bool) -> Result<Value, HookDirectDefer> {
     let parsed = reviewed_edge(edge, PRE_TOOL_USE)?;
     let result = parsed.get("result");
@@ -436,6 +444,8 @@ fn direct_event(payload: &Map<String, Value>) -> Result<Option<&'static str>, Ho
     Ok(Some(PRE_TOOL_USE))
 }
 
+#[path = "hook_direct_local_cli.rs"]
+mod local_cli;
 #[path = "hook_direct_workspace.rs"]
 mod workspace;
 

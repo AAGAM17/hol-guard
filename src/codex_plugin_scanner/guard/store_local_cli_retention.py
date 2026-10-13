@@ -4,13 +4,10 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterable, Mapping
-from contextlib import AbstractContextManager
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from .runtime.local_cli_identity import is_local_cli_id
 from .runtime.time_support import parse_utc_timestamp
-from .store_local_cli_schema import ensure_local_cli_schema
 
 LOCAL_CLI_OBSERVATION_RETENTION_DAYS = 30
 LOCAL_CLI_PRUNE_INTERVAL = timedelta(days=1)
@@ -60,7 +57,9 @@ class LocalCliReplaySkippedError(Exception):
 class StoreLocalCliRetentionMixin:
     if TYPE_CHECKING:
 
-        def _connect(self) -> AbstractContextManager[sqlite3.Connection]: ...
+        def _native_store_call(
+            self, method: str, args: Mapping[str, object], *, busy_timeout_seconds: float | None = None
+        ) -> Any: ...
 
     def forget_local_cli_observation(self, cli_id: str, *, identity_hash: str) -> None:
         """Delete one un-enrolled observed record and its inventory rows.
@@ -68,35 +67,23 @@ class StoreLocalCliRetentionMixin:
         History replay skips the identity until it runs or is configured again.
         """
 
-        if not is_local_cli_id(cli_id):
-            raise LocalCliForgetError("invalid_cli_id")
-        with self._connect() as connection:
-            ensure_local_cli_schema(connection)
-            row = connection.execute(
-                "select identity_hash from local_cli_observation where cli_id = ?",
-                (cli_id,),
-            ).fetchone()
-            if row is None:
-                raise LocalCliForgetError("local_cli_not_found")
-            if str(row[0]) != identity_hash:
-                raise LocalCliForgetError("identity_changed")
-            if connection.execute("select 1 from local_cli_grant where cli_id = ?", (cli_id,)).fetchone():
-                raise LocalCliForgetError("local_cli_enrolled")
-            forgettable = connection.execute(
-                "select 1 from local_cli_observation observation "
-                f"where observation.cli_id = ? and {_FORGETTABLE_PREDICATE}",
-                (cli_id,),
-            ).fetchone()
-            if forgettable is None:
-                raise LocalCliForgetError("local_cli_shared_server_enrolled")
-            _delete_observations(connection, ((cli_id, identity_hash),), forgotten_at=_utc_now())
+        try:
+            _ = self._native_store_call(
+                "forget_local_cli_observation",
+                {"cli_id": cli_id, "identity_hash": identity_hash, "clock": utc_now_iso()},
+            )
+        except ValueError as error:
+            raise LocalCliForgetError(str(error)) from None
 
     def local_cli_replay_allowed(self, identity_hash: str, seen_at: str, *, now: str | None = None) -> bool:
         """Return whether a history entry may restore or refresh this identity."""
 
-        with self._connect() as connection:
-            ensure_local_cli_schema(connection)
-            return replay_allowed(connection, identity_hash, seen_at, now=now)
+        return bool(
+            self._native_store_call(
+                "local_cli_replay_allowed",
+                {"identity_hash": identity_hash, "seen_at": seen_at, "now": now, "clock": utc_now_iso()},
+            )
+        )
 
     def prune_inactive_local_cli_observations(
         self,
@@ -107,11 +94,16 @@ class StoreLocalCliRetentionMixin:
     ) -> list[str]:
         """Delete un-enrolled observed records not seen within the retention window."""
 
-        with self._connect() as connection:
-            ensure_local_cli_schema(connection)
-            return prune_expired_local_cli_observations(
-                connection, now=now, retention_days=retention_days, throttle=throttle
-            )
+        pruned = self._native_store_call(
+            "prune_inactive_local_cli_observations",
+            {
+                "now": None if now is None else now.isoformat(),
+                "retention_days": retention_days,
+                "throttle": throttle,
+                "clock": utc_now_iso(),
+            },
+        )
+        return [str(cli_id) for cli_id in pruned]
 
 
 def prune_expired_local_cli_observations(
@@ -122,6 +114,9 @@ def prune_expired_local_cli_observations(
     throttle: bool = False,
 ) -> list[str]:
     """Delete expired un-enrolled observations inside the caller's transaction.
+
+    The local MCP observation writers still prune here; the store methods above
+    run the same rules in the resident's ``guard_store_local_cli`` op.
 
     With ``throttle`` the scan runs at most once per ``LOCAL_CLI_PRUNE_INTERVAL``
     so frequent observation writes do not rescan the whole list.
@@ -232,7 +227,7 @@ def _ensure_retention_tables(connection: sqlite3.Connection) -> None:
     )
 
 
-def _utc_now() -> str:
+def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
@@ -241,19 +236,7 @@ def _seen_before(value: object, cutoff: datetime) -> bool:
     return seen is not None and seen < cutoff
 
 
-def _delete_observations(
-    connection: sqlite3.Connection,
-    records: tuple[tuple[str, str], ...],
-    *,
-    forgotten_at: str | None = None,
-) -> None:
+def _delete_observations(connection: sqlite3.Connection, records: tuple[tuple[str, str], ...]) -> None:
     _ensure_retention_tables(connection)
     for table in _OBSERVATION_TABLES:
         connection.executemany(f"delete from {table} where cli_id = ?", [(cli_id,) for cli_id, _ in records])
-    if forgotten_at is None:
-        return
-    connection.executemany(
-        "insert into local_cli_forgotten (identity_hash, forgotten_at) values (?, ?) "
-        "on conflict(identity_hash) do update set forgotten_at = excluded.forgotten_at",
-        [(identity_hash, forgotten_at) for _, identity_hash in records],
-    )

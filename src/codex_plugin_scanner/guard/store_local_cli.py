@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .local_cli_errors import LocalCliCatalogLimitError
 from .runtime.local_cli_commands import (
@@ -19,11 +19,7 @@ from .runtime.local_cli_identity import UnlistedCliIdentity, is_local_cli_id
 from .runtime.local_mcp_stdio import McpCatalogResult
 from .runtime.mcp_classification import classify_mcp_action
 from .store_custom_extension_continuity import _write_local_cli_grant
-from .store_local_cli_retention import (
-    mark_shared_enrolled_servers,
-    prune_expired_local_cli_observations,
-    replay_allowed,
-)
+from .store_local_cli_retention import mark_shared_enrolled_servers, utc_now_iso
 from .store_local_cli_rows import (
     _grant_from_row,
     _merge_item,
@@ -44,6 +40,10 @@ class StoreLocalCliMixin:
 
         def _connect(self) -> AbstractContextManager[sqlite3.Connection]: ...
 
+        def _native_store_call(
+            self, method: str, args: Mapping[str, object], *, busy_timeout_seconds: float | None = None
+        ) -> Any: ...
+
     def record_local_cli_observation(
         self,
         identity: UnlistedCliIdentity,
@@ -58,78 +58,27 @@ class StoreLocalCliMixin:
         only_if_missing: bool = False,
         replayed_at: str | None = None,
     ) -> None:
-        if not is_local_cli_id(identity.cli_id):
-            raise ValueError("invalid local CLI id")
-        surface_value = surface if surface in {"cli", "mcp", "package-scripts"} else "cli"
-        with self._connect() as connection:
-            ensure_local_cli_schema(connection)
-            current = connection.execute(
-                "select observed_count from local_cli_observation where cli_id = ?",
-                (identity.cli_id,),
-            ).fetchone()
-            if current is not None and only_if_missing:
-                return
-            if only_if_missing and not replay_allowed(connection, identity.identity_hash, seen_at, now=replayed_at):
-                return
-            if current is None:
-                _ = connection.execute(
-                    """
-                    insert into local_cli_observation (
-                        cli_id, identity_hash, kind, name, interpreter_name, example_label,
-                        observed_count, last_seen_at, source_path, help_status, surface,
-                        server_identity_hash, server_command, server_args_hash
-                    ) values (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
-                    on conflict(cli_id) do nothing
-                    """,
-                    (
-                        identity.cli_id,
-                        identity.identity_hash,
-                        identity.kind,
-                        identity.name,
-                        identity.interpreter_name,
-                        identity.example_label,
-                        seen_at,
-                        source_path,
-                        help_status,
-                        surface_value,
-                        server_identity_hash,
-                        server_command,
-                        server_args_hash,
-                    ),
-                )
-                if not only_if_missing:
-                    _ = prune_expired_local_cli_observations(connection, now=seen_at, throttle=True)
-                return
-            _ = connection.execute(
-                """
-                update local_cli_observation
-                set identity_hash = ?, kind = ?, name = ?, interpreter_name = ?,
-                    example_label = ?, observed_count = observed_count + 1, last_seen_at = ?,
-                    source_path = coalesce(?, source_path),
-                    help_status = coalesce(?, help_status),
-                    surface = ?,
-                    server_identity_hash = coalesce(?, server_identity_hash),
-                    server_command = coalesce(?, server_command),
-                    server_args_hash = coalesce(?, server_args_hash)
-                where cli_id = ?
-                """,
-                (
-                    identity.identity_hash,
-                    identity.kind,
-                    identity.name,
-                    identity.interpreter_name,
-                    identity.example_label,
-                    seen_at,
-                    source_path,
-                    help_status,
-                    surface_value,
-                    server_identity_hash,
-                    server_command,
-                    server_args_hash,
-                    identity.cli_id,
-                ),
-            )
-            _ = prune_expired_local_cli_observations(connection, now=seen_at, throttle=True)
+        _ = self._native_store_call(
+            "record_local_cli_observation",
+            {
+                "cli_id": identity.cli_id,
+                "identity_hash": identity.identity_hash,
+                "kind": identity.kind,
+                "name": identity.name,
+                "interpreter_name": identity.interpreter_name,
+                "example_label": identity.example_label,
+                "seen_at": seen_at,
+                "source_path": source_path,
+                "help_status": help_status,
+                "surface": surface,
+                "server_identity_hash": server_identity_hash,
+                "server_command": server_command,
+                "server_args_hash": server_args_hash,
+                "only_if_missing": only_if_missing,
+                "replayed_at": replayed_at,
+                "clock": utc_now_iso(),
+            },
+        )
 
     def list_local_cli_items(self) -> list[dict[str, object]]:
         with self._connect() as connection:

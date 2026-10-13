@@ -30,6 +30,7 @@ use crate::guard_store_cmd_privacy as privacy;
 use crate::guard_store_connect as connect;
 use crate::guard_store_db::{exec, query_all, query_one, text, StoreError, StoreResult};
 use crate::guard_store_inventory as inventory;
+use crate::guard_store_local_cli as local_cli;
 use crate::guard_store_native_review_consume as native_review_consume;
 use crate::guard_store_observed_mcp as observed_mcp;
 use crate::guard_store_outbox_binding::{
@@ -327,7 +328,11 @@ fn method_kind(method: &str) -> Option<Kind> {
         | "receipt_analytics"
         | "reconcile_receipt_events"
         | "maintain_storage"
-        | "managed_keyring_reconcile" => Kind::Write,
+        | "managed_keyring_reconcile"
+        | "record_local_cli_observation"
+        | "forget_local_cli_observation"
+        | "local_cli_replay_allowed"
+        | "prune_inactive_local_cli_observations" => Kind::Write,
         _ if connect::is_state_read(method) => Kind::Read,
         _ if connect::handles(method) => Kind::Write,
         _ => return None,
@@ -427,6 +432,10 @@ fn dispatch(
         "consume_native_review_approval" => native_review_consume::consume(connection, args),
         "workflow_capability_plan" => wfcap::plan(connection, args),
         "workflow_capability_commit" => wfcap::commit(connection, args),
+        "record_local_cli_observation" => local_cli::record_observation(connection, args),
+        "forget_local_cli_observation" => local_cli::forget_observation(connection, args),
+        "local_cli_replay_allowed" => local_cli::replay_allowed_op(connection, args),
+        "prune_inactive_local_cli_observations" => local_cli::prune_inactive(connection, args),
         "upsert_guard_session" => sessions::upsert_session(connection, args),
         "get_guard_session" => sessions::get_session(connection, args),
         "list_guard_sessions" => sessions::list_sessions(connection, args),

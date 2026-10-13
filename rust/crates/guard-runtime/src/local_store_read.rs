@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 
-const STORE_FILE_NAME: &str = "guard.db";
+pub(crate) const STORE_FILE_NAME: &str = "guard.db";
 /// Highest `local_cli_schema_migration` version this build reads.
 pub(crate) const SUPPORTED_SCHEMA_VERSION: i64 = 11;
 

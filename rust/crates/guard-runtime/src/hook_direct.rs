@@ -18,8 +18,9 @@
 //! contained execution as the daemon routes it, once the daemon has bound
 //! its sink command, and defers without one. While custom extension
 //! block rules exist, an allowed `PreToolUse` whose command launches a local
-//! CLI, or whose launch cannot be derived, also defers so the daemon reads
-//! that CLI's grant.
+//! CLI reads that CLI's grant as the daemon does and, when the grant blocks
+//! it, answers with the daemon's block; a launch or grant the daemon would
+//! block as unverified still defers.
 //!
 //! The daemon also records evidence after it answers. An answer is returned
 //! only once that evidence is queued for the daemon to drain.
@@ -354,7 +355,7 @@ fn answer(
         .map_err(|_| HookDirectDefer::EdgeFailed)?;
     // Removed again unless the answer that runs it is returned.
     let mut snapshot = None;
-    let answered = match event {
+    let mut answered = match event {
         PRE_TOOL_USE if cursor_harness => cursor::answer(&edge, recording_only)?,
         // Watch never pauses or repairs a call: the daemon records the
         // edge's non-blocking response for every verdict, as the drain does.
@@ -381,13 +382,22 @@ fn answer(
         POST_TOOL_USE => post_tool_answer(&edge)?,
         _ => prompt_answer(&edge, prompt_notice)?,
     };
-    if local_cli::defers_for_custom_rule(
-        &answered,
-        rule_payload.as_ref(),
-        &workspace,
-        &request_home,
-    ) {
-        return Err(HookDirectDefer::LocalCliRules);
+    let rule_check = local_cli::RuleCheck {
+        payload: rule_payload.as_ref(),
+        harness: &request.harness,
+        workspace: &workspace,
+        home_dir: &request_home,
+        guard_home: &guard_home,
+        recording_only,
+        own_shape: cursor_harness,
+    };
+    // The daemon's custom block replaces the edge response before it routes
+    // a sandbox requirement, so a block also drops any routed snapshot.
+    if let Some(blocked) = local_cli::custom_rule_response(&answered, &rule_check)
+        .map_err(|()| HookDirectDefer::LocalCliRules)?
+    {
+        answered["harness_response"] = blocked;
+        snapshot = None;
     }
     let evidence = json!({
         "event": event,

@@ -582,6 +582,7 @@ fn evaluate_single_command(
         ));
     }
     let reason = repo_create_reason::private_alternative_reason(&model)
+        .or_else(|| repo_create_reason::created_remote_push_reason(&model))
         .or_else(|| fanout_reads::whitespace_split_reason(&model))
         .or_else(|| compound_reason::unproven_steps_reason(&model, context))
         .or_else(|| worktree_add::outside_home_reason(&model, context));

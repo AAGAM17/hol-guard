@@ -67,7 +67,8 @@ fn projects_literal_output_redirects_and_quoted_cat_heredocs() {
             project(command, context()),
             Some(RedirectProjection {
                 command: projected.to_owned(),
-                writes_file
+                writes_file,
+                writes_outside_workspace: command.contains("/tmp/"),
             }),
             "{command}"
         );

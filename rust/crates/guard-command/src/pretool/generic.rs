@@ -395,7 +395,12 @@ fn evaluate_envelope(
                 execution_environment,
                 false,
             );
-            return redirect_projection::join(projected, raw, projection.writes_file);
+            return redirect_projection::join(
+                projected,
+                raw,
+                projection.writes_file,
+                projection.writes_outside_workspace,
+            );
         }
     }
     let task_metadata = event == "PreToolUse"

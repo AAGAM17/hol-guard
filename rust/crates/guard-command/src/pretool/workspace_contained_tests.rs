@@ -49,10 +49,10 @@ fn unproven_local_commands_run_in_the_workspace_sandbox_on_macos() {
     let ws = workspace("convert", true);
     for command in [
         "./todo.py add x",
-        "node -e 1",
         "python3 app.py",
         "mkdir -p src && touch src/a.js",
         "git add -A && git commit -m x",
+        "git commit -m init",
         "npm run build && git diff",
         "rm -rf dist node_modules",
         "rm -rf ./build/ && npm run build",
@@ -65,12 +65,8 @@ fn unproven_local_commands_run_in_the_workspace_sandbox_on_macos() {
         "rm -d build",
         "cat package.json > copy.json && head -3 copy.json",
         "find src -type f > files.txt; wc -l files.txt",
-        "npm run lint",
-        "npm -v",
         "yarn build",
         "pnpm run test:unit",
-        "bun run build",
-        "/Users/nobody/.nvm/versions/node/v25.2.1/bin/npm run build",
     ] {
         let got = reason("omp", command, &ws, true);
         if host() {
@@ -78,6 +74,49 @@ fn unproven_local_commands_run_in_the_workspace_sandbox_on_macos() {
         } else {
             assert_ne!(got, CONTAINED, "{command}");
         }
+    }
+}
+
+/// Narrower node profiles claim these commands before the general workspace
+/// profile; each is at least as tightly bounded, or needs no sandbox at all.
+#[test]
+fn node_commands_with_a_narrower_profile_keep_it_on_macos() {
+    let ws = workspace("node-narrow", true);
+    for (command, narrower) in [
+        (
+            "npm run lint",
+            "native_node_tool_readonly_containment_required",
+        ),
+        (
+            "bun run build",
+            "native_node_build_output_containment_required",
+        ),
+        (
+            "/Users/nobody/.nvm/versions/node/v25.2.1/bin/npm run build",
+            "native_node_build_output_containment_required",
+        ),
+        ("npm -v", "native_exact_safe_command"),
+    ] {
+        let got = reason("omp", command, &ws, true);
+        if host() {
+            assert_eq!(got, narrower, "{command}");
+        } else {
+            assert_ne!(got, CONTAINED, "{command}");
+        }
+    }
+}
+
+/// Inline `node -e` has its own, narrower read-only containment profile, which
+/// runs before the general workspace profile and bounds the command at least
+/// as tightly.
+#[test]
+fn inline_node_eval_keeps_its_read_only_containment_profile() {
+    let ws = workspace("node-eval", true);
+    let got = reason("omp", "node -e 1", &ws, true);
+    if host() {
+        assert_eq!(got, "native_node_eval_readonly_containment_required");
+    } else {
+        assert_ne!(got, CONTAINED);
     }
 }
 
@@ -127,6 +166,10 @@ fn commands_with_network_privilege_or_escape_stay_at_review() {
         "git fetch origin",
         "gh pr list",
         "curl https://example.com",
+        "wget -O out.html https://example.com && git add -A",
+        "ssh host ls",
+        "find . -delete",
+        "FOO=bar rm notes.txt",
         "npm install",
         "sudo ls",
         "chmod 777 x",

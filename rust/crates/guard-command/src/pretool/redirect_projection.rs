@@ -11,6 +11,9 @@ use guard_contracts::PreToolResultV1;
 pub(super) struct RedirectProjection {
     pub(super) command: String,
     pub(super) writes_file: bool,
+    /// A redirect target is an absolute path outside the session workspace
+    /// (the bounded temp-file exception). No workspace profile bounds it.
+    pub(super) writes_outside_workspace: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -34,6 +37,7 @@ pub(super) fn project(
     let mut saw_heredoc = false;
     let mut removed = false;
     let mut writes_file = false;
+    let mut writes_outside_workspace = false;
     let mut index = 0usize;
     while index < chars.len() {
         let current = chars[index];
@@ -74,7 +78,14 @@ pub(super) fn project(
                 continue;
             }
             '>' => {
-                index = remove_output_redirect(&chars, index, &mut out, context, &mut writes_file)?;
+                index = remove_output_redirect(
+                    &chars,
+                    index,
+                    &mut out,
+                    context,
+                    &mut writes_file,
+                    &mut writes_outside_workspace,
+                )?;
                 removed = true;
                 continue;
             }
@@ -129,6 +140,7 @@ pub(super) fn project(
     Some(RedirectProjection {
         command,
         writes_file,
+        writes_outside_workspace,
     })
 }
 
@@ -152,6 +164,7 @@ pub(super) fn join(
     mut projected: PreToolResultV1,
     raw: PreToolResultV1,
     writes_file: bool,
+    writes_outside_workspace: bool,
 ) -> PreToolResultV1 {
     // Stripping a benign descriptor copy must not replace an allow the raw
     // command already earned. A file write still goes through the floors below.
@@ -161,7 +174,12 @@ pub(super) fn join(
     {
         return raw;
     }
-    if writes_file && redirect_disqualifies_containment(&projected.reason_code) {
+    // A sandbox profile binds the workspace, not a temp-directory file the
+    // shell opens, so a sandbox requirement must not cover that write.
+    if writes_file
+        && (redirect_disqualifies_containment(&projected.reason_code)
+            || (writes_outside_workspace && projected.minimum_action == "sandbox-required"))
+    {
         projected.minimum_action = "review".into();
         projected.policy_action = "review".into();
         projected.decision = "deny".into();
@@ -212,6 +230,7 @@ fn remove_output_redirect(
     out: &mut String,
     context: super::super::PathContext<'_>,
     writes_file: &mut bool,
+    writes_outside_workspace: &mut bool,
 ) -> Option<usize> {
     let mut index = start + 1;
     let descriptor = trailing_word(out).to_owned();
@@ -265,6 +284,10 @@ fn remove_output_redirect(
         return None;
     }
     *writes_file = true;
+    *writes_outside_workspace |= target.starts_with('/')
+        && !context
+            .cwd
+            .is_some_and(|cwd| std::path::Path::new(&target).starts_with(cwd));
     out.push(' ');
     Some(index)
 }

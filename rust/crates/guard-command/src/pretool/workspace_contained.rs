@@ -54,6 +54,12 @@ const PRIVILEGE_DENY: &[&str] = &[
     "killall",
     "pkill",
 ];
+// Network clients. The sandbox has no network, so containing them would turn
+// a consent prompt into a silent failure; they stay at review.
+const NETWORK_DENY: &[&str] = &[
+    "curl", "wget", "nc", "ncat", "netcat", "socat", "telnet", "ssh", "scp", "sftp", "rsync",
+    "ftp", "tftp", "nmap", "aria2c", "http", "https",
+];
 // The sandbox cannot undo losing uncommitted work, so these stay at review.
 const UNRECOVERABLE_RULES: &[&str] = &[
     "command.git.hard-reset",
@@ -163,13 +169,21 @@ pub(crate) fn command_shape(
             return None;
         }
         let name = super::executable_basename(executable);
-        if PRIVILEGE_DENY.contains(&name) {
+        if PRIVILEGE_DENY.contains(&name) || NETWORK_DENY.contains(&name) {
             return None;
         }
         if name == "git" && git_metadata::writes_denied_metadata(&segment.arguments) {
             return None;
         }
-        if name == "git" && segment.arguments.iter().any(|argument| argument == "init") {
+        // `init` as a later operand of another subcommand (`git commit -m init`)
+        // is data. Only a leading option could still hide the subcommand.
+        let init_candidate = name == "git"
+            && segment.arguments.iter().any(|argument| argument == "init")
+            && segment
+                .arguments
+                .first()
+                .is_none_or(|first| first == "init" || first.starts_with('-'));
+        if init_candidate {
             if bootstrap.is_some() || segment.arguments.first().map(String::as_str) != Some("init")
             {
                 return None;
@@ -243,8 +257,33 @@ pub(crate) fn split_at_init(
     Some((prefix, rest.trim().to_owned()))
 }
 
+/// The destructive-shell rule always carries `matcher-failure` for a plain
+/// `rm`/`rmdir`, because the rule cannot prove what a delete removes. The
+/// sandbox bounds that effect (workspace-only writes, no home) and
+/// `destroys_workspace` refuses workspace-wide targets, so that uncertainty
+/// alone does not keep a delete at review. Any other uncertainty, other
+/// executable, or an environment prefix on the segment still does.
+fn bounded_delete_uncertainty(
+    observation: &guard_contracts::NativeCommandObservationV1,
+    model: &CanonicalCommandV1,
+) -> bool {
+    observation.rule_id == SHELL_DESTRUCTION
+        && observation.uncertainty_reasons == ["matcher-failure"]
+        && !observation.effective_segment_indexes.is_empty()
+        && observation.effective_segment_indexes.iter().all(|index| {
+            model.segments.get(*index).is_some_and(|segment| {
+                segment.environment_names.is_empty()
+                    && segment.wrapper_chain.is_empty()
+                    && segment.executable.as_deref().is_some_and(|value| {
+                        matches!(super::executable_basename(value), "rm" | "rmdir")
+                    })
+            })
+        })
+}
+
 fn extensions_contain(
     result: &PreToolResultV1,
+    model: &CanonicalCommandV1,
     controls: &CompiledNativeCommandControls,
     package: bool,
 ) -> bool {
@@ -253,7 +292,12 @@ fn extensions_contain(
     let Some(extensions) = result.command_extensions.as_ref() else {
         return false;
     };
-    extensions.binding.uncertainty_count == 0
+    let bounded_deletes = extensions
+        .observations
+        .iter()
+        .filter(|observation| bounded_delete_uncertainty(observation, model))
+        .count();
+    extensions.binding.uncertainty_count == bounded_deletes
         && extensions.evaluation_error.is_none()
         // The Node package-firewall permission marks package-manager use, not
         // a proven risk. A disabled one already blocked before this point.
@@ -264,7 +308,8 @@ fn extensions_contain(
                 && observation.uncertainty_reasons.is_empty()
         })
         && extensions.observations.iter().all(|observation| {
-            observation.uncertainty_reasons.is_empty()
+            (observation.uncertainty_reasons.is_empty()
+                || bounded_delete_uncertainty(observation, model))
                 && !UNRECOVERABLE_RULES.contains(&observation.rule_id.as_str())
                 && !REMOTE_RULES.contains(&observation.rule_id.as_str())
                 && controls
@@ -421,7 +466,7 @@ pub(super) fn convert(
     let (Some(model), Some(controls), Some(cwd)) = (model, controls, context.cwd) else {
         return;
     };
-    if !extensions_contain(result, controls, package)
+    if !extensions_contain(result, model, controls, package)
         || (package && !package::local_package_work(model))
     {
         return;

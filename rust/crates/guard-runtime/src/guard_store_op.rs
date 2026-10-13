@@ -19,6 +19,7 @@ use rusqlite::{Connection, OpenFlags};
 use serde_json::{json, Value};
 
 use super::context_digest_json::write_canonical_json_with_limit;
+use crate::guard_store_advisory_cache as advisory_cache;
 use crate::guard_store_args::Args;
 use crate::guard_store_clients as clients;
 use crate::guard_store_cmd_activity as activity;
@@ -280,6 +281,7 @@ fn method_kind(method: &str) -> Option<Kind> {
         | "read_local_cli_grant"
         | "read_local_cli_command_catalog"
         | "read_local_cli_command_states"
+        | "list_cached_advisories"
         | "policy_source_contexts" => Kind::Read,
         "list_command_activity_page"
         | "command_activity_analytics"
@@ -337,7 +339,8 @@ fn method_kind(method: &str) -> Option<Kind> {
         | "record_local_cli_observation"
         | "forget_local_cli_observation"
         | "local_cli_replay_allowed"
-        | "prune_inactive_local_cli_observations" => Kind::Write,
+        | "prune_inactive_local_cli_observations"
+        | "cache_advisories" => Kind::Write,
         "find_local_mcp_observation" => Kind::Read,
         "ensure_local_mcp_observation" => Kind::Write,
         _ if connect::is_state_read(method) => Kind::Read,
@@ -441,6 +444,8 @@ fn dispatch(
             local_cli_grants::read_command_catalog(connection, args)
         }
         "read_local_cli_command_states" => local_cli_grants::read_command_states(connection, args),
+        "cache_advisories" => advisory_cache::cache(connection, args),
+        "list_cached_advisories" => advisory_cache::list(connection, args),
         "consume_native_review_approval" => native_review_consume::consume(connection, args),
         "workflow_capability_plan" => wfcap::plan(connection, args),
         "workflow_capability_commit" => wfcap::commit(connection, args),

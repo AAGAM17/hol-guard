@@ -70,6 +70,10 @@ name = "pretool_git_push"
 path = "tests/pretool_git_push.rs"
 
 [[test]]
+name = "pretool_git_publish_chain"
+path = "tests/pretool_git_publish_chain.rs"
+
+[[test]]
 name = "pretool_git_push_unregistered"
 path = "tests/pretool_git_push_unregistered.rs"
 

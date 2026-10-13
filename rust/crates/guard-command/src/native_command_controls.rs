@@ -448,30 +448,9 @@ impl CompiledNativeCommandControls {
             }
             covered.extend(observation.effective_segment_indexes.iter().copied());
         }
-        // An enabled GitHub permission-only owner (a proven read or routine
-        // review-thread resolution) runs last so it never hides an ungranted rule.
-        // A permission the user has not set keeps its packaged baseline, so an
-        // `allow` baseline counts until the user disables it. A segment is
-        // covered only when every GitHub permission it needs is enabled, so
-        // `gh auth status` needs both its local and remote reads.
-        let enabled = |id: &str| {
-            self.explicitly_enabled_permissions.contains(id)
-                || (!self.blocked_permissions.contains(id) && baseline_allows(&self.program, id))
-        };
-        let (mut granted, mut withheld) = (BTreeSet::new(), BTreeSet::new());
-        for item in &batch.permission_observations {
-            let id = &item.permission_id;
-            if item.mcp_tool.is_some() || !id.starts_with("command.github.permission.") {
-                continue;
-            }
-            let target = if item.uncertainty_reasons.is_empty() && enabled(id.as_str()) {
-                &mut granted
-            } else {
-                &mut withheld
-            };
-            target.extend(item.matcher_evidence.iter().map(|e| e.segment_index));
-        }
-        covered.extend(granted.difference(&withheld).copied());
+        // GitHub permission-only owners run last so they never hide an
+        // ungranted rule.
+        covered.extend(self.github_granted_segments(&batch.permission_observations));
         // Delegated package-firewall ownership is not execution consent. Only
         // verified rule observations or the native benign proof can cover a
         // segment; an extra unclassified command retains its own review.
@@ -487,7 +466,7 @@ pub(crate) use delegated::normalized_tool;
 mod floor;
 #[path = "native_command_unmodeled.rs"]
 mod unmodeled;
-use floor::{add_authority_repair_hint, baseline_allows, rank, rule_floor, strengthen};
+use floor::{add_authority_repair_hint, rank, rule_floor, strengthen};
 
 #[cfg(test)]
 #[path = "native_command_controls_tests.rs"]

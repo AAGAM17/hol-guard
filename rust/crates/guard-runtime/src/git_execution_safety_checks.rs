@@ -18,7 +18,7 @@ use crate::git_execution_safety_config::{
     safe_github_https_remote_url, status_arguments_are_read_only, Environment, GitConfig,
     HelperShape,
 };
-use crate::git_execution_safety_probe::{ProbeOutput, Prober};
+use crate::git_execution_safety_probe::{pushed_branch, ProbeOutput, Prober};
 
 pub(crate) struct Verdict {
     pub(crate) allowed: bool,
@@ -337,19 +337,14 @@ impl Context<'_> {
                 .filter(ProbeOutput::success)
                 .and_then(|output| output.text().map(|text| text.trim().to_owned()))
         };
-        // `git push origin HEAD` pushes the checked-out branch to the same
-        // name, so it is the same push as naming that branch.
         let Some(current) = output(&["symbolic-ref", "--quiet", "--short", "HEAD"]) else {
             return false;
         };
-        let branch = if branch == "HEAD" {
-            current.as_str()
-        } else {
-            branch
+        let reference = self.request.reference.as_deref();
+        let Some(branch) = pushed_branch(&prober, &current, branch, reference) else {
+            return false;
         };
-        if current != branch
-            || output(&["check-ref-format", "--branch", branch]).as_deref() != Some(branch)
-        {
+        if output(&["check-ref-format", "--branch", branch]).as_deref() != Some(branch) {
             return false;
         }
         let scoped = |arguments: &[&str]| -> Option<GitConfig> {

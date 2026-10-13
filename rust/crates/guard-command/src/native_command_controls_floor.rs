@@ -1,4 +1,6 @@
-use guard_contracts::PreToolResultV1;
+use std::collections::BTreeSet;
+
+use guard_contracts::{NativeCommandPermissionObservationV1, PreToolResultV1};
 
 use crate::native_command_program::{NativeCommandProgram, ProgramRule};
 
@@ -91,4 +93,36 @@ pub(super) fn add_authority_repair_hint(
     result.reason.push_str(
         " Run `hol-guard command controls recover-authority` in a terminal to restore protection.",
     );
+}
+
+impl super::CompiledNativeCommandControls {
+    /// Segments an enabled GitHub permission-only owner (a proven read, a
+    /// static pull-request proposal or a routine review-thread resolution)
+    /// covers. A permission the user has not set keeps its packaged baseline,
+    /// so an `allow` baseline counts until the user disables it. A segment is
+    /// covered only when every GitHub permission it needs is enabled, so
+    /// `gh auth status` needs both its local and remote reads.
+    pub(crate) fn github_granted_segments(
+        &self,
+        observations: &[NativeCommandPermissionObservationV1],
+    ) -> BTreeSet<usize> {
+        let enabled = |id: &str| {
+            self.explicitly_enabled_permissions.contains(id)
+                || (!self.blocked_permissions.contains(id) && baseline_allows(&self.program, id))
+        };
+        let (mut granted, mut withheld) = (BTreeSet::new(), BTreeSet::new());
+        for item in observations {
+            let id = &item.permission_id;
+            if item.mcp_tool.is_some() || !id.starts_with("command.github.permission.") {
+                continue;
+            }
+            let target = if item.uncertainty_reasons.is_empty() && enabled(id.as_str()) {
+                &mut granted
+            } else {
+                &mut withheld
+            };
+            target.extend(item.matcher_evidence.iter().map(|e| e.segment_index));
+        }
+        granted.difference(&withheld).copied().collect()
+    }
 }

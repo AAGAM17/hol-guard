@@ -187,7 +187,11 @@ pub(super) fn verified_worktree_cwd_context(
     Some(WorktreeCwdProof { cd_index, cwd })
 }
 
-fn separator_between(model: &CanonicalCommandV1, left: usize, right: usize) -> Option<String> {
+pub(super) fn separator_between(
+    model: &CanonicalCommandV1,
+    left: usize,
+    right: usize,
+) -> Option<String> {
     let left_segment = model.segments.get(left)?;
     let right_segment = model.segments.get(right)?;
     let length = right_segment

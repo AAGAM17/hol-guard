@@ -2,6 +2,8 @@
 mod command_sequences;
 #[path = "jq_filter.rs"]
 mod jq_filter;
+#[path = "read_globs.rs"]
+mod read_globs;
 pub(super) use super::directory_targets::verified_cwd_target;
 pub(super) use super::read_paths::{
     bounded_file_read_target, bounded_omp_directory_read_target, bounded_omp_file_read_target,
@@ -69,6 +71,7 @@ pub(super) fn command_read_target(
 ) -> bool {
     if context.home_dir.is_some() || context.cwd.is_some() {
         bounded_read_target(value, context.home_dir, context.cwd, allow_directory)
+            || (!allow_directory && read_globs::bounded_glob_file_read_target(value, context))
             || (!allow_directory
                 && super::chain_temporary::absent_temporary_read_target(
                     value,

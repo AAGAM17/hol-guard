@@ -107,6 +107,7 @@ pub mod pretool_recursive_copies;
 pub mod pretool_recursive_file_search;
 pub mod pretool_rust_version_probe;
 pub mod pretool_search_data;
+pub mod pretool_sibling_glob_reads;
 pub mod pretool_sibling_read_filters;
 pub mod pretool_skill_listings;
 pub mod pretool_skill_roots;

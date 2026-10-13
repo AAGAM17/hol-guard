@@ -286,6 +286,7 @@ def build_fixture(root: Path) -> BenignFixture:
     # Private user-owned temp dir (mode 0700, as mktemp -d creates) with one existing file.
     private_tmp = Path(tempfile.mkdtemp(prefix="tmp.", dir=_system_tmp())).resolve()
     _write(private_tmp / "notes.txt", "first draft\n")
+    _write(private_tmp / "resume-phase1.mjs", "console.log('resume');\n")
     # Workspace as a linked worktree under the system temp area whose registered siblings are outside cwd.
     tmp_worktree = Path(tempfile.mkdtemp(prefix="wt.", dir=_system_tmp())).resolve() / "workspace"
     _git(parent, "worktree", "add", "--quiet", "-b", "tmp-feature", str(tmp_worktree), home=home)
@@ -315,6 +316,12 @@ def build_fixture(root: Path) -> BenignFixture:
         _write(repository / ".github" / "workflows" / "ci.yml", "name: ci\n")
         _write(repository / "src" / "index.ts", f"export const name = '{name}';\n")
         _write(repository / "README.md", f"# {name}\n")
+        if name == "service-api":
+            _write(repository / "contracts" / "commands.json", '{"commands": []}\n')
+            _write(repository / "validation" / "schema.json", '{"type": "object"}\n')
+            _write(repository / "rust" / "crates" / "catalog" / "src" / "lib.rs", "pub fn catalog_read() {}\n")
+            # A real target, so the sibling `.env` negative controls prove a refusal.
+            _write(repository / ".env", "TOKEN=synthetic-not-a-secret\n")
         _git(repository, "add", "-A", home=home)
         _git(repository, "commit", "--quiet", "-m", f"{name} base", home=home)
     _session_worktree(org, home)

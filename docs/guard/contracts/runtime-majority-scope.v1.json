@@ -1627,6 +1627,18 @@
         "evidence": "commands_router maps the \"install\", \"update\" and \"init\" subcommand names to these three handlers by string; no hook, run, protect or MCP proxy route dispatches to them. `_migrate_legacy_macos_secrets` is called only from the update and install handlers. The report validates that no retained symbol references them. Marked root_function because the module is a dispatcher root."
       },
       {
+        "id": "guard-mcp-serve-dispatch",
+        "category": "control_plane",
+        "path": "src/codex_plugin_scanner/guard/cli/commands_dispatch_local.py",
+        "root_function": true,
+        "symbols": [
+          "_run_guard_mcp_command"
+        ],
+        "entry_points": [],
+        "reason": "Dispatch body of `guard mcp serve`, the opt-in stdio MCP server that exposes Guard status, search and policy authoring tools to an MCP client.",
+        "evidence": "commands_router maps the \"mcp\" subcommand name to this handler by string, and it lazily imports guard.mcp.server only inside its body. No adapter, installer or harness config registers `guard mcp serve`, and no hook, run, protect or MCP proxy route dispatches to it; it runs only when a user configures an MCP client to launch it. The report validates that no retained symbol references it. Marked root_function because the module is a dispatcher root."
+      },
+      {
         "id": "store2-oauth-connect-lifecycle",
         "category": "async_control_plane",
         "path": "src/codex_plugin_scanner/guard/store_oauth.py",

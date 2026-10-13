@@ -346,8 +346,15 @@ class NativePolicySnapshotDirectLaneAck:
             return None
         client = getattr(self, "_client_request", None)
         if client is None:
-            from .native_resident_client import native_resident_client_request
+            from .native_resident_client import native_resident_client_ready, native_resident_client_request
 
+            # The drain polls every 250 ms with a short deadline. A cold start
+            # that misses it is aborted and still spends a restart, so a
+            # Windows resident that starts slower than the poll deadline trips
+            # the restart circuit before the daemon is up. Leave starting the
+            # resident to callers that budget for a spawn.
+            if not native_resident_client_ready(Path(path), self.guard_home):
+                return None
             client = native_resident_client_request
         return Path(path), client
 

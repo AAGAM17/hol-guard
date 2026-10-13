@@ -204,6 +204,9 @@ class DirectHookEvidenceDrain:
         payload = json.dumps(
             {
                 "operation": "hook_direct_evidence_drain",
+                # Without a budget the resident client falls back to 750 ms,
+                # shorter than this request's own deadline.
+                "deadline_budget_ms": int(_DRAIN_TIMEOUT_SECONDS * 1_000),
                 "request": request,
             },
             separators=(",", ":"),

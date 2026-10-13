@@ -202,6 +202,7 @@ def test_drain_pulls_pages_until_the_queue_is_empty(tmp_path: Path, observed: li
     assert requests[0]["executable"] == tmp_path / "guard-runtime"
     assert json.loads(requests[0]["payload"]) == {  # pyright: ignore[reportArgumentType]
         "operation": "hook_direct_evidence_drain",
+        "deadline_budget_ms": 2_000,
         "request": {"guard_home": str(tmp_path)},
     }
     assert json.loads(requests[1]["payload"])["request"]["ack_through"] == 2  # pyright: ignore[reportArgumentType]

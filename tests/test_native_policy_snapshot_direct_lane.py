@@ -294,6 +294,33 @@ def test_evidence_transport_needs_a_resident_with_the_drain(tmp_path: Path) -> N
     assert publisher.direct_evidence_transport() == (tmp_path / "guard-runtime", client)
 
 
+def test_evidence_transport_leaves_a_cold_resident_to_callers_that_budget_a_spawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from codex_plugin_scanner.guard import native_resident_client
+
+    publisher = _publisher(tmp_path)
+    publisher._last_runtime_status = SimpleNamespace(  # pyright: ignore[reportAttributeAccessIssue]
+        identity=SimpleNamespace(path=str(tmp_path / "guard-runtime")),
+        capabilities=SimpleNamespace(features=("hook-direct-v1", DIRECT_HOOK_EVIDENCE_FEATURE)),
+    )
+    ready: list[tuple[Path, Path]] = []
+    pooled = False
+
+    def client_ready(executable: Path, guard_home: Path) -> bool:
+        ready.append((executable, guard_home))
+        return pooled
+
+    monkeypatch.setattr(native_resident_client, "native_resident_client_ready", client_ready)
+    assert publisher.direct_evidence_transport() is None
+    pooled = True
+    assert publisher.direct_evidence_transport() == (
+        tmp_path / "guard-runtime",
+        native_resident_client.native_resident_client_request,
+    )
+    assert ready == [(tmp_path / "guard-runtime", tmp_path)] * 2
+
+
 def test_the_lane_binds_a_home_only_when_the_daemon_gives_hooks_its_own(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

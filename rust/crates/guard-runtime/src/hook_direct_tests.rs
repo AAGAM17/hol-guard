@@ -1014,5 +1014,8 @@ fn a_claude_code_prompt_without_a_notice_is_answered_in_either_posture() {
 #[path = "hook_direct_lifecycle_tests.rs"]
 mod lifecycle;
 
+#[path = "hook_direct_pi_tests.rs"]
+mod pi_lane;
+
 #[path = "hook_direct_cursor_tests.rs"]
 mod cursor_observer;

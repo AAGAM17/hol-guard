@@ -1642,6 +1642,7 @@ class _GuardDaemonHandler(
         )
 
     def _handle_runtime_hook(self, payload: dict[str, object], query: str, *, default_harness: str) -> None:
+        from .hook_direct_pi_transport import pi_direct_answer
         from .hook_request_parsing import (
             HookPayloadReferenceError,
             hook_payload_reference_size,
@@ -1662,6 +1663,7 @@ class _GuardDaemonHandler(
         )
         payload = {key: value for key, value in payload.items() if key != "hook_env"}
         daemon_server = self._daemon_server()
+        paths_validated = False
         try:
             home_dir = self._validated_hook_directory_string(
                 "home",
@@ -1680,6 +1682,7 @@ class _GuardDaemonHandler(
                 workspace_candidate,
                 roots=self._hook_safe_roots(),
             )
+            paths_validated = True
         except _HookPathValidationError as error:
             # The Rust edge still receives the complete raw payload. Use
             # daemon-owned metadata when an optional caller context is
@@ -1689,6 +1692,20 @@ class _GuardDaemonHandler(
             home_dir = str(daemon_server.home_dir)
             guard_home = str(daemon_server.store.guard_home)
             workspace = None
+
+        if paths_validated:
+            # Oh My Pi has no bridge to ask the resident first, so ask it here.
+            direct_response = pi_direct_answer(
+                getattr(daemon_server, "hook_worker", None),
+                default_harness=default_harness,
+                params=params,
+                payload=payload,
+                home_dir=home_dir,
+                deadline=hook_deadline.expires_at,
+            )
+            if direct_response is not None:
+                self._write_json(direct_response)
+                return
 
         if not prepare_native_hook_policy(
             self, daemon_server, payload, params, default_harness, workspace, hook_deadline.expires_at

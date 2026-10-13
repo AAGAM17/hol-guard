@@ -42,7 +42,7 @@ use crate::policy_store::PolicySnapshotStore;
 /// The daemon's `reason_code` when the edge does not review an event.
 const UNAVAILABLE_REASON_CODE: &str = "native_hook_event_unavailable";
 /// `_DECISION_HARNESSES` among the harnesses the resident answers.
-const DECISION_HARNESSES: [&str; 2] = ["hermes", "openclaw"];
+const DECISION_HARNESSES: [&str; 4] = ["hermes", "openclaw", "pi", "omp"];
 /// Events `fail_closed_response` answers with a deny, or the daemon handles
 /// itself.
 const DAEMON_EVENTS: [&str; 3] = [

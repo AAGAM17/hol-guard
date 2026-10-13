@@ -1804,6 +1804,9 @@ class TestGuardSurfaceServer:
         monkeypatch,
     ) -> None:
         monkeypatch.setattr(daemon_manager_module, "_guard_daemon_process_inventory_for_guard_home", lambda _home: [])
+        # This measures the worker scheduler, so keep both Pi hooks off the
+        # resident's direct lane, which answers before admission.
+        monkeypatch.setenv("HOL_GUARD_PI_DIRECT_HOOK", "0")
         store = GuardStore(tmp_path / "guard-home")
         workspace_dir = tmp_path / "workspace"
         workspace_dir.mkdir()

@@ -8,8 +8,9 @@
 //! symbolic links (`-L`) is not admitted.
 //!
 //! `diff` reads the content of both operands. Two files each need the
-//! ordinary read proof. A directory operand makes `diff` read the files inside
-//! it, so both operands then need the recursive content-search screen.
+//! ordinary read proof, or the absent chain-local temporary file proof. A
+//! directory operand makes `diff` read the files inside it, so both operands
+//! then need the recursive content-search screen.
 use super::{safe_reads, search};
 
 const MAX_OPERANDS: usize = 16;
@@ -120,8 +121,15 @@ pub(super) fn safe_diff_arguments(arguments: &[String], context: super::PathCont
     if *left == "-" || *right == "-" {
         return false;
     }
+    // A chain may diff a temporary copy it makes first, which is absent when
+    // the hook runs; reading it can only report a missing file.
     [left, right].iter().all(|operand| {
         safe_reads::bounded_read_target(operand, context.home_dir, context.cwd, false)
+            || super::chain_temporary::absent_temporary_read_target(
+                operand,
+                context.home_dir,
+                context.cwd,
+            )
     }) || [left, right]
         .iter()
         .all(|operand| search::safe_recursive_search_target(operand, context))

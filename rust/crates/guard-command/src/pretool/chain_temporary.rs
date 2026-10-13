@@ -86,9 +86,12 @@ pub(super) fn absent_reads_bounded(
         })
 }
 
-/// `cp` shares a chain only to copy a staged temporary file to a relative
-/// workspace path, and only beside plain peers. The destination still passes
-/// every check a single `cp` gets.
+/// `cp` shares a chain in two shapes, both only beside plain peers: a staged
+/// temporary file copied to a relative workspace path, or a readable file
+/// copied into a chain-local temporary file that later peers print or compare.
+/// Reading such a copy discloses nothing a read of the source would not, and
+/// `safe_copy_arguments` still holds the source to the ordinary read proof.
+/// The destination still passes every check a single `cp` gets.
 pub(super) fn copy_segments_allowed(
     model: &CanonicalCommandV1,
     segment: &crate::CommandSegmentV1,
@@ -102,8 +105,10 @@ pub(super) fn copy_segments_allowed(
         [separator, source, destination] if separator == "--" => (source, destination),
         _ => return false,
     };
-    peers_only(model)
-        && !destination.starts_with(['/', '\\', '~', '-'])
+    let into_workspace = !destination.starts_with(['/', '\\', '~', '-'])
         && !destination.split(['/', '\\']).any(|part| part == "..")
-        && temporary_file_target(source, context.home_dir, context.cwd)
+        && temporary_file_target(source, context.home_dir, context.cwd);
+    let into_temporary = !source.starts_with('-')
+        && temporary_file_target(destination, context.home_dir, context.cwd);
+    peers_only(model) && (into_workspace || into_temporary)
 }

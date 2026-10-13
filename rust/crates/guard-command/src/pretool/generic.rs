@@ -6,6 +6,8 @@ use evaluate::evaluate_signals;
 pub(crate) mod chain_literals;
 #[path = "generic_command_rewrite.rs"]
 mod command_rewrite;
+#[path = "contained_publish.rs"]
+pub(crate) mod contained_publish;
 #[path = "env_prefix_projection.rs"]
 mod env_prefix_projection;
 #[path = "generic_extract.rs"]
@@ -165,7 +167,8 @@ pub fn evaluate_pre_tool_envelope_with_execution_context(
                     true,
                 )
             };
-            chain_literals::rejudge(evaluate(payload), payload, context, evaluate)
+            let judged = chain_literals::rejudge(evaluate(payload), payload, context, evaluate);
+            contained_publish::rejudge(judged, payload, context, evaluate)
         })
     });
     // Name what kept the extension controls from evaluating the command, a

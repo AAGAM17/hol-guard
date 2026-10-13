@@ -113,7 +113,7 @@ pub(crate) struct Shape {
 
 /// Builtins that change the shell's own state. A segment before `git init`
 /// runs in a separate shell, so its effect would not reach the rest.
-const SHELL_STATE: &[&str] = &[
+pub(super) const SHELL_STATE: &[&str] = &[
     "cd", "pushd", "popd", "export", "unset", "set", "shopt", "source", ".", "alias", "unalias",
     "declare", "typeset", "local", "readonly", "eval", "exec", "umask", "trap", "ulimit", "hash",
     "shift", "read", "getopts", "builtin", "enable", "exit", "return", "function",

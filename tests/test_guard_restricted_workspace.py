@@ -49,6 +49,7 @@ def plan(workspace: Path, text: str = COMMAND, **changes: object) -> dict[str, o
         "sandbox_path": "/usr/bin:/bin",
         "bootstrap_git": None,
         "prefix_command": None,
+        "native_suffix": None,
         "denied_capabilities": [],
     }
     return value | changes

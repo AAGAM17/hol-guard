@@ -313,6 +313,10 @@ fn cd_sequences_prove_reads_in_both_directories() {
     let allowed = [
         format!("cd {sibling} && ls src; ls tests"),
         format!("cd {sibling} && ls src; ls tests; ls"),
+        format!("cd {sibling} && ls src; ls tests;"),
+        format!("cd {sibling} && ls; node --version"),
+        format!("cd {sibling} && node -v; ls"),
+        format!("cd {sibling} && cat package.json && python3 --version"),
     ];
     let reviewed = [
         format!("cd {sibling} && ls src; cat .env"),
@@ -320,6 +324,11 @@ fn cd_sequences_prove_reads_in_both_directories() {
         format!("cd {sibling}; ls src"),
         format!("cd {sibling} || ls src; ls tests"),
         format!("cd {ssh} && ls; ls"),
+        format!("cd {sibling} && ls; node -e 1"),
+        format!("cd {sibling} && ls; node src/index.ts"),
+        format!("cd {sibling} && ls; pnpm --version"),
+        format!("cd {sibling} && ls; yarn --version"),
+        format!("cd {sibling} && ls; ;"),
     ];
     let allowed: Vec<&str> = allowed.iter().map(String::as_str).collect();
     let reviewed: Vec<&str> = reviewed.iter().map(String::as_str).collect();

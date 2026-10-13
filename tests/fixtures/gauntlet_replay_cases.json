@@ -9,6 +9,7 @@
     "pytest-quiet@pi": "native_command_review_required",
     "python-run-test-script@cursor": "native_command_review_required",
     "session-bash-workspace-script-tail@pi": "native_command_review_required",
+    "session-bun-e-fs-read@pi": "native_command_review_required",
     "session-bun-x-vite-build-tail@pi": "native_package_review",
     "session-cd-vite-build-tail@pi": "native_command_review_required",
     "session-chmod-workspace-script@pi": "native_command_review_required",

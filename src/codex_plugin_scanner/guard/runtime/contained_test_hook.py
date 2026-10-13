@@ -339,7 +339,9 @@ def run_authorized_contained_test(
         return exit_code
     if inline_plan is not None:
         profile = inline_plan.profile_version
-        if profile == "node-eval-readonly-v1":
+        if profile == "node-eval-readonly-v1" and Path(command[0]).name == "bun":
+            reason = "native_bun_eval_readonly_containment_required"
+        elif profile == "node-eval-readonly-v1":
             reason = "native_node_eval_readonly_containment_required"
         else:
             reason = "native_python_eval_readonly_containment_required"

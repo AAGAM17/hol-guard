@@ -308,10 +308,10 @@ fn extensions_contain(
     };
     extensions.binding.uncertainty_count == removal::accepted_uncertainty(extensions, model)
         && extensions.evaluation_error.is_none()
-        // The Node package-firewall permission marks package-manager use, not
-        // a proven risk. A disabled one already blocked before this point.
+        // The Node package-firewall permission marks package-manager use (or a
+        // Bun image evaluating code), not a proven risk; a disabled one blocked.
         && extensions.permission_observations.iter().all(|observation| {
-            package
+            (package || super::restricted_tests::bun_inline_eval(model))
                 && observation.mcp_tool.is_none()
                 && observation.extension_id == package::NODE_PACKAGE_EXTENSION
                 && observation.uncertainty_reasons.is_empty()

@@ -4912,6 +4912,70 @@
       "expect": "allow"
     },
     {
+      "id": "session-bun-e-fs-read",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "bun -e \"const fs = require('fs'); const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')); console.log(pkg.name, fs.readdirSync('.').length, fs.existsSync('bun.lock'), fs.statSync('package.json').size)\""
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-bun-e-bun-write",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "bun -e \"await Bun.write('out.txt', 'data')\""
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-bun-e-fetch",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "bun -e \"console.log(await (await fetch('https://example.com')).text())\""
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-bun-e-bun-spawn",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "bun -e \"Bun.spawn(['sh', '-c', 'id'])\""
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
       "id": "session-python-unittest",
       "fix_area": "shell",
       "harnesses": [

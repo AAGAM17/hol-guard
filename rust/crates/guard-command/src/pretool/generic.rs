@@ -664,14 +664,9 @@ fn evaluate_envelope(
                     .permission_observations
                     .iter()
                     .all(|observation| {
-                        matches!(
+                        super::restricted_tests::package_permission_contained(
                             contained_test_reason,
-                            Some(
-                                "native_vitest_readonly_containment_required"
-                                    | "native_package_test_readonly_containment_required"
-                                    | "native_node_tool_readonly_containment_required"
-                                    | "native_node_build_output_containment_required"
-                            )
+                            command_model,
                         ) && observation.extension_id == "command.package.node"
                             && observation.permission_id
                                 == "command.package.node.permission.package-protection"

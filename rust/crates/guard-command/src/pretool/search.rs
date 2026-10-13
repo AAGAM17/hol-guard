@@ -469,6 +469,16 @@ fn safe_rg_arguments_inner(
             if stdin_only {
                 return false;
             }
+            // A broad search of only parent directories traverses unrelated
+            // sibling projects. Named sibling paths still use canonical
+            // provenance checks, but `rg pattern ../` remains at review.
+            let directories: Vec<_> = argument
+                .split('/')
+                .filter(|part| !part.is_empty() && *part != ".")
+                .collect();
+            if !directories.is_empty() && directories.iter().all(|part| *part == "..") {
+                return false;
+            }
             // A shell glob that lexically could reach a hidden or credential
             // path is still proven when every expansion is an ordinary file,
             // or a directory below the cwd whose whole tree is ordinary.

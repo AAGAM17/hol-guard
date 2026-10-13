@@ -121,7 +121,11 @@ fn bounded_read_target_with_brackets(
     {
         return false;
     }
-    if path.split(['/', '\\']).any(|part| part == "..") {
+    // The kernel resolves `..` against the physical working directory, which
+    // is what canonicalizing the cwd-joined spelling yields. Only that proof
+    // admits a parent component; every lexical fallback still rejects it.
+    let parent_component = path.split(['/', '\\']).any(|part| part == "..");
+    if parent_component && (has_brackets || path.starts_with('~') || rooted(value.trim())) {
         return false;
     }
     if path.starts_with('~') && expand_home_read_path(path, home_dir).is_none() {
@@ -137,13 +141,13 @@ fn bounded_read_target_with_brackets(
     {
         std::path::Path::new(&root).join(expanded_path)
     } else {
-        return safe_read_target(path);
+        return !parent_component && safe_read_target(path);
     };
     if let Ok(canonical) = std::fs::canonicalize(&candidate) {
         return (canonical.is_file() || (allow_directory && canonical.is_dir()))
             && resolved_path_allowed_for_operation(&canonical, home_dir, cwd, false, true);
     }
-    if has_brackets {
+    if has_brackets || parent_component {
         return false;
     }
     // An unresolvable absolute or `~` target cannot prove a bounded file;
@@ -152,6 +156,17 @@ fn bounded_read_target_with_brackets(
         return false;
     }
     safe_read_target(path)
+}
+
+/// A drive, verbatim, or root-relative spelling does not resolve against the
+/// working directory.
+fn rooted(value: &str) -> bool {
+    std::path::Path::new(value).components().any(|component| {
+        matches!(
+            component,
+            std::path::Component::Prefix(_) | std::path::Component::RootDir
+        )
+    })
 }
 
 pub(super) fn verified_path_context(home_dir: Option<&str>, cwd: Option<&str>) -> bool {

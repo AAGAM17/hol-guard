@@ -424,3 +424,64 @@ fn omp_selectors_accept_verified_tmp_alias_but_reject_child_symlinks() {
 
     let _ = std::fs::remove_dir_all(root);
 }
+
+fn shell_action(
+    harness: &str,
+    command: &str,
+    home: &std::path::Path,
+    cwd: &std::path::Path,
+) -> String {
+    super::super::evaluate_pre_tool_envelope_with_context(
+        harness,
+        "PreToolUse",
+        &serde_json::json!({"tool_name": "bash", "tool_input": {"command": command}}),
+        None,
+        None,
+        home.to_str(),
+        cwd.to_str(),
+    )
+    .minimum_action
+}
+
+/// `..` resolves against the physical working directory, so a listing of a
+/// sibling checkout is the same read as its absolute spelling. The resolved
+/// target still clears every sensitive screen.
+#[test]
+fn relative_parent_listings_follow_their_resolved_target() {
+    let root = fixture_root();
+    let home = root.join("home");
+    let workspace = home.join("projects/repo");
+    let sibling = home.join("projects/worktree-report");
+    for directory in [&workspace, &sibling, &home.join(".ssh")] {
+        std::fs::create_dir_all(directory).unwrap();
+    }
+    std::fs::write(sibling.join("README.md"), "synthetic\n").unwrap();
+    std::fs::write(home.join("projects/.env"), "SYNTHETIC=1\n").unwrap();
+    std::fs::write(home.join(".ssh/config"), "Host x\n").unwrap();
+
+    for harness in ["omp", "claude-code"] {
+        for command in [
+            "ls -la ../worktree-report/",
+            "ls -la ../worktree-report",
+            "ls ..",
+            "cat ../worktree-report/README.md",
+        ] {
+            let action = shell_action(harness, command, &home, &workspace);
+            assert_eq!(action, "allow", "{harness}: {command}");
+        }
+    }
+    for command in [
+        "ls ../../.ssh",
+        "ls -la ../../.ssh/",
+        "cat ../.env",
+        "cat ../../.ssh/config",
+        "cat ../worktree-report/../.env",
+        "ls ../missing",
+        "ls ~/projects/../.ssh",
+    ] {
+        let action = shell_action("omp", command, &home, &workspace);
+        assert_ne!(action, "allow", "{command}");
+    }
+
+    let _ = std::fs::remove_dir_all(root);
+}

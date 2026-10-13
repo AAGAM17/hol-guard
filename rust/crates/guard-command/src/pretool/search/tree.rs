@@ -102,6 +102,11 @@ fn safe_walk_target(
     excluded_directories: &[&str],
     git_metadata: bool,
 ) -> bool {
+    // A recursive walk through `..` reaches a sibling tree whose ignore rules
+    // were never inspected; only the sibling-repository proof admits that.
+    if parent_component(value) {
+        return false;
+    }
     if !super::super::safe_reads::bounded_read_target(value, context.home_dir, context.cwd, true) {
         return false;
     }
@@ -484,4 +489,8 @@ fn nested_directories(
         found.push(path);
     }
     Some(())
+}
+
+fn parent_component(value: &str) -> bool {
+    value.split(['/', '\\']).any(|part| part == "..")
 }

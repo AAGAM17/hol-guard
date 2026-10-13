@@ -81,7 +81,6 @@ pub(in crate::pretool) fn skill_link_resolves_over_home(
         || value.starts_with('-')
         || value.contains(HAZARDS)
         || value.contains(['*', '?', '[', ']', '{', '}'])
-        || value.split('/').any(|part| part == "..")
     {
         return false;
     }
@@ -97,12 +96,46 @@ pub(in crate::pretool) fn skill_link_resolves_over_home(
     let Some(canonical) = std::fs::canonicalize(&expanded).ok() else {
         return false;
     };
+    // A bounded read admits `..` only from the working directory, which the
+    // kernel walks physically. Fold the spelling against the canonical cwd
+    // so `../../.claude/skills/<link>` still names the skill root.
+    // Only a leading run of `..` folds exactly: a later one could step back
+    // out of a symlinked directory the lexical fold cannot see, so that
+    // spelling is treated as naming the skill root.
+    let mut parts = value.split('/').skip_while(|part| *part == "..");
+    let spelled = if parts.any(|part| part == "..") {
+        return true;
+    } else if value.split('/').any(|part| part == "..") {
+        let cwd = expanded_operand(".", context).and_then(|cwd| std::fs::canonicalize(cwd).ok());
+        match cwd {
+            Some(cwd) if !value.starts_with('~') && !Path::new(value).has_root() => {
+                fold_parents(&cwd.join(value))
+            }
+            _ => return true,
+        }
+    } else {
+        expanded
+    };
     super::super::read_paths::skill_link_resolves_over_home(
-        &expanded,
+        &spelled,
         &canonical,
         &home,
         std::path::Path::new(raw_home),
     )
+}
+
+/// Drop each `..` with the component before it, without touching the disk.
+fn fold_parents(path: &Path) -> std::path::PathBuf {
+    let mut folded = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                folded.pop();
+            }
+            component => folded.push(component),
+        }
+    }
+    folded
 }
 
 pub(in crate::pretool) fn skill_listing_root(value: &str, context: ReadContext<'_>) -> bool {

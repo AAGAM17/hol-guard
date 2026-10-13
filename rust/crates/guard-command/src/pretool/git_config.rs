@@ -24,7 +24,15 @@ pub(super) fn execution_free(
     let operation = remaining.first()?.as_str();
     if !matches!(
         operation,
-        "status" | "diff" | "log" | "show" | "branch" | "hash-object" | "config" | "merge-base"
+        "status"
+            | "diff"
+            | "log"
+            | "show"
+            | "grep"
+            | "branch"
+            | "hash-object"
+            | "config"
+            | "merge-base"
     ) {
         return None;
     }
@@ -136,7 +144,7 @@ fn probe(
             "config",
             "--null",
             "--get-regexp",
-            "^(core\\.fsmonitor|core\\.pager|pager\\..*|diff\\.external|diff\\..*\\.(command|textconv)|filter\\..*\\.(process|clean|smudge)|log\\.showsignature|gpg\\.program|gpg\\..*\\.program|format\\.pretty|pretty\\..*|extensions\\.partialclone|remote\\..*\\.promisor)$",
+            "^(core\\.fsmonitor|core\\.pager|pager\\..*|diff\\.external|diff\\..*\\.(command|textconv)|filter\\..*\\.(process|clean|smudge)|log\\.showsignature|gpg\\.program|gpg\\..*\\.program|format\\.pretty|pretty\\..*|grep\\.fallbacktonoindex|extensions\\.partialclone|remote\\..*\\.promisor)$",
         ])
 ,
         deadline, CONFIG_LIMIT,
@@ -254,7 +262,8 @@ fn probe(
         let unsafe_value = match key {
             "extensions.partialclone" => !value.is_empty(),
             key if key.starts_with("remote.") && key.ends_with(".promisor") => !disabled,
-            "core.fsmonitor" => matches!(operation, "status" | "diff") && !disabled,
+            // Reading the index can start the monitor; grep reads it too.
+            "core.fsmonitor" => matches!(operation, "status" | "diff" | "grep") && !disabled,
             "core.pager" => {
                 configured_paging
                     && !git_pager_disabled
@@ -287,6 +296,8 @@ fn probe(
                 matches!(operation, "log" | "show") && value.contains("%G")
             }
             "log.showsignature" => matches!(operation, "log" | "show") && !disabled,
+            // Outside a repository grep would search every file under cwd.
+            "grep.fallbacktonoindex" => operation == "grep" && !disabled,
             // A configured verification program (a very common developer
             // setting) runs only when signature verification is requested.
             // Every such request is rejected above: --show-signature,

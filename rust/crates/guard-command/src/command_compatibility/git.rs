@@ -179,6 +179,7 @@ pub(super) fn inspection_arguments<'a>(
                 | "diff"
                 | "log"
                 | "show"
+                | "grep"
                 | "branch"
                 | "hash-object"
                 | "rev-parse"

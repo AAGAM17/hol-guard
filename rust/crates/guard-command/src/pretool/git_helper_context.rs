@@ -50,6 +50,8 @@ fn segment_runs_helpers(segment: &crate::CommandSegmentV1, context: PathContext<
                         "config" => super::git_config_reads::read_form(&arguments[1..]).is_some(),
                         // merge-base does not page by default, but pager.merge-base can.
                         "merge-base" => true,
+                        // grep pages by default through pager.grep or core.pager.
+                        "grep" => true,
                         _ => false,
                     }
                 })

@@ -1,6 +1,6 @@
 //! Read-only `git` invocations proven without a review.
 //!
-//! Status, diff, log, show, rev-parse, merge-base, ls-files, `remote -v`, `worktree list`,
+//! Status, diff, log, show, grep, rev-parse, merge-base, ls-files, `remote -v`, `worktree list`,
 //! branch listings, `hash-object` and `config` reads. Diff-style reads that can run a
 //! configured helper need the helper-context probe or both `--no-ext-diff`
 //! and `--no-textconv`.
@@ -73,6 +73,11 @@ pub(super) fn safe_git_arguments(
                     )
             });
     }
+    if subcommand == "grep" {
+        // Prints matches only. It pages by default, so the configuration
+        // probe has to clear the pager first.
+        return allow_helper_context && super::git_grep::read_form(&arguments[1..]);
+    }
     if subcommand == "config" {
         // Only the configuration probe can prove what the read prints.
         return allow_helper_context
@@ -134,7 +139,7 @@ pub(super) fn inspection_writes_nothing(
     };
     if !matches!(
         subcommand.as_str(),
-        "status" | "diff" | "log" | "show" | "merge-base"
+        "status" | "diff" | "log" | "show" | "grep" | "merge-base"
     ) {
         return false;
     }

@@ -2957,6 +2957,22 @@
       "expect": "allow"
     },
     {
+      "id": "git-worktree-grep-revision",
+      "fix_area": "git",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git grep -l -e needle HEAD | head"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "git-worktree-log-then-status",
       "fix_area": "git",
       "harnesses": [

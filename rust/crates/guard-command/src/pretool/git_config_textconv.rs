@@ -15,7 +15,9 @@ pub(super) fn may_run(operation: &str, options: &[&str]) -> bool {
         "diff" | "show" => {
             !(options.iter().any(|option| summary_format(option)) && options.iter().all(known))
         }
-        "branch" | "hash-object" | "config" => false,
+        // grep honors textconv only with --textconv, which its read proof
+        // refuses.
+        "branch" | "hash-object" | "config" | "grep" => false,
         _ => true,
     }
 }

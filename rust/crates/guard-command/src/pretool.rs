@@ -40,6 +40,7 @@ mod for_loop_unroll;
 pub(crate) mod git_branch_listing;
 mod git_config;
 pub(crate) mod git_config_reads;
+pub(crate) mod git_grep;
 pub(crate) mod git_hash_object;
 mod git_read_floor;
 mod git_reads;

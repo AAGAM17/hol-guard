@@ -11,11 +11,11 @@ use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 
-struct Fixture {
-    root: std::path::PathBuf,
-    store: PolicySnapshotStore,
-    snapshot: PolicySnapshotV3,
-    input: std::path::PathBuf,
+pub(crate) struct Fixture {
+    pub(crate) root: std::path::PathBuf,
+    pub(crate) store: PolicySnapshotStore,
+    pub(crate) snapshot: PolicySnapshotV3,
+    pub(crate) input: std::path::PathBuf,
 }
 
 impl Drop for Fixture {
@@ -24,7 +24,7 @@ impl Drop for Fixture {
     }
 }
 
-fn fixture(label: &str) -> Fixture {
+pub(crate) fn fixture(label: &str) -> Fixture {
     let root = test_root(&format!("direct-lane-{label}"));
     let key = install_test_key(&root, 9);
     let store = PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();
@@ -39,7 +39,7 @@ fn fixture(label: &str) -> Fixture {
     }
 }
 
-fn binding(fixture: &Fixture, workspace: &str) -> Value {
+pub(crate) fn binding(fixture: &Fixture, workspace: &str) -> Value {
     let absent = fixture.root.join("absent.toml");
     json!({
         "workspaces": [workspace],
@@ -50,7 +50,7 @@ fn binding(fixture: &Fixture, workspace: &str) -> Value {
     })
 }
 
-fn push(fixture: &Fixture, direct_lane: Option<Value>) -> Result<Vec<u8>, String> {
+pub(crate) fn push(fixture: &Fixture, direct_lane: Option<Value>) -> Result<Vec<u8>, String> {
     let mut request = json!({
         "schema": POLICY_SNAPSHOT_PUSH_SCHEMA,
         "snapshot": fixture.snapshot,
@@ -89,7 +89,7 @@ fn write_ack(
     fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
 }
 
-fn write_current_ack(fixture: &Fixture) {
+pub(crate) fn write_current_ack(fixture: &Fixture) {
     write_ack(
         &fixture.root,
         fixture.snapshot.generation,

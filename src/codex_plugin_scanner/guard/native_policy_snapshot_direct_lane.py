@@ -35,6 +35,9 @@ DIRECT_LANE_ACK_RENEW_REMAINING_MS = 10_000
 _MAX_WORKSPACES = 512
 _MAX_INPUTS = 256
 _MAX_PATH_BYTES = 4096
+_MAX_HARNESS_POSTURES = 32
+_MAX_HARNESS_KEY_BYTES = 64
+_HARNESS_POSTURES = frozenset({"protected", "extra_careful", "watch"})
 _I64_MIN = -(1 << 63)
 _I64_MAX = (1 << 63) - 1
 _U64_MAX = (1 << 64) - 1
@@ -111,6 +114,57 @@ def direct_lane_binding(
     return {"workspaces": bound_workspaces, "inputs": bound_inputs}
 
 
+def daemon_home_dir() -> str:
+    """The home directory a daemon started without an explicit one resolves."""
+
+    try:
+        return str(Path.home().expanduser().resolve(strict=False))
+    except (OSError, RuntimeError):
+        return ""
+
+
+def local_cli_block_rules_present(store: object) -> bool:
+    """Whether the daemon would check custom command-line block rules.
+
+    Mirrors the daemon probe: no probe means no rules, and a failed probe
+    counts as rules present.
+    """
+
+    probe = getattr(store, "has_local_cli_block_rules", None)
+    if not callable(probe):
+        return False
+    try:
+        return bool(probe())
+    except Exception:
+        return True
+
+
+def with_direct_hook_state(
+    binding: Mapping[str, object] | None,
+    *,
+    home_dir: str,
+    harness_postures: Mapping[str, str],
+    local_cli_block_rules: bool,
+) -> dict[str, object] | None:
+    """Add the daemon state a direct hook needs beyond the snapshot.
+
+    A field the resident cannot accept is left out, so the lane still proves
+    freshness and direct hooks defer as incomplete.
+    """
+
+    if binding is None:
+        return None
+    bound: dict[str, object] = {**binding, "local_cli_block_rules": local_cli_block_rules}
+    if _path_valid(home_dir):
+        bound["home_dir"] = home_dir
+    if len(harness_postures) <= _MAX_HARNESS_POSTURES and all(
+        0 < len(harness.encode("utf-8", "surrogatepass")) <= _MAX_HARNESS_KEY_BYTES and posture in _HARNESS_POSTURES
+        for harness, posture in harness_postures.items()
+    ):
+        bound["harness_postures"] = dict(sorted(harness_postures.items()))
+    return bound
+
+
 class NativePolicySnapshotDirectLaneAck:
     """Mirror the publisher's ACK barrier into the resident's direct-lane ACK file."""
 
@@ -118,6 +172,8 @@ class NativePolicySnapshotDirectLaneAck:
     _acked_value: bool = False
     _direct_lane_ack_target: tuple[int, str] | None = None
     _direct_lane_lease_expires_at_ms: int = 0
+    # The custom command-line rule revision the open lane was bound against.
+    _direct_lane_local_cli_revision: int | None = None
 
     @property
     def _acked(self) -> bool:
@@ -155,6 +211,26 @@ class NativePolicySnapshotDirectLaneAck:
         with _ACK_LOCK:
             if self._acked_value and self._direct_lane_ack_target is not None:
                 self._write_direct_lane_ack_locked()
+
+    def _recheck_direct_lane_local_cli(self, revision: int | None) -> None:
+        """Close the lane once custom command-line rules move past the binding.
+
+        The binding records whether any block rule existed, which only the
+        daemon applies. Any later rule change sends hooks back to the daemon
+        until the next publish binds the new state.
+        """
+
+        if self._direct_lane_ack_target is None or revision == self._direct_lane_local_cli_revision:
+            return
+        self._close_direct_lane_ack()
+
+    def _close_direct_lane_ack(self) -> None:
+        """Stop direct hooks without withdrawing the daemon's own ACK."""
+
+        with _ACK_LOCK:
+            self._direct_lane_ack_target = None
+            self._direct_lane_lease_expires_at_ms = 0
+            self._unlink_direct_lane_ack()
 
     def _direct_lane_ack_path(self) -> Path:
         return self.guard_home / NATIVE_RUNTIME_STATE_DIRECTORY / DIRECT_LANE_ACK_DIRECTORY / DIRECT_LANE_ACK_FILE_NAME

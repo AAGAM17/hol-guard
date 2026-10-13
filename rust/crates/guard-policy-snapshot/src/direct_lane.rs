@@ -1,8 +1,11 @@
 //! Freshness binding carried by a policy push for the direct resident hook lane.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 pub const DIRECT_LANE_MAX_WORKSPACES: usize = 512;
+pub const DIRECT_LANE_MAX_HARNESS_POSTURES: usize = 32;
+pub const DIRECT_LANE_HARNESS_POSTURES: &[&str] = &["protected", "extra_careful", "watch"];
 pub const DIRECT_LANE_MAX_INPUTS: usize = 256;
 pub const DIRECT_LANE_MAX_PATH_BYTES: usize = 4096;
 
@@ -13,11 +16,22 @@ pub const DIRECT_LANE_MAX_PATH_BYTES: usize = 4096;
 /// with the stat identity observed before compilation, or `None` when the
 /// file was absent. The resident re-observes the inputs before using the
 /// snapshot without the daemon.
+///
+/// The remaining fields carry daemon state that the snapshot itself does not:
+/// the daemon's home directory, the per-harness posture overrides it binds to
+/// the same ACK, and whether any custom command-line block rule existed when
+/// the snapshot was compiled. A direct hook defers whenever one is absent.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct DirectLaneBindingV1 {
     pub workspaces: Vec<String>,
     pub inputs: Vec<DirectLaneInputV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub harness_postures: Option<BTreeMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_cli_block_rules: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -53,6 +67,24 @@ impl DirectLaneBindingV1 {
         seen.clear();
         for input in &self.inputs {
             if !direct_lane_path_valid(&input.path) || !seen.insert(input.path.as_str()) {
+                return false;
+            }
+        }
+        if self
+            .home_dir
+            .as_deref()
+            .is_some_and(|home_dir| !direct_lane_path_valid(home_dir))
+        {
+            return false;
+        }
+        if let Some(postures) = &self.harness_postures {
+            if postures.len() > DIRECT_LANE_MAX_HARNESS_POSTURES
+                || postures.iter().any(|(harness, posture)| {
+                    harness.is_empty()
+                        || harness.len() > 64
+                        || !DIRECT_LANE_HARNESS_POSTURES.contains(&posture.as_str())
+                })
+            {
                 return false;
             }
         }

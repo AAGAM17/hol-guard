@@ -14,12 +14,9 @@
 //!
 //! Any failure defers to the daemon path, which is unchanged.
 
-// The direct hook operation consumes admission in the next phase.
-#![cfg_attr(not(test), allow(dead_code))]
-
 use super::*;
 use guard_policy_snapshot::{DirectLaneBindingV1, DirectLaneInputV1, DirectLaneStatV1};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// The ACK lives in its own directory so that writing, renewing or unlinking
 /// it never changes the state directory identity the publisher fences on.
@@ -30,11 +27,14 @@ const DIRECT_LANE_ACK_MAX_BYTES: u64 = 1024;
 /// A lease further ahead than this is not one the publisher would write.
 const DIRECT_LANE_ACK_MAX_LEASE_MS: u64 = 120_000;
 
-pub(super) struct DirectLaneBinding {
+pub(crate) struct DirectLaneBinding {
     generation: u64,
     policy_digest: String,
     workspaces: BTreeSet<String>,
     inputs: Vec<DirectLaneInputV1>,
+    pub(crate) home_dir: Option<String>,
+    pub(crate) harness_postures: Option<BTreeMap<String, String>>,
+    pub(crate) local_cli_block_rules: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,6 +88,9 @@ impl PolicySnapshotStore {
                 policy_digest: policy_digest.to_owned(),
                 workspaces: binding.workspaces.into_iter().collect(),
                 inputs: binding.inputs,
+                home_dir: binding.home_dir,
+                harness_postures: binding.harness_postures,
+                local_cli_block_rules: binding.local_cli_block_rules,
             })
         });
         match self.direct_lane.lock() {
@@ -100,10 +103,21 @@ impl PolicySnapshotStore {
 
     /// Admit the current snapshot for a direct hook in `workspace`, or name
     /// why the hook must take the daemon path.
+    #[cfg(test)]
     pub(crate) fn admit_direct_lane(
         &self,
         workspace: &str,
     ) -> Result<Arc<AdmittedPolicySnapshot>, DirectLaneDefer> {
+        self.admit_direct_hook(workspace)
+            .map(|(snapshot, _binding)| snapshot)
+    }
+
+    /// Admission that also returns the binding, whose daemon state the
+    /// direct hook operation checks next.
+    pub(crate) fn admit_direct_hook(
+        &self,
+        workspace: &str,
+    ) -> Result<(Arc<AdmittedPolicySnapshot>, Arc<DirectLaneBinding>), DirectLaneDefer> {
         if !cfg!(unix) {
             // Stat identity parity with the publisher is only established
             // for Unix filesystems.
@@ -145,7 +159,7 @@ impl PolicySnapshotStore {
         {
             return Err(DirectLaneDefer::InputChanged);
         }
-        Ok(snapshot)
+        Ok((snapshot, binding))
     }
 
     fn read_direct_lane_ack(&self) -> Result<DirectLaneAckV1, DirectLaneDefer> {
@@ -198,4 +212,4 @@ fn observe_input(_path: &str) -> Option<DirectLaneStatV1> {
 
 #[cfg(all(test, unix))]
 #[path = "policy_store_direct_lane_tests.rs"]
-mod tests;
+pub(crate) mod tests;

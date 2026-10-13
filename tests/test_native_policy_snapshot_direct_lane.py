@@ -14,6 +14,8 @@ from codex_plugin_scanner.guard.native_policy_snapshot_direct_lane import (
     DIRECT_LANE_ACK_SCHEMA,
     NativePolicySnapshotDirectLaneAck,
     direct_lane_binding,
+    local_cli_block_rules_present,
+    with_direct_hook_state,
 )
 
 pytestmark = pytest.mark.skipif(os.name == "nt", reason="the direct lane is Unix-only")
@@ -150,3 +152,77 @@ def test_push_envelope_carries_the_binding_and_drops_it_when_too_large() -> None
     oversized = {"workspaces": [f"/work/{'x' * 4000}/{index}" for index in range(512)], "inputs": []}
     request = json.loads(_policy_snapshot_push_bytes_v3(snapshot, direct_lane=oversized))["request"]
     assert "direct_lane" not in request
+
+
+def test_direct_hook_state_binds_only_what_the_resident_accepts() -> None:
+    binding = {"workspaces": ["/work/repo"], "inputs": []}
+    bound = with_direct_hook_state(
+        binding,
+        home_dir="/home/guard",
+        harness_postures={"cursor": "watch", "codex": "protected"},
+        local_cli_block_rules=False,
+    )
+    assert bound == {
+        **binding,
+        "home_dir": "/home/guard",
+        "harness_postures": {"codex": "protected", "cursor": "watch"},
+        "local_cli_block_rules": False,
+    }
+    assert list(bound["harness_postures"]) == ["codex", "cursor"]
+    assert with_direct_hook_state(None, home_dir="/h", harness_postures={}, local_cli_block_rules=False) is None
+
+    # Unacceptable fields are left out so the resident defers as incomplete.
+    for home_dir, postures in (
+        ("relative/home", {}),
+        ("", {}),
+        ("/home/guard", {"codex": "relaxed"}),
+        ("/home/guard", {"": "watch"}),
+        ("/home/guard", {"x" * 65: "watch"}),
+        ("/home/guard", {f"h{index}": "watch" for index in range(33)}),
+    ):
+        bound = with_direct_hook_state(
+            binding, home_dir=home_dir, harness_postures=postures, local_cli_block_rules=True
+        )
+        assert bound is not None and bound["local_cli_block_rules"] is True
+        assert ("home_dir" in bound) == (home_dir == "/home/guard")
+        assert ("harness_postures" in bound) == (home_dir != "/home/guard")
+
+
+def test_local_cli_rule_probe_fails_toward_the_daemon() -> None:
+    class _Store:
+        def __init__(self, result: object) -> None:
+            self.result = result
+
+        def has_local_cli_block_rules(self) -> bool:
+            if isinstance(self.result, Exception):
+                raise self.result
+            return bool(self.result)
+
+    assert local_cli_block_rules_present(object()) is False
+    assert local_cli_block_rules_present(_Store(False)) is False
+    assert local_cli_block_rules_present(_Store(True)) is True
+    assert local_cli_block_rules_present(_Store(RuntimeError("locked"))) is True
+
+
+def test_local_cli_rule_change_closes_only_the_direct_lane(tmp_path: Path) -> None:
+    publisher = _publisher(tmp_path)
+    ack = publisher._direct_lane_ack_path()
+    publisher._acked = True
+    publisher._direct_lane_local_cli_revision = 4
+    publisher._publish_direct_lane_ack({"generation": 3, "policy_digest": DIGEST})
+
+    publisher._recheck_direct_lane_local_cli(4)
+    assert ack.exists()
+
+    publisher._recheck_direct_lane_local_cli(5)
+    assert not ack.exists()
+    assert publisher._acked is True
+    publisher._renew_direct_lane_ack()
+    assert not ack.exists()
+
+    # The next publish rebinds the new revision and reopens the lane.
+    publisher._direct_lane_local_cli_revision = 5
+    publisher._publish_direct_lane_ack({"generation": 4, "policy_digest": DIGEST})
+    assert json.loads(ack.read_bytes())["generation"] == 4
+    publisher._recheck_direct_lane_local_cli(-1)
+    assert not ack.exists()

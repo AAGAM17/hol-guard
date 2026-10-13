@@ -372,6 +372,96 @@
       "expect": "allow"
     },
     {
+      "id": "sibling-bun-run-cwd-build",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "bun run --cwd ${ORG}/service-api build"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "sibling-npm-prefix-run-build",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "npm --prefix ${ORG}/service-api run build"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "sibling-pnpm-dir-run-test",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "pnpm -C ${ORG}/service-api run test"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "sibling-relative-bun-cwd-test",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "bun run --cwd ../service-api test"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-bun-run-cwd-home-dotdir",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "bun run --cwd ${HOME}/.codex build"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-npm-prefix-sibling-install-package",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "npm --prefix ${ORG}/service-api install left-pad"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
       "id": "cat-credential-lookalike-name",
       "fix_area": "shell",
       "harnesses": [

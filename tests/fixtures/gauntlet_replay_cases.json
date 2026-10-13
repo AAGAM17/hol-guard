@@ -38,6 +38,10 @@
     "session-vitest-run-tail@pi": "native_command_review_required",
     "session-which-type-echo@pi": "native_command_review_required",
     "session-which-type-guard@pi": "native_command_review_required",
+    "sibling-bun-run-cwd-build@pi": "native_package_review",
+    "sibling-npm-prefix-run-build@pi": "native_package_review",
+    "sibling-pnpm-dir-run-test@pi": "native_package_review",
+    "sibling-relative-bun-cwd-test@pi": "native_package_review",
     "vitest-local-bin@cursor": "native_command_review_required"
   },
   "cases": [

@@ -1,5 +1,8 @@
 use crate::{CanonicalCommandV1, CommandSegmentV1};
 
+#[path = "package_directory_flags.rs"]
+pub(super) mod package_dir;
+
 fn bounded_count(value: &str) -> bool {
     !value.is_empty() && value.len() <= 6 && value.bytes().all(|byte| byte.is_ascii_digit())
 }
@@ -118,6 +121,10 @@ pub(super) fn contained_core(
     model: &CanonicalCommandV1,
     context: super::PathContext<'_>,
 ) -> Option<CanonicalCommandV1> {
+    // `bun --cwd <dir> run build` is checked as `cd <dir> && bun run build`.
+    if let Some(projected) = package_dir::as_cd_list(model, context) {
+        return contained_core(&projected.model, context);
+    }
     if model.confidence != "exact" || model.path_overridden || !model.wrapper_chain.is_empty() {
         return None;
     }

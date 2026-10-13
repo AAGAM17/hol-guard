@@ -258,7 +258,18 @@ pub(super) fn glob_can_select_sensitive_path(value: &str) -> bool {
             {
                 return true;
             }
-            let env_hint = hint::glob_constrained_lcs(bytes, b".env.") >= 2;
+            // A literal source extension already lets `*.ts` through, so for
+            // such a glob only the text before its first `*` can aim it at
+            // `.env.` files: `.env*.ts` still refuses, `*.test.ts` does not.
+            let env_scope = if code_extension {
+                &bytes[..bytes
+                    .iter()
+                    .position(|character| *character == b'*')
+                    .unwrap_or(bytes.len())]
+            } else {
+                bytes
+            };
+            let env_hint = hint::glob_constrained_lcs(env_scope, b".env.") >= 2;
             let family_hint = [
                 b"private-key".as_slice(),
                 b"private_key",

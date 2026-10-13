@@ -256,3 +256,58 @@ fn recursive_search_reads_feature_directories_but_not_credential_stores() {
         }
     }
 }
+
+#[test]
+fn recursive_search_source_globs_are_not_mistaken_for_env_files() {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/recursive-file-search")
+        .join(format!("source-globs-{}-{nonce}", std::process::id()));
+    let _fixture = FixtureDirectory(root.clone());
+    for (path, text) in [
+        ("tests/deploy.test.ts", "ordinary"),
+        ("tests/helpers.ts", "ordinary"),
+        ("configured/app.test.ts", "ordinary"),
+        ("configured/.env", "TOKEN=synthetic"),
+    ] {
+        let file = root.join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, text).unwrap();
+    }
+    let root = std::fs::canonicalize(root).unwrap();
+    for harness in ["omp", "zcode", "claude-code"] {
+        for (command, expected) in [
+            ("grep -rl --include=*.test.ts ordinary tests", true),
+            ("grep -r --include=\"*.test.ts\" -l ordinary tests", true),
+            ("grep -rl --include=*.spec.tsx ordinary tests", true),
+            ("grep -rl --include=*.ts ordinary tests", true),
+            ("grep -rl --include=.env.* ordinary tests", false),
+            ("grep -rl --include=*.env.* ordinary tests", false),
+            ("grep -rl --include=.env*.ts ordinary tests", false),
+            ("grep -rl --include=.e*.ts ordinary tests", false),
+            ("grep -rl --include=?env.*.ts ordinary tests", false),
+            ("grep -rl --include=[.]env*.ts ordinary tests", false),
+            // The walk still refuses a tree that holds a credential file.
+            ("grep -rl --include=*.test.ts ordinary configured", false),
+        ] {
+            let result = evaluate_pre_tool_envelope_with_context(
+                harness,
+                "PreToolUse",
+                &json!({"toolName":"Bash", "toolInput":{"command":command}}),
+                None,
+                None,
+                root.to_str(),
+                root.to_str(),
+            );
+            assert_eq!(
+                result.minimum_action == "allow",
+                expected,
+                "{harness}: {command}: {}",
+                result.reason_code
+            );
+        }
+    }
+}

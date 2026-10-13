@@ -31,7 +31,6 @@
     "session-port-prefix-vitest@pi": "native_command_review_required",
     "session-printf-gitignore-dotfile@pi": "native_command_review_required",
     "session-python-unittest@pi": "native_command_review_required",
-    "session-rg-globs@pi": "native_command_review_required",
     "session-rm-workspace-file@pi": "native_command_extension_review",
     "session-sed-inplace-workspace-file@pi": "native_command_review_required",
     "session-tool-help-head@pi": "native_command_review_required",

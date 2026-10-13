@@ -9,6 +9,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 use std::time::Instant;
 
+#[path = "apple_developer_tools.rs"]
+pub(super) mod apple_developer_tools;
+
 /// Matches the runtime probe's output bound. Long-lived repositories collect
 /// large `branch.*` sections, and a smaller cap here turned an ordinary fetch
 /// into a review that the runtime itself would have verified.
@@ -189,7 +192,9 @@ impl Probe {
             return false;
         };
         helpers.iter().all(|helper| {
-            let resolved = match credential_helper_shape(helper) {
+            let shape = credential_helper_shape(helper);
+            let named = matches!(shape, Some(HelperShape::Named(_)));
+            let resolved = match shape {
                 Some(HelperShape::GithubCli("gh")) => super::git_config::trusted_command(
                     "gh",
                     &self.home,
@@ -206,6 +211,10 @@ impl Probe {
             };
             resolved.is_some_and(|path| {
                 super::trusted_location::trusted_location(&path, &self.home, &self.cwd)
+                    // Apple's Git keeps its helpers in an Xcode or Command
+                    // Line Tools bundle that `/Applications` lets admins
+                    // rename; root still owns every directory inside it.
+                    || named && apple_developer_tools::bundled_helper(&path, &exec_path)
             })
         })
     }

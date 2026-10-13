@@ -16,7 +16,7 @@ pub(super) fn worktree_add_execution_free(
     executable: &str,
     leading: &[String],
     destination: &Path,
-    branch: &str,
+    branch: Option<&str>,
     reference: Option<&str>,
     reference_may_move: bool,
     context: super::PathContext<'_>,
@@ -88,19 +88,23 @@ pub(super) fn worktree_add_execution_free(
     {
         return Some(false);
     }
-    let branch_ref = format!("refs/heads/{branch}");
-    let (status, output) = git_query_with_args(
-        &base,
-        leading,
-        &["show-ref", "--verify", "--quiet", &branch_ref],
-        deadline,
-        WORKTREE_PROBE_LIMIT,
-    )?;
-    if status.success() {
-        return Some(false);
-    }
-    if status.code() != Some(1) || !output.is_empty() {
-        return None;
+    // Without `-b` the checkout is detached at the reference and no branch
+    // is created, so there is no name that could already exist.
+    if let Some(branch) = branch {
+        let branch_ref = format!("refs/heads/{branch}");
+        let (status, output) = git_query_with_args(
+            &base,
+            leading,
+            &["show-ref", "--verify", "--quiet", &branch_ref],
+            deadline,
+            WORKTREE_PROBE_LIMIT,
+        )?;
+        if status.success() {
+            return Some(false);
+        }
+        if status.code() != Some(1) || !output.is_empty() {
+            return None;
+        }
     }
     let reference = reference.unwrap_or("HEAD");
     let commit_ref = format!("{reference}^{{commit}}");

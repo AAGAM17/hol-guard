@@ -108,7 +108,7 @@ pub(super) fn exact_safe_command(
 /// A Git read the configuration probe proves starts no pager, diff driver or
 /// textconv helper. A fetch writes refs, never configuration, so the proof
 /// holds on either side of it.
-fn proven_read(
+pub(super) fn proven_read(
     model: &CanonicalCommandV1,
     index: usize,
     context: super::PathContext<'_>,

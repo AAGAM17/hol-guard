@@ -481,7 +481,11 @@ pub(super) fn trusted_command(
         }
         found?
     };
-    super::trusted_location::trusted_location(&path, home, cwd).then_some(path)
+    let shim = super::git_session_probe::apple_developer_tools::selection_overridden(
+        &path,
+        execution_environment,
+    );
+    (!shim && super::trusted_location::trusted_location(&path, home, cwd)).then_some(path)
 }
 #[cfg(all(test, unix))]
 #[path = "git_config_home_tests.rs"]

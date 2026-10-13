@@ -316,6 +316,11 @@ fn exact_safe_command_with_context(
     if let Some(rest) = segment_proof::after_read_prefix(model, context) {
         return segment_proof::exact_safe_cwd_compound(&rest, allow_git_helper_context, context);
     }
+    if let Some(rest) =
+        git_read_floor::after_safe_git_read_prefix(model, allow_git_helper_context, context)
+    {
+        return segment_proof::exact_safe_cwd_compound(&rest, allow_git_helper_context, context);
+    }
     model.segments.iter().all(|segment| {
         segment_proof::exact_safe_segment_with_context(
             model,

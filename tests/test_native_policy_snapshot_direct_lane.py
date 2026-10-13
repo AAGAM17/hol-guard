@@ -2,19 +2,24 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import stat
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from codex_plugin_scanner.guard import native_policy_snapshot_direct_lane as direct_lane
+from codex_plugin_scanner.guard.adapters import zcode_contained_tests
 from codex_plugin_scanner.guard.native_policy_snapshot_contract import _policy_snapshot_push_bytes_v3
 from codex_plugin_scanner.guard.native_policy_snapshot_direct_lane import (
+    DIRECT_HOOK_CONTAINED_ROUTE_FEATURE,
     DIRECT_HOOK_EVIDENCE_FEATURE,
     DIRECT_LANE_ACK_LEASE_MS,
     DIRECT_LANE_ACK_SCHEMA,
     NativePolicySnapshotDirectLaneAck,
+    contained_sink_command,
     direct_lane_binding,
     local_cli_block_rules_present,
     with_direct_hook_state,
@@ -309,3 +314,67 @@ def test_the_lane_binds_a_home_only_when_the_daemon_gives_hooks_its_own(
     publisher.bind_direct_lane_daemon_home(tmp_path / "other")
     assert publisher._direct_lane_home_dir() == ""
     assert len(publishes) == 2
+
+
+def test_the_sink_command_binds_only_for_a_resident_that_routes_containment() -> None:
+    binding = {"workspaces": ["/work/repo"], "inputs": []}
+    assert contained_sink_command(()) is None
+    command = contained_sink_command((DIRECT_HOOK_CONTAINED_ROUTE_FEATURE,))
+    assert command is not None
+
+    def bind(sink: tuple[str, ...] | None) -> dict[str, object]:
+        bound = with_direct_hook_state(
+            binding,
+            home_dir="/home/guard",
+            harness_postures={},
+            local_cli_block_rules=False,
+            evidence_drain=False,
+            contained_sink_command=sink,
+        )
+        assert bound is not None
+        return bound
+
+    assert bind(command)["contained_sink_command"] == list(command)
+    assert "contained_sink_command" not in bind(None)
+    # A command the resident would reject is left out, so containment defers.
+    for rejected in (
+        (),
+        ("relative/python",),
+        ("/usr/bin/python", ""),
+        ("/usr/bin/python", "a\0b"),
+        ("/usr/bin/python", "x" * 16_385),
+        ("/usr/bin/python", *("-I",) * 8),
+    ):
+        assert "contained_sink_command" not in bind(rejected)
+
+
+def test_the_bound_sink_command_starts_the_command_the_daemon_routes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "platform", "linux")
+    workspace = tmp_path / "repo"
+    workspace.mkdir()
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest -q"}}
+    response = {
+        "decision": "deny",
+        "policy_action": "sandbox-required",
+        "reason_code": "native_workspace_containment_required",
+        "required_execution_profile": "workspace-contained-v1",
+    }
+    routed = zcode_contained_tests.route_zcode_containment(
+        response,
+        harness="claude-code",
+        payload=payload,
+        guard_home=tmp_path / "guard",
+        home_dir=tmp_path,
+        workspace=workspace,
+    )
+    output = routed["hookSpecificOutput"]
+    assert isinstance(output, dict)
+    argv = shlex.split(output["updatedInput"]["command"])
+    prefix = zcode_contained_tests.contained_sink_command_prefix()
+    assert argv[: len(prefix)] == list(prefix)
+    assert argv[len(prefix) : len(prefix) + 2] == ["guard", "execute-contained-test"]
+    request = Path(argv[argv.index("--request-file") + 1])
+    request.unlink()
+    request.parent.rmdir()

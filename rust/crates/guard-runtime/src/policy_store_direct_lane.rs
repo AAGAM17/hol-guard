@@ -36,6 +36,7 @@ pub(crate) struct DirectLaneBinding {
     pub(crate) harness_postures: Option<BTreeMap<String, String>>,
     pub(crate) local_cli_block_rules: Option<bool>,
     pub(crate) evidence_drain: Option<bool>,
+    pub(crate) contained_sink_command: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,6 +94,7 @@ impl PolicySnapshotStore {
                 harness_postures: binding.harness_postures,
                 local_cli_block_rules: binding.local_cli_block_rules,
                 evidence_drain: binding.evidence_drain,
+                contained_sink_command: binding.contained_sink_command,
             })
         });
         match self.direct_lane.lock() {

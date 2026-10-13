@@ -8,6 +8,8 @@ pub const DIRECT_LANE_MAX_HARNESS_POSTURES: usize = 32;
 pub const DIRECT_LANE_HARNESS_POSTURES: &[&str] = &["protected", "extra_careful", "watch"];
 pub const DIRECT_LANE_MAX_INPUTS: usize = 256;
 pub const DIRECT_LANE_MAX_PATH_BYTES: usize = 4096;
+pub const DIRECT_LANE_MAX_SINK_ARGS: usize = 8;
+pub const DIRECT_LANE_MAX_SINK_ARG_BYTES: usize = 16_384;
 
 /// Publisher-observed state that a pushed snapshot was compiled against.
 ///
@@ -23,6 +25,9 @@ pub const DIRECT_LANE_MAX_PATH_BYTES: usize = 4096;
 /// the snapshot was compiled. A direct hook defers whenever one is absent.
 /// `evidence_drain` says the daemon drains the evidence of direct answers;
 /// without it the resident answers nothing directly.
+/// `contained_sink_command` is the argv prefix that starts the daemon's
+/// Guard CLI, which the daemon puts in front of a contained execution
+/// rewrite; without it such a rewrite stays with the daemon.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct DirectLaneBindingV1 {
@@ -36,6 +41,8 @@ pub struct DirectLaneBindingV1 {
     pub local_cli_block_rules: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence_drain: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contained_sink_command: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -87,6 +94,19 @@ impl DirectLaneBindingV1 {
                     harness.is_empty()
                         || harness.len() > 64
                         || !DIRECT_LANE_HARNESS_POSTURES.contains(&posture.as_str())
+                })
+            {
+                return false;
+            }
+        }
+        if let Some(command) = &self.contained_sink_command {
+            if command.is_empty()
+                || command.len() > DIRECT_LANE_MAX_SINK_ARGS
+                || !direct_lane_path_valid(&command[0])
+                || command.iter().any(|argument| {
+                    argument.is_empty()
+                        || argument.len() > DIRECT_LANE_MAX_SINK_ARG_BYTES
+                        || argument.contains('\0')
                 })
             {
                 return false;

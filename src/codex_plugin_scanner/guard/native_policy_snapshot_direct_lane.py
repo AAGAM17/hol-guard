@@ -17,7 +17,7 @@ import os
 import stat
 import threading
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 
 from .native_command_control_authority import AUTHORITY_FILE_NAME
@@ -26,6 +26,8 @@ from .native_policy_snapshot_constants import NATIVE_RUNTIME_STATE_DIRECTORY
 DIRECT_LANE_PUSH_FEATURE = "policy-snapshot-direct-lane-v1"
 # The resident queues the evidence of each direct answer for the daemon to drain.
 DIRECT_HOOK_EVIDENCE_FEATURE = "hook-direct-evidence-v1"
+# The resident routes a Claude Code sandbox requirement with the bound sink command.
+DIRECT_HOOK_CONTAINED_ROUTE_FEATURE = "hook-direct-contained-route-v1"
 DIRECT_LANE_ACK_DIRECTORY = "direct-lane"
 DIRECT_LANE_ACK_FILE_NAME = "ack.json"
 DIRECT_LANE_ACK_SCHEMA = "guard-direct-lane-ack.v1"
@@ -40,6 +42,8 @@ _MAX_PATH_BYTES = 4096
 _MAX_HARNESS_POSTURES = 32
 _MAX_HARNESS_KEY_BYTES = 64
 _HARNESS_POSTURES = frozenset({"protected", "extra_careful", "watch"})
+_MAX_SINK_ARGS = 8
+_MAX_SINK_ARG_BYTES = 16_384
 _I64_MIN = -(1 << 63)
 _I64_MAX = (1 << 63) - 1
 _U64_MAX = (1 << 64) - 1
@@ -141,6 +145,34 @@ def local_cli_block_rules_present(store: object) -> bool:
         return True
 
 
+def contained_sink_command(features: Iterable[str]) -> tuple[str, ...] | None:
+    """The sink command prefix for a resident that routes sandbox requirements."""
+
+    if DIRECT_HOOK_CONTAINED_ROUTE_FEATURE not in set(features):
+        return None
+    from .adapters.zcode_contained_tests import contained_sink_command_prefix
+
+    try:
+        return contained_sink_command_prefix()
+    except (OSError, RuntimeError, ValueError):
+        return None
+
+
+def _sink_command_valid(command: Sequence[str]) -> bool:
+    def arg_valid(value: str) -> bool:
+        try:
+            encoded = value.encode("utf-8")
+        except UnicodeEncodeError:
+            return False
+        return 0 < len(encoded) <= _MAX_SINK_ARG_BYTES and "\0" not in value
+
+    return (
+        0 < len(command) <= _MAX_SINK_ARGS
+        and _path_valid(command[0])
+        and all(isinstance(value, str) and arg_valid(value) for value in command)
+    )
+
+
 def with_direct_hook_state(
     binding: Mapping[str, object] | None,
     *,
@@ -148,12 +180,15 @@ def with_direct_hook_state(
     harness_postures: Mapping[str, str],
     local_cli_block_rules: bool,
     evidence_drain: bool,
+    contained_sink_command: Sequence[str] | None = None,
 ) -> dict[str, object] | None:
     """Add the daemon state a direct hook needs beyond the snapshot.
 
     A field the resident cannot accept is left out, so the lane still proves
     freshness and direct hooks defer as incomplete. ``evidence_drain`` is
     true only while this daemon drains the evidence of direct answers.
+    Without ``contained_sink_command`` a Claude Code sandbox requirement
+    defers to this daemon, which routes it.
     """
 
     if binding is None:
@@ -170,6 +205,8 @@ def with_direct_hook_state(
         for harness, posture in harness_postures.items()
     ):
         bound["harness_postures"] = dict(sorted(harness_postures.items()))
+    if contained_sink_command is not None and _sink_command_valid(contained_sink_command):
+        bound["contained_sink_command"] = list(contained_sink_command)
     return bound
 
 

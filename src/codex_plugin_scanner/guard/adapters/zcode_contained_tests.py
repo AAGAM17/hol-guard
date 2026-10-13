@@ -106,6 +106,21 @@ def route_zcode_containment(
     return routed if routed is not None else response
 
 
+def contained_sink_command_prefix() -> tuple[str, ...]:
+    """The argv prefix ``route_zcode_containment`` starts the sink with."""
+    return _sink_command_prefix(
+        {"python_executable": sys.executable, "package_root": str(Path(__file__).resolve().parents[3])}
+    )
+
+
+def _sink_command_prefix(config: Mapping[str, object]) -> tuple[str, ...]:
+    if getattr(sys, "frozen", False):
+        from ..stable_guard_cli import resolve_frozen_guard_cli
+
+        return (resolve_frozen_guard_cli(),)
+    return isolated_guard_cli_command(str(config["python_executable"]), Path(str(config["package_root"])), ())
+
+
 def _platform_contains(response: Mapping[str, object]) -> bool:
     """macOS runs every contained profile; Linux runs the workspace sandbox."""
     return sys.platform == "darwin" or (
@@ -198,16 +213,7 @@ def contained_zcode_response(
         ]
         if "--home" in cli_args:
             args.extend(["--home", cli_args[cli_args.index("--home") + 1]])
-        if getattr(sys, "frozen", False):
-            from ..stable_guard_cli import resolve_frozen_guard_cli
-
-            command = (resolve_frozen_guard_cli(), *args)
-        else:
-            command = isolated_guard_cli_command(
-                str(config["python_executable"]),
-                Path(str(config["package_root"])),
-                args,
-            )
+        command = (*_sink_command_prefix(config), *args)
         return {
             "policy_action": "allow",
             "reason_code": "native_contained_execution_routed",

@@ -14,7 +14,7 @@ const NODE_PERMISSION_CODES: [&str; 5] = [
     "native_node_build_output_containment_required",
 ];
 
-fn required_profile(reason_code: &str) -> Option<&'static str> {
+pub(super) fn required_profile(reason_code: &str) -> Option<&'static str> {
     Some(match reason_code {
         "native_python_eval_readonly_containment_required" => "python-eval-readonly-v1",
         "native_node_eval_readonly_containment_required" => "node-eval-readonly-v1",

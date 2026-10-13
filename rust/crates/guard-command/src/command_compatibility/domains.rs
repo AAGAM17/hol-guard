@@ -383,6 +383,7 @@ pub(super) fn observe(
                 | "truncate"
         ) || (executable == "find"
             && !is_contained_compile_check_arguments(arguments)
+            && crate::read_only_fanout::find_exec(arguments).is_none()
             && option(
                 arguments,
                 &["-delete", "-exec", "-execdir", "-ok", "-okdir"],

@@ -32,6 +32,7 @@ pub(crate) use directory_targets::safe_directory_target;
 mod base64_reads;
 mod bun_eval;
 mod compound_reason;
+mod fanout_reads;
 mod find_reads;
 mod for_loop_unroll;
 pub(crate) mod git_branch_listing;
@@ -557,6 +558,7 @@ fn evaluate_single_command(
         ));
     }
     let reason = repo_create_reason::private_alternative_reason(&model)
+        .or_else(|| fanout_reads::whitespace_split_reason(&model))
         .or_else(|| compound_reason::unproven_steps_reason(&model, context))
         .or_else(|| worktree_add::outside_home_reason(&model, context));
     Ok(pretool_decision(
@@ -576,5 +578,7 @@ mod for_loop_tests;
 mod tests;
 #[cfg(test)]
 mod tests_benign_probes;
+#[cfg(test)]
+mod tests_fanout_reads;
 #[cfg(test)]
 mod tests_listing_find_probes;

@@ -431,7 +431,11 @@ pub(super) fn exact_safe_segment_with_context(
             super::listing_reads::safe_listing_segment(&segment.text, &segment.arguments, context)
         }
         "test" => safe_reads::safe_file_predicate_arguments(&segment.arguments, context),
-        "find" => super::find_reads::safe_find_listing_arguments(&segment.arguments, context),
+        "find" => {
+            super::find_reads::safe_find_listing_arguments(&segment.arguments, context)
+                || super::fanout_reads::safe_find_exec(model, segment, context)
+        }
+        "xargs" => super::fanout_reads::safe_xargs(model, segment, context),
         // Operand-free `cat` after a pipe only copies the proven producer's output.
         "cat" => {
             (segment.pipeline_index > 0 && segment.arguments.is_empty())

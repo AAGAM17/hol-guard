@@ -141,6 +141,7 @@ mod powershell_floors;
 mod powershell_parser;
 mod powershell_reads;
 pub mod protect_request;
+mod read_only_fanout;
 pub mod rich_command_model_api;
 use parser_executables::*;
 use parser_segments::*;
@@ -547,9 +548,23 @@ fn parse_posix_command(request: &CommandModelRequestV1) -> Result<CanonicalComma
                 "transparent_wrapper_not_yet_supported",
             ));
         }
-        if executable
+        let read_only_xargs = executable
             .as_deref()
-            .is_some_and(|value| is_nested_command_executor(value, &arguments))
+            .is_some_and(|value| executable_basename(value) == "xargs")
+            && environment_names.is_empty()
+            && wrapper_chain.is_empty()
+            && segments.last().is_some_and(|previous| {
+                read_only_fanout::xargs_follows_find(
+                    previous,
+                    raw_segment.pipeline_index,
+                    &format!("top:{}", raw_segment.group_index),
+                    &arguments,
+                )
+            });
+        if !read_only_xargs
+            && executable
+                .as_deref()
+                .is_some_and(|value| is_nested_command_executor(value, &arguments))
         {
             return Ok(uncertain(
                 request,

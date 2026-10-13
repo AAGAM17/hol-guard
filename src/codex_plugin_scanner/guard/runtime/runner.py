@@ -1027,7 +1027,7 @@ def sync_receipts(
             pain_signals_uploaded = 0
         else:
             raise
-    value_metrics, weekly_digest = _sync.value_metrics(store.list_events(limit=5000), now)
+    value_metrics, weekly_digest = _sync.value_metrics(store.list_events(limit=_sync.VALUE_METRIC_EVENT_LIMIT), now)
     summary: dict[str, object] = {
         "synced_at": payload.get("syncedAt"),
         "receipts_stored": receipts_stored_total,

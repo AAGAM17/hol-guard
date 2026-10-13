@@ -417,11 +417,6 @@ fn daemon_only_state_in_the_binding_defers() {
         deferred(&run(&rules, allowed_payload(&rules))),
         "direct_hook_local_cli_rules"
     );
-    let watch = lane("watch", json!({ "harness_postures": { "codex": "watch" } }));
-    assert_eq!(
-        deferred(&run(&watch, allowed_payload(&watch))),
-        "direct_hook_recording_only"
-    );
     for (label, missing) in [
         ("no-home", "home_dir"),
         ("no-postures", "harness_postures"),
@@ -542,6 +537,41 @@ fn an_edge_verdict_other_than_allow_takes_the_daemon_path() {
 }
 
 #[test]
+fn every_verdict_in_watch_is_answered() {
+    // Watch records a call it would have stopped and lets it run, so the
+    // daemon returns the edge's non-blocking response for every verdict.
+    let sensitive_read = |lane: &Lane| {
+        json!({
+            "hook_event_name": "PreToolUse",
+            "toolName": "read_file",
+            "toolInput": { "file_path": ".env.synthetic" },
+            "cwd": lane.workspace,
+        })
+    };
+    let watch = lane("watch", json!({ "harness_postures": { "codex": "watch" } }));
+    let result = run(&watch, sensitive_read(&watch));
+    assert_eq!(result["outcome"], "answer", "{result}");
+    assert_ne!(result["edge"]["result"]["minimum_action"], "allow");
+    let page = drain(&watch, None);
+    let record = &page["records"][0];
+    assert_eq!(record["event"], "PreToolUse");
+    assert_eq!(
+        record["harness_response"],
+        result["edge"]["harness_response"]
+    );
+
+    // The posture of the harness that sent the hook decides.
+    let other = lane(
+        "watch-other",
+        json!({ "harness_postures": { "claude-code": "watch" } }),
+    );
+    assert_eq!(
+        deferred(&run(&other, sensitive_read(&other))),
+        "direct_hook_not_allow"
+    );
+}
+
+#[test]
 fn a_command_the_policy_warns_on_is_answered() {
     // The fixture policy warns on commands: the daemon would record the
     // warning and let the command run, so the resident answers it.
@@ -650,20 +680,13 @@ fn a_claude_code_hook_answers_with_the_daemon_home_it_left_out() {
         "direct_hook_home_mismatch"
     );
 
-    // The posture of the harness that sent the hook decides.
+    // Watch answers a Claude Code hook as well.
     let watch = allowing_lane(
         "claude-code-watch",
         json!({ "harness_postures": { "claude-code": "watch" } }),
     );
-    assert_eq!(
-        deferred(&run_as(
-            &watch,
-            "claude-code",
-            None,
-            allowed_payload(&watch)
-        )),
-        "direct_hook_recording_only"
-    );
+    let result = run_as(&watch, "claude-code", None, allowed_payload(&watch));
+    assert_eq!(result["outcome"], "answer", "{result}");
     let codex_read = json!({
         "hook_event_name": "PreToolUse",
         "toolName": "read_file",

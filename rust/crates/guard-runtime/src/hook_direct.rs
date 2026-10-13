@@ -6,13 +6,13 @@
 //! edge's harness response verbatim. This operation repeats that path for the
 //! shapes where the daemon adds nothing, in a workspace the current snapshot
 //! settled, while the publisher's ACK still holds: a Codex or Claude Code
-//! `PreToolUse` allow or terminal block outside Watch, any reviewed
-//! `PostToolUse` of those harnesses, and a reviewed `UserPromptSubmit` with
-//! its receipt, for Codex always and for Claude Code in Watch. The daemon
-//! never changes those responses. Every other request, and every `PreToolUse`
-//! verdict the daemon turns into an approval, a repair link or a Claude Code
-//! contained run, defers so the caller takes the daemon path, which is
-//! unchanged.
+//! `PreToolUse` allow or terminal block, any `PreToolUse` verdict in Watch,
+//! any reviewed `PostToolUse` of those harnesses, and a reviewed
+//! `UserPromptSubmit` with its receipt, for Codex always and for Claude Code
+//! in Watch. The daemon never changes those responses. Every other request,
+//! and every `PreToolUse` verdict the daemon turns into an approval, a
+//! repair link or a Claude Code contained run outside Watch, defers so the
+//! caller takes the daemon path, which is unchanged.
 //!
 //! The daemon also records evidence after it answers. An answer is returned
 //! only once that evidence is queued for the daemon to drain.
@@ -104,7 +104,6 @@ enum HookDirectDefer {
     BindingIncomplete,
     HomeMismatch,
     LocalCliRules,
-    RecordingOnly,
     PromptNotice,
     ExecutionEnvironmentInvalid,
     EvidenceUndrained,
@@ -128,7 +127,6 @@ impl HookDirectDefer {
             Self::BindingIncomplete => "direct_hook_binding_incomplete",
             Self::HomeMismatch => "direct_hook_home_mismatch",
             Self::LocalCliRules => "direct_hook_local_cli_rules",
-            Self::RecordingOnly => "direct_hook_recording_only",
             Self::PromptNotice => "direct_hook_prompt_notice",
             Self::ExecutionEnvironmentInvalid => "direct_hook_execution_environment_invalid",
             Self::EvidenceUndrained => "direct_hook_evidence_undrained",
@@ -269,11 +267,6 @@ fn answer(
         Some(posture) => posture == "watch",
         None => snapshot.mode == "observe",
     };
-    if recording_only && pre_tool {
-        // Watch needs the daemon's would-have-stopped evidence. A
-        // `PostToolUse` records the same activity in either posture.
-        return Err(HookDirectDefer::RecordingOnly);
-    }
     // Outside Watch the daemon may add Guard's notice to a Claude Code
     // prompt response.
     let prompt_notice =
@@ -312,6 +305,9 @@ fn answer(
     let edge = crate::edge::evaluate_envelope_with_store(envelope, policy_store)
         .map_err(|_| HookDirectDefer::EdgeFailed)?;
     let answered = match event {
+        // Watch never pauses or repairs a call: the daemon records the
+        // edge's non-blocking response for every verdict, as the drain does.
+        PRE_TOOL_USE if recording_only => reviewed_edge(&edge, PRE_TOOL_USE)?,
         PRE_TOOL_USE => pre_tool_answer(&edge, request.harness == CLAUDE_CODE)?,
         POST_TOOL_USE => post_tool_answer(&edge)?,
         _ => prompt_answer(&edge, prompt_notice)?,

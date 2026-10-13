@@ -233,6 +233,8 @@ struct Env<'a> {
 pub(crate) enum DirectNoticeDefer {
     StoreUnavailable,
     ForeignKey,
+    /// A notice is visible and this binding has no key to mark it seen.
+    UnkeyedNotice,
 }
 
 /// `_peek_claude_permission_notice` followed, when it finds a notice, by
@@ -250,6 +252,72 @@ pub(crate) fn claude_permission_notice_direct(
     session_id: &str,
     tool_name: Option<&str>,
 ) -> Result<Option<Map<String, Value>>, DirectNoticeDefer> {
+    direct_notice_transaction(
+        store_path,
+        Some((key, key_id)),
+        now,
+        Some(session_id),
+        tool_name,
+        None,
+    )
+}
+
+/// Event name and the function that renders its JSON from the loaded notice.
+type PromptEvent<'a> = (&'a str, &'a dyn Fn(Option<&Object>) -> Option<String>);
+
+/// The daemon's answer to a Claude `permission_prompt` notification:
+/// `_load_claude_permission_notice`, `_mark_claude_pending_permission_prompt_seen`
+/// and the event it always records, in one transaction.
+///
+/// `key` is `None` when the binding has no integrity key, or the hook names
+/// no session. A keyed session loads its notice after `BEGIN IMMEDIATE`. A
+/// notice that is visible then, and no key is bound, defers so the daemon
+/// still marks it. `event` renders the event's JSON text from the loaded
+/// notice. Failing to write it defers like a busy store.
+pub(crate) fn claude_permission_prompt_direct(
+    store_path: &std::path::Path,
+    key: Option<(&[u8], &str)>,
+    now: &str,
+    session_id: Option<&str>,
+    tool_name: Option<&str>,
+    event: PromptEvent<'_>,
+) -> Result<Option<Map<String, Value>>, DirectNoticeDefer> {
+    direct_notice_transaction(store_path, key, now, session_id, tool_name, Some(event))
+}
+
+/// A notice row for this session, read on the transaction's own connection.
+fn unkeyed_notice_present(
+    connection: &Connection,
+    session_id: &str,
+) -> Result<bool, DirectNoticeDefer> {
+    if !crate::local_store_read::table_exists(connection, "sync_state")
+        .map_err(|_| DirectNoticeDefer::StoreUnavailable)?
+    {
+        return Ok(false);
+    }
+    let session_key = format!("claude_permission_notice:{session_id}");
+    connection
+        .query_row(
+            "select exists(select 1 from sync_state \
+               where state_key = ?1 or (state_key >= ?2 and state_key < ?3))",
+            params![
+                session_key,
+                format!("{session_key}:"),
+                format!("{session_key};")
+            ],
+            |row| row.get(0),
+        )
+        .map_err(|_| DirectNoticeDefer::StoreUnavailable)
+}
+
+fn direct_notice_transaction(
+    store_path: &std::path::Path,
+    key: Option<(&[u8], &str)>,
+    now: &str,
+    session_id: Option<&str>,
+    tool_name: Option<&str>,
+    event: Option<PromptEvent<'_>>,
+) -> Result<Option<Map<String, Value>>, DirectNoticeDefer> {
     let connection = Connection::open_with_flags(store_path, OpenFlags::SQLITE_OPEN_READ_WRITE)
         .map_err(|_| DirectNoticeDefer::StoreUnavailable)?;
     // A held write lock sends the hook to the daemon, which waits for it.
@@ -262,24 +330,54 @@ pub(crate) fn claude_permission_notice_direct(
     let foreign_key = std::cell::Cell::new(false);
     let env = Env {
         connection: &connection,
-        key: Some(key.to_vec()),
-        key_id: Some(key_id),
+        key: key.map(|(bytes, _)| bytes.to_vec()),
+        key_id: key.map(|(_, id)| id),
         now,
         foreign_key: Some(&foreign_key),
     };
-    let notice = env.claude_load_notice(session_id, tool_name);
-    if let Some(notice) = &notice {
-        if let (Some(artifact_id), Some(artifact_hash), Some(command)) = (
-            opt_str(notice, "artifact_id"),
-            opt_str(notice, "artifact_hash"),
-            opt_str(notice, "command"),
-        ) {
-            env.claude_mark_prompt_seen(session_id, &artifact_id, &artifact_hash, &command);
+    let notice = match (key, session_id) {
+        (Some(_), Some(session_id)) => {
+            let notice = env.claude_load_notice(session_id, tool_name);
+            if let Some(notice) = &notice {
+                if let (Some(artifact_id), Some(artifact_hash), Some(command)) = (
+                    opt_str(notice, "artifact_id"),
+                    opt_str(notice, "artifact_hash"),
+                    opt_str(notice, "command"),
+                ) {
+                    env.claude_mark_prompt_seen(session_id, &artifact_id, &artifact_hash, &command);
+                }
+            }
+            notice
         }
-    }
+        (None, Some(session_id)) => {
+            // Same connection as the write lock, so a notice committed after
+            // any earlier read is visible here and is not answered unseen.
+            if unkeyed_notice_present(&connection, session_id)? {
+                let _ = connection.execute_batch("ROLLBACK");
+                return Err(DirectNoticeDefer::UnkeyedNotice);
+            }
+            None
+        }
+        _ => None,
+    };
     if foreign_key.get() {
         let _ = connection.execute_batch("ROLLBACK");
         return Err(DirectNoticeDefer::ForeignKey);
+    }
+    if let Some((event_name, render)) = event {
+        let recorded = render(notice.as_ref()).is_some_and(|text| {
+            connection
+                .execute(
+                    "insert into guard_events (event_name, payload_json, occurred_at) \
+                     values (?1, ?2, ?3)",
+                    params![event_name, text, now],
+                )
+                .is_ok()
+        });
+        if !recorded {
+            let _ = connection.execute_batch("ROLLBACK");
+            return Err(DirectNoticeDefer::StoreUnavailable);
+        }
     }
     if connection.execute_batch("COMMIT").is_err() {
         let _ = connection.execute_batch("ROLLBACK");

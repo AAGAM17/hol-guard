@@ -1,13 +1,15 @@
 //! Vectors recorded from the Python helpers behind the daemon's Claude Code
-//! `PermissionRequest` reply (`scripts/record_claude_permission_text_vectors.py`).
+//! `PermissionRequest` and permission prompt `Notification` replies
+//! (`scripts/record_claude_permission_text_vectors.py`).
 
 use serde_json::{Map, Value};
 
 use super::{
     guard_approval_question_message, notice_prefers_ask_user_question,
-    notification_tool_display_name, notification_tool_name, permission_prompt_system_message,
-    permission_request_reason, permission_request_response, permission_request_system_message,
-    DEFAULT_REVIEW_REASON,
+    notification_tool_display_name, notification_tool_name, permission_prompt_additional_context,
+    permission_prompt_event, permission_prompt_notification_response,
+    permission_prompt_system_message, permission_request_reason, permission_request_response,
+    permission_request_system_message, DEFAULT_REVIEW_REASON,
 };
 
 const VECTORS: &str = include_str!("../tests/fixtures/claude_permission_text_vectors.json");
@@ -71,6 +73,21 @@ fn matches_vectors_recorded_from_python() {
             permission_request_response(payload, notice),
             expected["response"],
             "{name}: response"
+        );
+        assert_eq!(
+            permission_prompt_additional_context(notice),
+            expected["prompt_additional_context"].as_str().unwrap(),
+            "{name}: prompt_additional_context"
+        );
+        assert_eq!(
+            permission_prompt_notification_response(payload, notice),
+            expected["notification_response"],
+            "{name}: notification_response"
+        );
+        assert_eq!(
+            permission_prompt_event(payload, notice).as_deref(),
+            expected["notification_event"].as_str(),
+            "{name}: notification_event"
         );
     }
 }

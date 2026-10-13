@@ -374,11 +374,13 @@ fn lifecycle_hooks_reach_the_resident_and_permission_hooks_do_not() {
 #[test]
 fn only_claude_code_asks_the_resident_about_its_permission_dialog() {
     assert!(harness_event(&CLAUDE_CODE, "PermissionRequest"));
+    assert!(harness_event(&CLAUDE_CODE, "Notification"));
     assert!(harness_event(&CLAUDE_CODE, "Stop"));
     assert!(!harness_event(&CODEX, "PermissionRequest"));
+    assert!(!harness_event(&CODEX, "Notification"));
     for event in [
         "permission_request_v2",
-        "Notification",
+        "notification",
         "copilotPermissionRequest",
     ] {
         assert!(!harness_event(&CLAUDE_CODE, event), "{event}");

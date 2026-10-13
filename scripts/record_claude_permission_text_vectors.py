@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Record parity vectors for the Claude Code PermissionRequest reply text.
+"""Record parity vectors for the Claude Code permission reply text.
 
 The expected answers come from the Python helpers the daemon uses today
-(``claude_permission_request_response`` and the message helpers in
+(``claude_permission_request_response``, the daemon's permission prompt
+``Notification`` answer, and the message helpers in
 ``commands_support_claude_approval``). The resident's port in
 ``hook_direct_claude_permission_text.rs`` replays every vector. The store
-peek is replaced by the vector's notice and the mark-seen is a no-op: the
-resident's caller owns both.
+peek is replaced by the vector's notice, the mark-seen is a no-op and the
+recorded event is captured: the resident's caller owns all three.
 
 Usage: python scripts/record_claude_permission_text_vectors.py [--check]
 Deterministic output.
@@ -17,6 +18,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -33,6 +35,7 @@ from codex_plugin_scanner.guard.cli.commands_support_runtime_policy import (  # 
 from codex_plugin_scanner.guard.daemon.claude_permission_request import (  # noqa: E402
     claude_permission_request_response,
 )
+from codex_plugin_scanner.guard.daemon.hook_worker import HookWorker  # noqa: E402
 
 OUT = ROOT / "rust/crates/guard-runtime/tests/fixtures/claude_permission_text_vectors.json"
 DEFAULT_REASON = "HOL Guard requires review before this action can execute."
@@ -162,11 +165,23 @@ def cases() -> list[tuple[str, dict[str, object], dict[str, object] | None]]:
 
 def expected(hook: dict[str, object], pending: dict[str, object] | None) -> dict[str, object]:
     native_reason = str(pending.get("reason") or DEFAULT_REASON) if pending is not None else DEFAULT_REASON
+    # The daemon reads the notice from the native store op's sorted JSON.
+    loaded = json.loads(json.dumps(pending, sort_keys=True)) if pending is not None else None
+    events: list[tuple[str, dict[str, object]]] = []
+    store = SimpleNamespace(add_event=lambda name, event, _now: events.append((name, event)))
     with (
         mock.patch.object(hook_state, "_peek_claude_permission_notice", lambda _store, _payload: pending),
+        mock.patch.object(hook_state, "_load_claude_permission_notice", lambda _store, _payload: loaded),
         mock.patch.object(hook_state, "_mark_claude_pending_permission_prompt_seen", lambda **_kwargs: None),
     ):
         response = claude_permission_request_response(None, hook)  # type: ignore[arg-type]
+        notification = HookWorker._claude_permission_prompt_notification_response(
+            SimpleNamespace(store=store),  # type: ignore[arg-type]
+            hook,
+        )
+    [(event_name, event)] = events
+    if event_name != "claude/permission_prompt":
+        raise SystemExit(f"unexpected event {event_name}")
     return {
         "notification_tool_name": _claude_notification_tool_name(hook),
         "notification_tool_display_name": _claude_notification_tool_display_name(hook),
@@ -180,6 +195,9 @@ def expected(hook: dict[str, object], pending: dict[str, object] | None) -> dict
             payload=hook, native_reason=native_reason
         ),
         "response": response,
+        "prompt_additional_context": approval._claude_permission_prompt_additional_context(pending),
+        "notification_response": notification,
+        "notification_event": json.dumps(event),
     }
 
 

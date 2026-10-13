@@ -14,18 +14,28 @@
 //! key bound, the resident verifies the notice and marks it seen as the
 //! daemon does, then renders the daemon's answer; without the key, or when
 //! a row is signed under another key, the session keeps the daemon path.
+//!
+//! Claude Code's `permission_prompt` notification is answered the same way:
+//! the notice, when there is one, is verified and marked seen, and the event
+//! the daemon records for every such prompt is written in that transaction.
+//! Every other Claude notification gets the constant.
 
 use std::path::Path;
 
 use serde_json::{json, Map, Value};
 
-use super::claude_permission_text::{notification_tool_name, permission_request_response};
+use super::claude_permission_text::{
+    notification_tool_name, permission_prompt_event, permission_prompt_notification_response,
+    permission_request_response, PERMISSION_PROMPT_EVENT,
+};
 use super::workspace::python_strip;
 use super::{
     HookDirectDefer, CLAUDE_CODE, CURSOR, EVENT_NAME_FIELDS, GROK, PAYLOAD_REFERENCE_FIELDS,
     TRANSITION_PROBE_FIELD,
 };
-use crate::hook_authority_state_op::claude_permission_notice_direct;
+use crate::hook_authority_state_op::{
+    claude_permission_notice_direct, claude_permission_prompt_direct,
+};
 use crate::policy_bundle_time::micros_to_utc_isoformat;
 use crate::policy_store::PolicySnapshotStore;
 
@@ -34,14 +44,16 @@ const UNAVAILABLE_REASON_CODE: &str = "native_hook_event_unavailable";
 /// `_DECISION_HARNESSES` among the harnesses the resident answers.
 const DECISION_HARNESSES: [&str; 2] = ["hermes", "openclaw"];
 /// Events `fail_closed_response` answers with a deny, or the daemon handles
-/// itself. Claude Code shows Guard's pending approval on a permission
-/// `Notification`, so the daemon keeps every Claude Code notification.
+/// itself.
 const DAEMON_EVENTS: [&str; 3] = [
     "permissionrequest",
     "permissionrequestv2",
     "copilotpermissionrequest",
 ];
-const NOTIFICATION: &str = "notification";
+/// `runtime_hook_event_name` keeps an unmapped name as sent, so only this
+/// exact spelling reaches the daemon's permission prompt handler.
+const NOTIFICATION: &str = "Notification";
+const PERMISSION_PROMPT: &str = "permission_prompt";
 /// The events `runtime_hook_event_name` names `PermissionRequest`.
 const CLAUDE_PERMISSION_EVENTS: [&str; 2] = ["permissionrequest", "permissionrequestv2"];
 /// A longer or unusual name is left to the daemon.
@@ -107,9 +119,7 @@ pub(super) fn answer(
     let claude_permission =
         harness == CLAUDE_CODE && CLAUDE_PERMISSION_EVENTS.contains(&compact.as_str());
     if !claude_permission
-        && (DAEMON_EVENTS.contains(&compact.as_str())
-            || compact.starts_with("before")
-            || (harness == CLAUDE_CODE && compact == NOTIFICATION))
+        && (DAEMON_EVENTS.contains(&compact.as_str()) || compact.starts_with("before"))
     {
         return Err(HookDirectDefer::EventUnsupported);
     }
@@ -134,6 +144,13 @@ pub(super) fn answer(
     }
     if claude_permission {
         return claude_permission_answer(guard_home, payload, policy_store);
+    }
+    // `str(payload.get("notification_type") or "") == "permission_prompt"`.
+    if harness == CLAUDE_CODE
+        && event == NOTIFICATION
+        && payload.get("notification_type").and_then(Value::as_str) == Some(PERMISSION_PROMPT)
+    {
+        return claude_permission_prompt_answer(guard_home, payload, policy_store);
     }
     Ok(json!({ "harness_response": constant_response(harness, event) }))
 }
@@ -186,6 +203,56 @@ fn claude_permission_answer(
     )
     .map_err(|_| HookDirectDefer::PermissionNotice)?;
     Ok(json!({ "harness_response": permission_request_response(payload, notice.as_ref()) }))
+}
+
+/// `_claude_permission_prompt_notification_response`.
+fn claude_permission_prompt_answer(
+    guard_home: &str,
+    payload: &Map<String, Value>,
+    policy_store: &PolicySnapshotStore,
+) -> Result<Value, HookDirectDefer> {
+    // The event copies these fields as the daemon parsed them. A number may
+    // be spelled differently once Python reads it, and a nested value can
+    // hold one, so only text, booleans and null are recorded here.
+    if ["session_id", "tool_name"].iter().any(|field| {
+        matches!(
+            payload.get(*field),
+            Some(Value::Number(_) | Value::Array(_) | Value::Object(_))
+        )
+    }) {
+        return Err(HookDirectDefer::PayloadUnsupported);
+    }
+    let session_id = match payload.get("session_id").and_then(Value::as_str) {
+        Some(value) => python_strip(value).map_err(|_| HookDirectDefer::EventUnsupported)?,
+        None => None,
+    };
+    // The event is written for every prompt, so every answer needs a
+    // current binding. The key travels with that binding. The transaction
+    // looks for a notice after it takes the write lock, so a notice that
+    // lands in between cannot be answered without being marked seen.
+    let binding = policy_store
+        .admit_direct_binding()
+        .map_err(|_| HookDirectDefer::PermissionNotice)?;
+    let key = binding
+        .integrity_key
+        .as_ref()
+        .map(|integrity_key| (&integrity_key.key[..], integrity_key.key_id.as_str()));
+    let store_path = Path::new(guard_home).join("guard.db");
+    let now = utc_now_isoformat().ok_or(HookDirectDefer::PermissionNotice)?;
+    let tool_name = notification_tool_name(payload);
+    let render = |notice: Option<&Map<String, Value>>| permission_prompt_event(payload, notice);
+    let notice = claude_permission_prompt_direct(
+        &store_path,
+        key,
+        &now,
+        session_id,
+        tool_name.as_deref(),
+        (PERMISSION_PROMPT_EVENT, &render),
+    )
+    .map_err(|_| HookDirectDefer::PermissionNotice)?;
+    Ok(json!({
+        "harness_response": permission_prompt_notification_response(payload, notice.as_ref()),
+    }))
 }
 
 fn utc_now_isoformat() -> Option<String> {

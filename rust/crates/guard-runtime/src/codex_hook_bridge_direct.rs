@@ -30,6 +30,7 @@ const USER_PROMPT_SUBMIT: &str = "UserPromptSubmit";
 /// Claude Code's permission dialog, which the resident answers from the
 /// session's permission notice.
 const PERMISSION_REQUEST: &str = "PermissionRequest";
+const NOTIFICATION: &str = "Notification";
 
 /// A harness whose passed-through `PreToolUse` hook the daemon answers with
 /// the edge's own response.
@@ -308,7 +309,8 @@ fn direct_enabled(switch: &str) -> bool {
 /// tool or prompt hook it reviews, or a lifecycle hook it answers with the
 /// daemon's constant. Permission and notification hooks, and the `before*`
 /// hooks the daemon denies, go to the daemon without asking the resident;
-/// `direct_answer` asks it about Claude Code's `PermissionRequest`.
+/// `direct_answer` asks it about Claude Code's `PermissionRequest` and
+/// `Notification`.
 fn direct_event(event_name: &str) -> bool {
     if [PRE_TOOL_USE, POST_TOOL_USE, USER_PROMPT_SUBMIT].contains(&event_name) {
         return true;
@@ -320,10 +322,11 @@ fn direct_event(event_name: &str) -> bool {
         || compact.starts_with("before"))
 }
 
-/// `direct_event`, plus Claude Code's `PermissionRequest`.
+/// `direct_event`, plus Claude Code's `PermissionRequest` and `Notification`.
 fn harness_event(harness: &DirectHarness, event_name: &str) -> bool {
     direct_event(event_name)
-        || (harness.name == CLAUDE_CODE.name && event_name == PERMISSION_REQUEST)
+        || (harness.name == CLAUDE_CODE.name
+            && [PERMISSION_REQUEST, NOTIFICATION].contains(&event_name))
 }
 
 /// Send the request to a live resident that runs this very executable.

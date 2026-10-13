@@ -69,16 +69,6 @@ fn hooks_the_daemon_handles_itself_defer() {
     }
     let long = "x".repeat(65);
     assert_eq!(deferred(&run(&lane, lifecycle(&long))), unsupported);
-    // Claude Code shows Guard's pending approval on a notification.
-    assert_eq!(
-        deferred(&run_as(
-            &lane,
-            "claude-code",
-            Some(HOME),
-            lifecycle("Notification")
-        )),
-        unsupported
-    );
     assert_eq!(run(&lane, lifecycle("Notification"))["outcome"], "answer");
     // The Cursor client renders its own lifecycle hooks.
     assert_eq!(
@@ -410,3 +400,6 @@ fn a_busy_store_leaves_the_notice_to_the_daemon() {
         None
     );
 }
+
+#[path = "hook_direct_lifecycle_notification_tests.rs"]
+mod notification;

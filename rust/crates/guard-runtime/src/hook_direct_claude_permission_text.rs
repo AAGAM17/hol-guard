@@ -13,7 +13,7 @@ use guard_command::workspace_inventory::python_strip;
 use serde_json::{json, Map, Value};
 
 use crate::guard_config_coerce::python_truthy;
-use crate::guard_store_json::py_str;
+use crate::guard_store_json::{dumps_default, py_str};
 
 /// `CLAUDE_GUARD_PERMISSION_PASSTHROUGH_KEY`: Claude keeps its own dialog.
 pub(super) const PERMISSION_PASSTHROUGH_KEY: &str = "guard_permission_passthrough";
@@ -26,6 +26,14 @@ const DEFAULT_APPROVAL_QUESTION: &str =
 /// The reason shown when a deferring notice carries none.
 const DEFAULT_REVIEW_REASON: &str = "HOL Guard requires review before this action can execute.";
 const PERMISSION_REQUEST: &str = "PermissionRequest";
+const NOTIFICATION: &str = "Notification";
+/// The event the daemon records for every Claude permission prompt.
+pub(super) const PERMISSION_PROMPT_EVENT: &str = "claude/permission_prompt";
+const DEFAULT_PROMPT_CONTEXT: &str =
+    "HOL Guard intercepted the sensitive request and is routing it \
+     into a HOL Guard approval question. This approval flow came from HOL Guard, not from Claude \
+     alone. Ask the user with AskUserQuestion and the options Allow once, Allow during this \
+     session, and Keep blocked. If the user chooses Keep blocked, do not retry the same action.";
 
 /// `_optional_string`: a string that is not blank, stripped.
 fn optional_string(value: Option<&Value>) -> Option<&str> {
@@ -268,6 +276,48 @@ pub(super) fn permission_request_response(
         PERMISSION_PASSTHROUGH_KEY: true,
         "hookSpecificOutput": {"hookEventName": PERMISSION_REQUEST},
         "systemMessage": permission_request_system_message(payload, &reason),
+    })
+}
+
+/// `_claude_permission_prompt_additional_context`: the notice's Guard
+/// approval question, or the generic routing note without a notice.
+pub(super) fn permission_prompt_additional_context(notice: Option<&Map<String, Value>>) -> String {
+    match notice {
+        Some(fields) => guard_approval_question_message(Some(fields)),
+        None => DEFAULT_PROMPT_CONTEXT.to_owned(),
+    }
+}
+
+/// The `claude/permission_prompt` event as the daemon's `json.dumps` writes
+/// it: the hook's own fields as it sent them, then the notice or `{}`, in
+/// the daemon's key order. The notice reaches the daemon from the store
+/// op's sorted JSON, so its keys are sorted there too.
+pub(super) fn permission_prompt_event(
+    payload: &Map<String, Value>,
+    notice: Option<&Map<String, Value>>,
+) -> Option<String> {
+    let field = |key: &str| dumps_default(payload.get(key).unwrap_or(&Value::Null));
+    let notice = dumps_default(&Value::Object(notice.cloned().unwrap_or_default()))?;
+    Some(format!(
+        "{{\"session_id\": {}, \"notification_type\": {}, \"tool_name\": {}, \"notice\": {notice}}}",
+        field("session_id")?,
+        field("notification_type")?,
+        field("tool_name")?,
+    ))
+}
+
+/// `_claude_permission_prompt_notification_response` once the caller has
+/// loaded the notice, marked it seen and recorded the event.
+pub(super) fn permission_prompt_notification_response(
+    payload: &Map<String, Value>,
+    notice: Option<&Map<String, Value>>,
+) -> Value {
+    json!({
+        "systemMessage": permission_prompt_system_message(payload, notice),
+        "hookSpecificOutput": {
+            "hookEventName": NOTIFICATION,
+            "additionalContext": permission_prompt_additional_context(notice),
+        },
     })
 }
 

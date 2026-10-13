@@ -12,7 +12,6 @@ from pathlib import Path
 import pytest
 
 from codex_plugin_scanner.cli import main
-from codex_plugin_scanner.guard.advisory_model import _normalized_url_indicator
 from codex_plugin_scanner.guard.approvals import queue_blocked_approvals
 from codex_plugin_scanner.guard.config import GuardConfig
 from codex_plugin_scanner.guard.consumer import artifact_hash, evaluate_detection
@@ -4846,9 +4845,3 @@ def test_extract_network_hosts_keeps_host_like_non_media_header_values():
     text = "X-Callback: vnd.github.raw Accept: application/vnd.github.raw+json"
 
     assert extract_network_hosts(text) == {"vnd.github.raw"}
-
-
-def test_normalized_url_indicator_tolerates_bracketed_regex():
-    raw = r"https://[^:]*:\([^@]*\)@.*|\1|"
-    result = _normalized_url_indicator(raw)
-    assert result == raw

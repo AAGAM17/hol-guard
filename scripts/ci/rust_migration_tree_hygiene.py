@@ -14,6 +14,21 @@ RETIRED_PATHS = (
     ".github/rust-required-gzip-b64",
     ".github/rust-required-patch",
     "scripts/ci/apply_daemon_edge_hardening.py",
+    # Historical, single-use Python parity recorders superseded by frozen Rust fixtures.
+    "scripts/ci/record_cli_runtime_support_parity.py",
+    "scripts/ci/record_contained_execution_parity.py",
+    "scripts/ci/record_contained_script_parity.py",
+    "scripts/ci/record_contained_unittest_parity.py",
+    "scripts/ci/record_content_sensitivity_parity.py",
+    "scripts/ci/record_continuation_authority_parity.py",
+    "scripts/ci/record_environment_secret_dump_vectors.py",
+    "scripts/ci/record_hook_approval_context_vectors.py",
+    "scripts/ci/record_hook_copilot_settle_vectors.py",
+    "scripts/ci/record_policy_document_parity.py",
+    "scripts/ci/record_restricted_pytest_parity.py",
+    "scripts/ci/record_shell_helper_vectors.py",
+    "scripts/ci/record_shell_request_authority_parity.py",
+    "scripts/ci/record_skill_directory_portable_parity.py",
 )
 RETIRED_GITHUB_PREFIXES = ("rust-required-",)
 RETIRED_WORKFLOW_PREFIXES = ("tmp-",)

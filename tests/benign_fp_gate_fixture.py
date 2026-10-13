@@ -230,6 +230,8 @@ def build_fixture(root: Path) -> BenignFixture:
     # Synthetic credential file so the negative controls have a real target.
     _write(home / ".agent" / "skills" / "x" / "SKILL.md", "---\nname: x\n---\nSynthetic home skill body.\n")
     _write(home / ".agent" / "artifacts" / "report.md", "# Report\nInert build report text.\n")
+    _write(home / ".agents" / "skills" / "x" / "SKILL.md", "---\nname: x\n---\nSynthetic home skill body.\n")
+    _write(home / ".config" / "app-portal" / "settings.json", '{"theme": "dark"}\n')
     _write(home / "other-project" / "notes.md", "Notes kept outside the project.\nretry policy: three attempts.\n")
     _write(home / "other-project" / "src" / "report.ts", "export const reportWindow = 'report-window-marker';\n")
     _write(home / "other-project" / "package.json", '{\n  "name": "@acme/app",\n  "version": "1.0.0"\n}\n')

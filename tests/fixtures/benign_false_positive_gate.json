@@ -4281,6 +4281,51 @@
       "expect": "allow"
     },
     {
+      "id": "ls-home-agents-dir",
+      "fix_area": "home-dotdir-list",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${HOME}/.agents/"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "ls-home-agents-skill-dir",
+      "fix_area": "home-dotdir-list",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${HOME}/.agents/skills/"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "ls-home-config-dir",
+      "fix_area": "home-dotdir-list",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${HOME}/.config/"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "gauntlet-grep-rln-sibling-repo",
       "fix_area": "shell",
       "harnesses": [

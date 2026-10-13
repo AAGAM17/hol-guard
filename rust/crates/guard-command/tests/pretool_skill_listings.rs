@@ -206,11 +206,20 @@ fn plugin_cache_listings_stay_under_the_skills_directory() {
         ),
         "allow"
     );
-    assert_ne!(
+    // Other plugin directories list by name like any home dot-directory.
+    assert_eq!(
         action(
             &home,
             "zcode",
             "ls ~/.zcode/cli/plugins/cache/market/plugin/1.0.0/logs"
+        ),
+        "allow"
+    );
+    assert_ne!(
+        action(
+            &home,
+            "zcode",
+            "ls -R ~/.zcode/cli/plugins/cache/market/plugin/1.0.0/logs"
         ),
         "allow"
     );

@@ -72,9 +72,15 @@ pub(super) fn verified_cwd_target(value: &str, context: super::PathContext<'_>) 
 /// lexical join is what a logical `cd` reaches, so the caller's spelling
 /// check rejects symlinked components. `..` is never proved: the shell
 /// resolves it against its logical `$PWD`, which may name a symlinked
-/// parent the reported cwd does not show.
+/// parent the reported cwd does not show. On Windows a `:` can name a
+/// drive-relative path (`C:src`) or an alternate data stream, and Git Bash
+/// resolves a root-relative `/etc` against its own root rather than the
+/// cwd's drive, so neither is joined; the caller's exact-spelling check
+/// covers case, short names and junctions there.
 fn relative_cwd_target(value: &str, context: super::PathContext<'_>) -> Option<std::path::PathBuf> {
-    if cfg!(windows) || value.starts_with('~') {
+    if value.starts_with('~')
+        || (cfg!(windows) && (value.contains(':') || value.starts_with(['/', '\\'])))
+    {
         return None;
     }
     let dotted = value == "." || value.starts_with("./");
@@ -312,7 +318,7 @@ impl<'a> super::PathContext<'a> {
                 && !environment
                     .environment_names
                     .iter()
-                    .any(|name| name == "CDPATH")
+                    .any(|name| name.eq_ignore_ascii_case("CDPATH"))
         });
         // rustup reads these before any toolchain file, and either one can
         // name a toolchain directory. Without a stamped environment, the
@@ -427,3 +433,7 @@ mod tests {
 #[cfg(test)]
 #[path = "tests_relative_cd.rs"]
 mod tests_relative_cd;
+
+#[cfg(test)]
+#[path = "tests_relative_cd_windows.rs"]
+mod tests_relative_cd_windows;

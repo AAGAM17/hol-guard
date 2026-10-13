@@ -271,8 +271,17 @@ fn jq_pipelines_reshape_without_reaching_input_or_environment() {
         &[
             "jq -r '.scripts | keys | length' ~/code/sibling/package.json",
             "jq '.scripts|keys_unsorted|sort' ~/code/sibling/package.json",
+            "jq -r '.scripts | keys[]' ~/code/sibling/package.json",
+            "jq -r '.scripts | to_entries[] | .key' ~/code/sibling/package.json",
+            "jq -r '.scripts | has(\"build\")' ~/code/sibling/package.json",
+            "jq -r '.scripts | keys | join(\"\\n\")' ~/code/sibling/package.json",
+            "cat ~/code/sibling/package.json | jq -r '.key'",
         ],
         &[
+            "jq -r '.scripts | has(\"\\(env)\")' ~/code/sibling/package.json",
+            "jq -r '.scripts | test(\"x\")' ~/code/sibling/package.json",
+            "jq -r '.name' ~/code/sibling/server.key",
+            "jq -r '.name' ~/code/sibling/.key",
             "jq -r '.scripts | env' ~/code/sibling/package.json",
             "jq -r '.scripts | input' ~/code/sibling/package.json",
             "jq -r '.scripts | $ENV' ~/code/sibling/package.json",

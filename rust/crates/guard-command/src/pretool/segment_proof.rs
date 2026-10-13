@@ -185,6 +185,9 @@ pub(super) fn exact_safe_segment_with_context(
         return false;
     };
     let basename = executable_basename(executable);
+    let jq_filter = (basename == "jq")
+        .then(|| safe_reads::jq_filter_position(&segment.arguments, segment.pipeline_index > 0))
+        .flatten();
     let inert_search = matches!(basename, "rg" | "grep" | "fd")
         && search::safe_search_arguments_with_context(basename, &segment.arguments, context);
     if (!inert_search
@@ -194,7 +197,10 @@ pub(super) fn exact_safe_segment_with_context(
             && segment
                 .arguments
                 .iter()
-                .any(|argument| sensitive_path_argument(argument)))
+                .enumerate()
+                .any(|(index, argument)| {
+                    Some(index) != jq_filter && sensitive_path_argument(argument)
+                }))
         || !segment.environment_names.is_empty()
         || executable.contains(['/', '\\'])
     {

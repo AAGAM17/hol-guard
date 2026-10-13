@@ -352,6 +352,19 @@ pub(super) fn safe_jq_file_arguments(
         && command_read_target(file, context, false)
 }
 
+/// Where a proven jq filter sits: last when jq reads stdin, before the file
+/// operand otherwise. The filter is a program over the value read, so a
+/// field such as `.key` is not a path to screen.
+pub(super) fn jq_filter_position(arguments: &[String], piped_input: bool) -> Option<usize> {
+    let last = arguments.len().checked_sub(1)?;
+    let index = if piped_input {
+        last
+    } else {
+        last.checked_sub(1)?
+    };
+    jq_filter::safe_filter(&arguments[index]).then_some(index)
+}
+
 pub(super) fn safe_jq_stdin_arguments(arguments: &[String]) -> bool {
     let mut filter = None;
     for argument in arguments {

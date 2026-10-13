@@ -2,10 +2,12 @@
 //!
 //! A filter is a short pipeline. The first stage is a field/index projection
 //! (`.scripts`, `.items[0].name`, `.[]`); later stages are projections or
-//! bare, argument-free builtins that only reshape the value already read,
-//! such as `keys`, `length` or `sort`. Nothing that reads the environment,
-//! further input, files or modules can appear: `$`, `@`, quotes,
-//! parentheses, `;`, `,` and every builtin outside the list are rejected.
+//! builtins that only reshape the value already read: argument-free ones such
+//! as `keys`, `length` or `sort`, optionally iterated or indexed (`keys[]`),
+//! and a few that take one plain string or number literal (`has("name")`,
+//! `join("\n")`). Nothing that reads the environment, further input, files or
+//! modules can appear: `$`, `@`, string interpolation, `;`, `,` outside a
+//! literal, and every builtin outside the lists are rejected.
 
 const MAX_STAGES: usize = 8;
 
@@ -43,22 +45,104 @@ const VALUE_BUILTINS: &[&str] = &[
     "values",
 ];
 
+/// Builtins whose one argument is a plain literal. None of them evaluates
+/// the argument as a program, a regex or a path outside the value.
+const LITERAL_BUILTINS: &[&str] = &[
+    "contains",
+    "endswith",
+    "has",
+    "index",
+    "indices",
+    "join",
+    "ltrimstr",
+    "rindex",
+    "rtrimstr",
+    "split",
+    "startswith",
+];
+
+const MAX_LITERAL: usize = 128;
+
 pub(super) fn safe_filter(filter: &str) -> bool {
-    if filter.len() > 256
-        || !filter.starts_with('.')
-        || !filter.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'[' | b']' | b'|' | b' ')
-        })
-    {
+    if filter.len() > 256 || !filter.starts_with('.') {
         return false;
     }
-    let stages: Vec<&str> = filter.split('|').map(str::trim).collect();
+    let Some(stages) = split_stages(filter) else {
+        return false;
+    };
     if stages.len() > MAX_STAGES || !projection(stages[0]) {
         return false;
     }
     stages[1..]
         .iter()
-        .all(|stage| projection(stage) || VALUE_BUILTINS.contains(stage))
+        .all(|stage| projection(stage) || iterated_builtin(stage) || literal_builtin(stage))
+}
+
+/// Splits on `|` outside string literals. Outside a literal only names,
+/// projections, spaces and the literal-call parentheses may appear; inside
+/// one only printable ASCII and the `\n`, `\t` and `\\` escapes, so neither
+/// `\(` interpolation nor an escaped quote can appear.
+fn split_stages(filter: &str) -> Option<Vec<&str>> {
+    let bytes = filter.as_bytes();
+    let mut stages = Vec::new();
+    let mut start = 0;
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'"' => {
+                index += 1;
+                while bytes.get(index) != Some(&b'"') {
+                    match bytes.get(index)? {
+                        b'\\' if matches!(bytes.get(index + 1)?, b'n' | b't' | b'\\') => {
+                            index += 2;
+                        }
+                        b'\\' => return None,
+                        byte if (b' '..=b'~').contains(byte) => index += 1,
+                        _ => return None,
+                    }
+                }
+            }
+            b'|' => {
+                stages.push(filter[start..index].trim());
+                start = index + 1;
+            }
+            byte if byte.is_ascii_alphanumeric()
+                || matches!(byte, b'.' | b'_' | b'[' | b']' | b' ' | b'(' | b')') => {}
+            _ => return None,
+        }
+        index += 1;
+    }
+    stages.push(filter[start..].trim());
+    Some(stages)
+}
+
+/// `keys`, `keys[]` or `to_entries[0]`: an argument-free builtin, optionally
+/// followed by an iterate or index suffix.
+fn iterated_builtin(stage: &str) -> bool {
+    let end = stage
+        .find(|value: char| !(value.is_ascii_alphanumeric() || value == '_'))
+        .unwrap_or(stage.len());
+    let (name, suffix) = stage.split_at(end);
+    VALUE_BUILTINS.contains(&name)
+        && (suffix.is_empty() || (suffix.starts_with('[') && projection(&format!(".{suffix}"))))
+}
+
+/// `has("name")`, `join("\n")` or `has(0)`: one plain literal argument.
+fn literal_builtin(stage: &str) -> bool {
+    let Some((name, rest)) = stage.split_once('(') else {
+        return false;
+    };
+    let Some(argument) = rest.strip_suffix(')') else {
+        return false;
+    };
+    let string = argument.len() <= MAX_LITERAL
+        && argument
+            .strip_prefix('"')
+            .and_then(|value| value.strip_suffix('"'))
+            .is_some_and(|value| !value.contains('"'));
+    let number =
+        (1..=18).contains(&argument.len()) && argument.bytes().all(|byte| byte.is_ascii_digit());
+    LITERAL_BUILTINS.contains(&name.trim_end()) && (string || number)
 }
 
 /// Field/index projections only: no functions, file operands, modules or
@@ -119,6 +203,14 @@ mod tests {
             ".dependencies|keys_unsorted|sort",
             ".items[0] | .name",
             ".[] | type",
+            ".queries | keys[]",
+            ".queries | to_entries[] | .key",
+            ".items | keys[0]",
+            ".queries | has(\"auth_attempts\")",
+            ".queries | keys | join(\"\\n\")",
+            ".name | split(\"/\") | .[0]",
+            ".list | has(0)",
+            ".name | startswith(\"a|b\")",
         ] {
             assert!(safe_filter(filter), "{filter}");
         }
@@ -142,6 +234,18 @@ mod tests {
             ".a |",
             ".a | | length",
             ". | keys | keys | keys | keys | keys | keys | keys | keys",
+            ".a | has(\"\\(env)\")",
+            ".a | has(\"\\\"\")",
+            ".a | has(\"x\", \"y\")",
+            ".a | has(.b)",
+            ".a | has($x)",
+            ".a | has(\"x\")(\"y\")",
+            ".a | test(\"x\")",
+            ".a | env[]",
+            ".a | input[]",
+            ".a | keys[] | \"x\"",
+            ".a | has(\"x)",
+            ".a | keys()",
         ] {
             assert!(!safe_filter(filter), "{filter}");
         }

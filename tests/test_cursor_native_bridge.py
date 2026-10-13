@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import json
 import re
 import shlex
@@ -27,6 +29,21 @@ _POSIX_ONLY = pytest.mark.skipif(sys.platform == "win32", reason="the native Cur
 _PYTHON = Path("/usr/bin/python3")
 _NATIVE_SCRIPT = Path(__file__).resolve().parents[1] / "rust/crates/guard-runtime/src/cursor_hook_bridge_script.rs"
 _ANSWERS = Path(__file__).resolve().parent / "fixtures" / "cursor_native_answers" / "vectors.json"
+_AFTER_ANSWERS = _ANSWERS.with_name("after_vectors.json")
+_AFTER_SCHEMA = "hol-guard-cursor-native-after-answers.v1"
+_AFTER_INPUTS = (
+    '{"hook_event_name": "afterShellExecution", "command": " ls -la ", "cwd": "/nonexistent-cursor-cwd",'
+    ' "conversation_id": "c-1", "generation_id": "g-1", "output": "a\\nb", "duration": 12}',
+    '{"hook_event_name": " AfterShellExecution ", "command": "pwd", "tool_input": {"command": "echo hi"}}',
+    '{"hook_event_name": "afterMCPExecution", "tool_name": " lookup ", "tool_input": "{\\"q\\": 1}",'
+    ' "result_json": "{}", "url": "https://example.invalid/mcp"}',
+    '{"hook_event_name": "afterMCPExecution", "tool_input": ["a", 1]}',
+    '{"hook_event_name": "AFTERMCPEXECUTION", "tool_name": "", "tool_input": "not json"}',
+    '{"hookEventName": "afterShellExecution", "command": "ls", "workspace_roots": ["/nonexistent-root"]}',
+    '{"hook_event_name": "after_shell_execution", "command": "ls"}',
+    '{"hook_event_name": "after-mcp-execution", "tool_name": "x"}',
+)
+_AFTER_BODIES = ("{}", '{"policy_action": "block", "reason_code": "native_policy_block"}', ' {"x": [1]} ')
 _CONSTANTS = (
     "GUARD_HOME",
     "GUARD_CLI",
@@ -193,3 +210,48 @@ def test_client_never_gains_time_from_the_handoff(tmp_path: Path, monkeypatch: p
 
     budget = float(namespace["_HOOK_DEADLINE_MONOTONIC"]) - float(namespace["_HOOK_STARTED_MONOTONIC"])
     assert 0 <= budget <= 8
+
+
+def _run_after_client(tmp_path: Path, raw: str, body: str) -> tuple[dict[str, object], str, int]:
+    tmp_path.mkdir()
+    namespace = _client(tmp_path)
+    sent: dict[str, object] = {}
+
+    def daemon(payload_json: str, **_kwargs: object) -> tuple[tuple[int, str, str], None]:
+        sent.update(json.loads(payload_json))
+        return (0, body, ""), None
+
+    namespace["_read_hook_input"] = lambda _deadline: raw
+    namespace["_daemon_hook_result"] = daemon
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        exit_code = namespace["_main_inner"]()
+    sent.pop("guard_execution_environment", None)
+    return sent, stdout.getvalue(), exit_code
+
+
+def _after_vectors(tmp_path: Path) -> dict[str, object]:
+    # The client's own answer to each observer for every daemon body it
+    # accepts; an input it answers with anything but `{}` is not an observer.
+    vectors = []
+    for index, raw in enumerate(_AFTER_INPUTS):
+        answers = []
+        sent: dict[str, object] = {}
+        for number, body in enumerate(_AFTER_BODIES):
+            sent, stdout, exit_code = _run_after_client(tmp_path / f"{index}-{number}", raw, body)
+            answers.append({"daemon_body": body, "stdout": stdout, "exit_code": exit_code})
+        observer = all((answer["stdout"], answer["exit_code"]) == ("{}\n", 0) for answer in answers)
+        vectors.append({"input": raw, "observer": observer, "sent": sent, "answers": answers if observer else []})
+    return {"schema": _AFTER_SCHEMA, "vectors": vectors}
+
+
+@_POSIX_ONLY
+def test_native_observer_answers_are_the_clients_own(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The bridge answers an observer with `{}` once the resident reviewed
+    # it, so the client must print exactly that for every accepted body.
+    monkeypatch.setattr(sys, "argv", ["hol-guard-cursor-hook.py"])
+    monkeypatch.delenv("CURSOR_PROJECT_DIR", raising=False)
+    generated = _after_vectors(tmp_path)
+
+    assert generated == json.loads(_AFTER_ANSWERS.read_text(encoding="utf-8"))
+    assert sum(1 for vector in generated["vectors"] if vector["observer"]) >= 6

@@ -1,4 +1,9 @@
 //! The Cursor `PreToolUse` the resident answers.
+//!
+//! A Cursor `PostToolUse` (the client's `afterShellExecution` and
+//! `afterMCPExecution` observers) takes the shared `PostToolUse` lane: the
+//! daemon has no Cursor step for it and records the edge's response, as the
+//! drain does. A Cursor prompt still takes the daemon path.
 
 use super::{reviewed_edge, HookDirectDefer, PRE_TOOL_USE, REPAIRABLE_BLOCK_REASON};
 use serde_json::Value;

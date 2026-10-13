@@ -607,10 +607,10 @@ fn a_cursor_pre_tool_use_is_answered_only_when_its_client_allows_it() {
     assert_eq!(result["outcome"], "answer", "{result}");
     assert_eq!(result["edge"]["harness_response"]["policy_action"], "warn");
     assert_eq!(drain(&cursor, None)["records"][0]["harness"], "cursor");
-    let mut post = allowed_payload(&cursor);
-    post["hook_event_name"] = json!("PostToolUse");
+    let mut prompt = allowed_payload(&cursor);
+    prompt["hook_event_name"] = json!("UserPromptSubmit");
     assert_eq!(
-        deferred(&run_as(&cursor, "cursor", Some(HOME), post)),
+        deferred(&run_as(&cursor, "cursor", Some(HOME), prompt)),
         "direct_hook_event_unsupported"
     );
     let sensitive_read = |lane: &Lane| {
@@ -1018,3 +1018,6 @@ fn a_claude_code_prompt_without_a_notice_is_answered_in_either_posture() {
 
 #[path = "hook_direct_lifecycle_tests.rs"]
 mod lifecycle;
+
+#[path = "hook_direct_cursor_tests.rs"]
+mod cursor_observer;

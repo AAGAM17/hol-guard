@@ -146,12 +146,18 @@ fn test_client() -> Client {
 }
 
 #[test]
-fn only_hooks_cursor_asks_before_running_a_tool_are_sent() {
+fn only_tool_hooks_and_observers_are_sent() {
     let client = test_client();
     let shell = br#"{"hook_event_name":"beforeShellExecution","command":"ls","cwd":"/nonexistent-cursor-cwd"}"#;
-    let Request { data, query, event } = prepared_request(&client, shell).unwrap();
+    let Request {
+        data,
+        query,
+        event,
+        kind,
+    } = prepared_request(&client, shell).unwrap();
     assert_eq!(query, "guard-home=%2Fg&home=%2Fh");
     assert_eq!(event, "beforeShellExecution");
+    assert_eq!(kind, Kind::PreToolUse);
     let sent: Value = serde_json::from_str(&data).unwrap();
     assert_eq!(sent["hook_event_name"], "PreToolUse");
     assert_eq!(sent["cursor_source_hook_event"], "beforeShellExecution");
@@ -159,9 +165,9 @@ fn only_hooks_cursor_asks_before_running_a_tool_are_sent() {
     with_bom.extend_from_slice(shell);
     assert!(prepared_request(&client, &with_bom).is_some());
     for raw in [
-        &br#"{"hook_event_name":"afterShellExecution","command":"ls"}"#[..],
-        br#"{"hook_event_name":"afterMCPExecution","tool_name":"x"}"#,
-        br#"{"hook_event_name":"beforeSubmitPrompt","prompt":"hi"}"#,
+        &br#"{"hook_event_name":"beforeSubmitPrompt","prompt":"hi"}"#[..],
+        br#"{"hook_event_name":"afterFileEdit","file_path":"/tmp/a"}"#,
+        br#"{"hook_event_name":"after_shell_execution","command":"ls"}"#,
         br#"{"hook_event_name":"stop"}"#,
         br#"[]"#,
         b"",
@@ -231,7 +237,68 @@ fn answers_match_the_client_for_every_vector() {
             let code = vector["exit_code"].as_i64().unwrap();
             (stdout.to_owned(), i32::try_from(code).unwrap())
         });
-        assert_eq!(answer(event, response), expected, "{event:?} {response}");
+        assert_eq!(
+            answer(Kind::PreToolUse, event, response),
+            expected,
+            "{event:?} {response}"
+        );
+    }
+}
+
+const AFTER_VECTORS: &str =
+    include_str!("../../../../tests/fixtures/cursor_native_answers/after_vectors.json");
+
+/// The stamped payload as `json.loads` reads it, without the environment
+/// the stamp adds.
+fn sent_payload(data: &str) -> Value {
+    let mut sent: Value = serde_json::from_str(data).unwrap();
+    sent.as_object_mut()
+        .unwrap()
+        .remove("guard_execution_environment");
+    sent
+}
+
+#[test]
+fn observers_are_sent_and_answered_as_the_client_does() {
+    let fixture: Value = serde_json::from_str(AFTER_VECTORS).unwrap();
+    assert_eq!(
+        fixture["schema"],
+        "hol-guard-cursor-native-after-answers.v1"
+    );
+    let vectors = fixture["vectors"].as_array().unwrap();
+    assert!(vectors.len() >= 8);
+    let client = test_client();
+    for vector in vectors {
+        let input = vector["input"].as_str().unwrap();
+        let request = prepared_request(&client, input.as_bytes());
+        if vector["observer"] != true {
+            assert!(
+                request.is_none_or(|request| request.kind != Kind::After),
+                "{input}"
+            );
+            continue;
+        }
+        let request = request.unwrap_or_else(|| panic!("{input}"));
+        assert_eq!(request.kind, Kind::After, "{input}");
+        assert_eq!(sent_payload(&request.data), vector["sent"], "{input}");
+        for expected in vector["answers"].as_array().unwrap() {
+            let body = expected["daemon_body"].as_str().unwrap();
+            let stdout = expected["stdout"].as_str().unwrap().to_owned();
+            let code = i32::try_from(expected["exit_code"].as_i64().unwrap()).unwrap();
+            assert_eq!(
+                answer(Kind::After, &request.event, body),
+                Some((stdout, code)),
+                "{input} {body}"
+            );
+        }
+    }
+    // A body `_daemon_hook_result` rejects sends the hook to the client.
+    for body in ["", " ", "[]", "null", "\"{}\"", "{", "{} {}"] {
+        assert_eq!(
+            answer(Kind::After, "afterShellExecution", body),
+            None,
+            "{body:?}"
+        );
     }
 }
 

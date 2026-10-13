@@ -5,9 +5,17 @@
 //! hook (Cursor's `preToolUse`, `beforeShellExecution`,
 //! `beforeMCPExecution` and `beforeReadFile`) that a live resident allows
 //! or terminally denies, the bridge prints the client's own answer without
-//! starting Python. The client's other hooks, every other verdict and
-//! anything the bridge cannot reproduce exactly run the Python client
-//! unchanged, with the hook it already read and the time it already spent.
+//! starting Python. For Cursor's `afterShellExecution` and
+//! `afterMCPExecution` observers, which the daemon records as a `PostToolUse`
+//! and the client always answers with `{}`, the bridge prints `{}` once the
+//! resident has answered (and so queued the record). The client's other
+//! hooks, every other verdict and anything the bridge cannot reproduce
+//! exactly run the Python client unchanged, with the hook it already read
+//! and the time it already spent.
+//!
+//! The client also sends an `after*` observer proof and approval binding in
+//! `hook_env`; the daemon drops `hook_env` before it reviews a hook, so only
+//! the client's CLI fallback reads them, and the bridge reads no key.
 //!
 //! The bridge reproduces the client's steps up to its daemon request:
 //! `_read_hook_input`, `json.loads`, `_prepare_cursor_hook_payload`,
@@ -26,7 +34,7 @@ use crate::bounded_hook_bridge::{
 };
 use crate::claude_hook_bridge_render::py_strip;
 use crate::codex_hook_bridge_direct::{direct_answer, CURSOR};
-use crate::codex_hook_response::PRE_TOOL_USE;
+use crate::codex_hook_response::{POST_TOOL_USE, PRE_TOOL_USE};
 use crate::cursor_hook_bridge_response::rendered;
 use crate::cursor_hook_bridge_script::read_ported_script;
 use crate::hook_env_stamp::{current_environment, stamp_hook_input_text, Stamp};
@@ -36,6 +44,10 @@ pub(crate) const BRIDGE_FEATURE: &str = "cursor-hook-bridge-v1";
 const EVENT_FLAG: &str = "--cursor-hook-event";
 const PROJECT_DIR_ENV: &str = "CURSOR_PROJECT_DIR";
 const AFTER_EVENTS: [&str; 2] = ["aftershellexecution", "aftermcpexecution"];
+/// The names `_prepare_cursor_hook_payload` gives the `after*` observers.
+const PREPARED_AFTER_EVENTS: [&str; 2] = ["afterShellExecution", "afterMCPExecution"];
+/// The client's answer to an `after*` observer the daemon reviewed.
+const AFTER_STDOUT: &str = "{}\n";
 const UNAVAILABLE_STDOUT: &str = "{\"permission\": \"deny\", \"user_message\": \"HOL Guard could not complete the native hook decision safely.\"}\n";
 
 /// `_cursor_unavailable_response` for a hook whose input could not be read
@@ -125,7 +137,16 @@ struct Client {
     deadline: Instant,
 }
 
-/// A `PreToolUse` hook the bridge can send as the client would.
+/// Which of the client's answers a request gets.
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum Kind {
+    /// Rendered by `_emit_cursor_response`.
+    PreToolUse,
+    /// An `after*` observer: `{}` once the daemon reviewed it.
+    After,
+}
+
+/// A hook the bridge can send as the client would.
 #[derive(Debug, PartialEq)]
 struct Request {
     /// The stamped payload.
@@ -133,10 +154,18 @@ struct Request {
     query: String,
     /// The event the client names its answer for.
     event: String,
+    kind: Kind,
 }
 
-/// The request the client would send for a `PreToolUse` hook, or `None` to
-/// run the client.
+/// The client's `hook_event_name.strip().lower()` check for an observer,
+/// for ASCII names; any other name runs the client.
+fn client_after_event(event: &str) -> bool {
+    let stripped = py_strip(event);
+    stripped.is_ascii() && AFTER_EVENTS.contains(&stripped.to_ascii_lowercase().as_str())
+}
+
+/// The request the client would send for a `PreToolUse` hook or an
+/// `after*` observer, or `None` to run the client.
 fn prepared_request(client: &Client, raw: &[u8]) -> Option<Request> {
     if raw.len() > MAX_HOOK_INPUT_BYTES {
         return None;
@@ -151,13 +180,17 @@ fn prepared_request(client: &Client, raw: &[u8]) -> Option<Request> {
     let OValue::Map(payload) = parse_python_json(document).ok()? else {
         return None;
     };
-    // Cursor's `after*` hooks prepare as themselves, so only the client's
-    // `before*` and `preToolUse` hooks get past this.
+    // Cursor's `after*` hooks prepare as themselves; one is sent only where
+    // the client would also answer it as an observer.
     let event = cursor_client_event(&payload)?;
     let prepared = prepare_payload("cursor", &payload, None).ok()?;
-    if prepared.get_str("hook_event_name") != Some(PRE_TOOL_USE) {
-        return None;
-    }
+    let kind = match prepared.get_str("hook_event_name") {
+        Some(PRE_TOOL_USE) => Kind::PreToolUse,
+        Some(name) if PREPARED_AFTER_EVENTS.contains(&name) && client_after_event(&event) => {
+            Kind::After
+        }
+        _ => return None,
+    };
     let workspace = workspace(&prepared, std::env::var_os(PROJECT_DIR_ENV)).ok()?;
     let serialized = OValue::Map(prepared).compact_json();
     let Stamp::Text(data) = stamp_hook_input_text(&serialized, &current_environment()) else {
@@ -168,31 +201,49 @@ fn prepared_request(client: &Client, raw: &[u8]) -> Option<Request> {
         workspace.as_deref(),
         client.home.as_deref(),
     );
-    Some(Request { data, query, event })
+    Some(Request {
+        data,
+        query,
+        event,
+        kind,
+    })
 }
 
 /// The client's answer for a resident's harness response: `json.loads` of
-/// the body the daemon would return, rendered by `_emit_cursor_response`.
-fn answer(event: &str, response: &str) -> Option<(String, i32)> {
-    let OValue::Map(response) = parse_python_json(response).ok()? else {
+/// the body the daemon would return, rendered by `_emit_cursor_response`;
+/// for an observer, `{}` once `_daemon_hook_result` accepts the body as a
+/// JSON object, whatever it holds.
+fn answer(kind: Kind, event: &str, response: &str) -> Option<(String, i32)> {
+    let body = match kind {
+        Kind::PreToolUse => response,
+        Kind::After => py_strip(response),
+    };
+    let OValue::Map(response) = parse_python_json(body).ok()? else {
         return None;
     };
-    rendered(event, &response)
+    match kind {
+        Kind::PreToolUse => rendered(event, &response),
+        Kind::After => Some((AFTER_STDOUT.to_owned(), 0)),
+    }
 }
 
 /// The exit code once the bridge answered the hook, or `None` to run the
 /// client.
 fn route(client: &Client, raw: &[u8]) -> Option<i32> {
     let request = prepared_request(client, raw)?;
+    let event_name = match request.kind {
+        Kind::PreToolUse => PRE_TOOL_USE,
+        Kind::After => POST_TOOL_USE,
+    };
     let answered = direct_answer(
         CURSOR,
         Path::new(&client.guard_home),
         &request.query,
-        PRE_TOOL_USE,
+        event_name,
         &request.data,
         client.deadline,
     )?;
-    let (stdout, code) = answer(&request.event, &answered)?;
+    let (stdout, code) = answer(request.kind, &request.event, &answered)?;
     write_stdout(&stdout);
     Some(code)
 }

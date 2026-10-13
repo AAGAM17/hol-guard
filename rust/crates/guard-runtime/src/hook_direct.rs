@@ -232,7 +232,7 @@ fn answer(
     };
     let pre_tool = event == PRE_TOOL_USE;
     let cursor_harness = request.harness == CURSOR;
-    if cursor_harness && !pre_tool {
+    if cursor_harness && event == USER_PROMPT_SUBMIT {
         return Err(HookDirectDefer::EventUnsupported);
     }
     if payload.contains_key(TRANSITION_PROBE_FIELD) {

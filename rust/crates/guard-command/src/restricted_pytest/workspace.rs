@@ -1,7 +1,7 @@
 //! Native launch plan for `workspace-contained-v1`.
 use super::workspace_linked::admissible_checkout;
 use super::*;
-use crate::pretool::generic::workspace_redirects;
+use crate::pretool::generic::{chain_literals, workspace_redirects};
 use crate::pretool::workspace_git_config::{linked_git_dirs, workspace_write_denials};
 use crate::pretool::workspace_git_environment::GitVariables;
 use crate::pretool::{command_shape, Shape, WORKSPACE_PROFILE};
@@ -39,8 +39,18 @@ pub(crate) fn workspace_admissible(cwd: &Path, home: Option<&Path>) -> Option<Pa
 
 /// The sandbox shape for the exact `text` about to run, or `None` when the
 /// workspace sandbox cannot bound it. Literal-path redirects are classified
-/// without them; the raw text still runs.
+/// without them, and chained `$NAME` uses as the literal assigned earlier in
+/// the chain; the raw text still runs, so such a shape must run it whole.
 pub(crate) fn exact_shape(text: &str, workspace: &Path) -> Option<Shape> {
+    match chain_literals::substitute(text) {
+        Some(substituted) => literal_shape(&substituted, workspace).filter(|shape| {
+            shape.bootstrap.is_none() && shape.prefix.is_none() && shape.remainder.is_none()
+        }),
+        None => literal_shape(text, workspace),
+    }
+}
+
+fn literal_shape(text: &str, workspace: &Path) -> Option<Shape> {
     match workspace_redirects::project(text) {
         Some(projected) => workspace_redirects::contained_shape(text, &projected, workspace),
         None => {

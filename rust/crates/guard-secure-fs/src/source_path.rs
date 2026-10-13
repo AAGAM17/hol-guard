@@ -26,6 +26,15 @@ const SOURCE_EXTENSIONS: &[&str] = &[
     "py", "rs", "sh", "toml", "ts", "tsx", "yaml", "yml",
 ];
 const BENIGN_SOURCE_DOTFILES: &[&str] = &[".nvmrc", ".worktrees"];
+/// Ordinary project config files. They are benign only as the final path
+/// component, so a directory spelled `.gitignore/` opens no hidden tree.
+const BENIGN_PROJECT_DOTFILES: &[&str] = &[
+    ".dockerignore",
+    ".editorconfig",
+    ".eslintignore",
+    ".gitignore",
+    ".prettierignore",
+];
 const SENSITIVE_SEARCH_BASENAMES: &[&str] = &[
     ".aws",
     ".docker",
@@ -86,6 +95,18 @@ fn lowered_parts(path: &Path) -> Vec<String> {
 }
 
 fn hidden_parts_allowed(parts: &[String]) -> bool {
+    match parts.split_last() {
+        Some((name, parents)) if BENIGN_PROJECT_DOTFILES.contains(&name.as_str()) => {
+            hidden_dir_parts_allowed(parents)
+        }
+        _ => hidden_dir_parts_allowed(parts),
+    }
+}
+
+/// Every hidden component is a benign dotfile or the `.github/workflows`
+/// prefix. Project dotfiles get no exception here, so parent components
+/// never admit a directory spelled `.gitignore/`.
+fn hidden_dir_parts_allowed(parts: &[String]) -> bool {
     let hidden: Vec<&str> = parts
         .iter()
         .map(String::as_str)
@@ -419,7 +440,8 @@ mod sensitive;
 pub use sensitive::sensitive_path_family;
 
 /// True when every hidden (`.`-prefixed) path component is on the benign
-/// dotfile list or the `.github/workflows` prefix. Used by the native
+/// dotfile list or the `.github/workflows` prefix, or is a project config
+/// file such as `.gitignore` in the final position. Used by the native
 /// PreToolUse floor so absolute/home-relative reads cannot silently enter
 /// dot-directories such as `.hol-guard`, `.git`, or `.config`.
 pub fn hidden_read_parts_allowed(path: &Path) -> bool {
@@ -447,7 +469,7 @@ pub fn hidden_empty_work_tree_file(path: &Path) -> bool {
         || SENSITIVE_SEARCH_BASENAMES.contains(&name.as_str())
         || EXTERNAL_SENSITIVE_PARTS.contains(&name.as_str())
         || sensitive_external_filename(path)
-        || !hidden_parts_allowed(parents)
+        || !hidden_dir_parts_allowed(parents)
     {
         return false;
     }

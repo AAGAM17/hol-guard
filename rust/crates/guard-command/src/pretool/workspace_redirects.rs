@@ -232,7 +232,7 @@ pub(super) fn contained(
     // redirects still need its confinement, and the command needs nothing
     // the sandbox withholds when it stays offline.
     // A single command the bounded-write projection takes runs directly
-    // instead; one it declines, such as a write to `.gitignore`, runs here.
+    // instead; one it declines, such as a write to `.tool-versions`, runs here.
     let single = super::redirect_projection::project(command, context).is_none();
     let allowed = projected.minimum_action == "allow"
         && !projected.action.sensitive_target

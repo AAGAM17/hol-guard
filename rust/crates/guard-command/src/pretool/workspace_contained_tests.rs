@@ -297,9 +297,9 @@ fn compound_commands_with_literal_redirects_run_in_the_workspace_sandbox() {
         "npm run build > build.log 2>&1 && git add -A",
         // A commit message is not `git init`.
         "echo x > notes.txt && git add -A && git commit -m init",
-        // The bounded projection declines hidden targets; the sandbox
-        // bounds them.
-        "printf 'node_modules\\n' > .gitignore",
+        // The bounded projection declines hidden targets other than
+        // project config files such as `.gitignore`; the sandbox bounds them.
+        "printf 'lts\\n' > .tool-versions",
     ] {
         let got = reason("omp", command, &ws, true);
         if host() {

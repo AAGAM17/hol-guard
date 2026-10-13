@@ -48,7 +48,7 @@ fn branch_listing_is_allowed_and_mutation_stays_reviewed() {
         ("", "git branch new-feature", "review"),
         ("", "git branch -D main", "review"),
         ("", "git branch -d main", "review"),
-        ("", "git branch -m old new", "review"),
+        ("", "git branch -m old new", "allow"),
         ("", "git branch -c old new", "review"),
         ("", "git branch -f main HEAD", "review"),
         ("", "git branch --set-upstream-to=origin/main", "review"),

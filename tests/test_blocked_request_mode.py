@@ -76,18 +76,21 @@ def test_specific_deny_text_names_reason_and_inbox_when_approval_queued(code: st
     assert "safe, permitted alternative" not in text
 
 
-def test_package_hint_does_not_offer_ignore_scripts_as_the_way_through() -> None:
-    # A no-script install still reaches this review, so suggesting the flag as
-    # the fix sends an agent that already used it around in a loop.
+def test_package_hint_names_the_frozen_install_without_promising_it() -> None:
+    # Only a frozen, script-free lockfile restore can be proven, and only when
+    # the project checks out, so the hint names that exact form and tells an
+    # agent that already used it to stop rather than loop.
     text = safe_alternative_reason("Blocked.", reason_code="native_package_review", approval_queued=True)
-    assert "even with `--ignore-scripts`" in text
+    assert "`bun install --frozen-lockfile --ignore-scripts`" in text
+    assert "`npm ci --ignore-scripts`" in text
+    assert "If this was already that form" in text
     assert "Use `--ignore-scripts`" not in text
 
 
 def test_package_hint_leaves_the_approval_step_to_the_queue_state() -> None:
     # Without an inbox row, the hint must not send the agent to ask for an approval that cannot be given.
     text = safe_alternative_reason("Blocked.", reason_code="native_package_review", approval_queued=False)
-    assert "even with `--ignore-scripts`" in text
+    assert "If this was already that form" in text
     assert "approve this install" not in text
     assert "No approval is waiting in HOL Guard" in text
 

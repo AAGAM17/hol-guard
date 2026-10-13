@@ -26,8 +26,12 @@ fn reason_code_hint(reason_code: &str) -> &'static str {
              or target one specific path."
         }
         "native_package_review" => {
-            "Package installs download code from a registry, so Guard reviews them even with \
-             `--ignore-scripts`. Reuse dependencies that are already installed where you can."
+            "Package installs download code from a registry, so Guard reviews them. An install \
+             that only restores the committed lockfile and runs no scripts (`bun install \
+             --frozen-lockfile --ignore-scripts`, `pnpm install --frozen-lockfile \
+             --ignore-scripts` or `npm ci --ignore-scripts`) can proceed once Guard has checked \
+             the lockfile and settings. If this was already that form, reuse dependencies that \
+             are already installed where you can."
         }
         "native_network_review" => "This makes a network request that Guard has not seen before.",
         "native_file_read_review" => "This reads a file outside what Guard treats as safe to read.",

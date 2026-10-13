@@ -328,6 +328,17 @@ impl<'a> super::PathContext<'a> {
             None => !std::env::vars_os()
                 .any(|(name, value)| !value.is_empty() && rustup_selector(&name.to_string_lossy())),
         };
+        let npm_config_inert = match execution_environment {
+            Some(environment) => {
+                environment.has_valid_shape()
+                    && !environment
+                        .environment_names
+                        .iter()
+                        .any(|name| npm_selector(name))
+            }
+            None => !std::env::vars_os()
+                .any(|(name, value)| !value.is_empty() && npm_selector(&name.to_string_lossy())),
+        };
         // The shell expands `~` from its own HOME: the stamped one, or the
         // runtime's when no environment was stamped.
         let shell_home = match execution_environment {
@@ -349,6 +360,7 @@ impl<'a> super::PathContext<'a> {
             cwd,
             cdpath_unset,
             rustup_override_absent,
+            npm_config_inert,
             shell_home_matches,
         }
     }
@@ -356,6 +368,25 @@ impl<'a> super::PathContext<'a> {
 
 fn rustup_selector(name: &str) -> bool {
     name.eq_ignore_ascii_case("RUSTUP_TOOLCHAIN") || name.eq_ignore_ascii_case("RUSTUP_HOME")
+}
+
+/// npm reads every `npm_config_*` variable as configuration, including the
+/// registry and the paths of its other config files. Node reads the rest
+/// before npm's own code runs; an extra CA would let a proxy read registry
+/// traffic.
+fn npm_selector(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    upper.starts_with("NPM_CONFIG_")
+        || matches!(
+            upper.as_str(),
+            "NODE_OPTIONS"
+                | "NODE_PATH"
+                | "NODE_EXTRA_CA_CERTS"
+                | "LD_PRELOAD"
+                | "LD_LIBRARY_PATH"
+                | "DYLD_INSERT_LIBRARIES"
+                | "DYLD_LIBRARY_PATH"
+        )
 }
 
 #[cfg(test)]

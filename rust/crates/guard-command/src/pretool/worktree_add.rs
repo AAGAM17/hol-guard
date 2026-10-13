@@ -34,6 +34,7 @@ pub(super) fn exact_safe_command(
         home_dir: context.home_dir,
         cdpath_unset: context.cdpath_unset,
         rustup_override_absent: context.rustup_override_absent,
+        npm_config_inert: context.npm_config_inert,
         shell_home_matches: context.shell_home_matches,
         cwd: cwd_proof
             .as_ref()

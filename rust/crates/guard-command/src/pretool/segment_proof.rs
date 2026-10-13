@@ -75,6 +75,7 @@ pub(super) fn exact_safe_cwd_compound(
                 home_dir: context.home_dir,
                 cdpath_unset: context.cdpath_unset,
                 rustup_override_absent: context.rustup_override_absent,
+                npm_config_inert: context.npm_config_inert,
                 shell_home_matches: context.shell_home_matches,
                 cwd: Some(&cwd),
             },
@@ -126,6 +127,7 @@ pub(super) fn exact_safe_cwd_compound(
                 home_dir: context.home_dir,
                 cdpath_unset: context.cdpath_unset,
                 rustup_override_absent: context.rustup_override_absent,
+                npm_config_inert: context.npm_config_inert,
                 shell_home_matches: context.shell_home_matches,
                 cwd: Some(&cwd),
             },
@@ -182,6 +184,7 @@ pub(crate) fn benign_command_segments(
         home_dir: context.home_dir,
         cdpath_unset: context.cdpath_unset,
         rustup_override_absent: context.rustup_override_absent,
+        npm_config_inert: context.npm_config_inert,
         shell_home_matches: context.shell_home_matches,
         cwd: cwd.as_deref().or(context.cwd),
     };
@@ -249,6 +252,7 @@ pub(crate) fn benign_command_segments(
                         | "find"
                         | "du"
                         | "diff"
+                        | "npm"
                 );
             let ls_has_explicit_target = basename != "ls" || {
                 let mut skip_next = false;
@@ -410,6 +414,10 @@ pub(super) fn exact_safe_segment_with_context(
         }
         "gh" => safe_gh_arguments(&segment.arguments, &segment.text),
         "wrangler" => super::wrangler_reads::safe_wrangler_arguments(&segment.arguments),
+        "npm" => {
+            super::npm_reads::read_only_neighbors(model)
+                && super::npm_reads::safe_npm_read(&segment.arguments, context)
+        }
         "hol-guard" => super::guard_diagnostics::safe_hol_guard_segment(
             &segment.arguments,
             context.cwd,

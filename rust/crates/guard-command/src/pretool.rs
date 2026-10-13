@@ -12,6 +12,9 @@ pub struct PathContext<'a> {
     /// No inherited `RUSTUP_TOOLCHAIN` or `RUSTUP_HOME` can change which
     /// toolchain the rustup proxy runs. Literal contexts leave this false.
     pub rustup_override_absent: bool,
+    /// No inherited npm or Node variable can move npm's registry, config
+    /// files or loaded code. Literal contexts leave this false.
+    pub npm_config_inert: bool,
     /// The shell expands `~` to `home_dir`: its HOME names the same
     /// directory. Literal contexts leave this false.
     pub shell_home_matches: bool,
@@ -49,6 +52,7 @@ mod guard_diagnostics;
 mod listing_reads;
 mod lookup_reads;
 mod metadata_reads;
+mod npm_reads;
 mod pytest_contained;
 mod trusted_location;
 pub(crate) use git_routes::git_route_within_workspace;

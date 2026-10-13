@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from codex_plugin_scanner.guard.runtime.command_cloud_aws_operation_matrix import (
     AWS_DESTRUCTIVE_COMMAND_PATHS,
     AWS_DESTRUCTIVE_COMMAND_PATHS_BATCH_1,
@@ -34,6 +36,12 @@ AWS_BATCH_5_SAFE_CASES: tuple[str, ...] = tuple(
 )
 
 
+# Only execution boundaries change. Keep all original safe requests, including
+# repeats, and let the complete-node planner distribute each 50-command slice.
+_SAFE_CASE_CHUNK_SIZE = 50
+_SAFE_CASE_STARTS = tuple(range(0, len(AWS_BATCH_5_SAFE_CASES), _SAFE_CASE_CHUNK_SIZE))
+
+
 def test_aws_batch_5_matrix_is_exactly_one_hundred_unique_operations() -> None:
     assert len(AWS_DESTRUCTIVE_COMMAND_PATHS_BATCH_5) == 100
     assert len(set(AWS_DESTRUCTIVE_COMMAND_PATHS_BATCH_5)) == 100
@@ -61,8 +69,13 @@ def test_aws_batch_5_operations_feed_inspection_and_runtime_hooks(tmp_path: Path
     assert_reviewed_command_cases(AWS_BATCH_5_REVIEW_CASES, tmp_path)
 
 
-def test_aws_batch_5_help_and_request_skeletons_remain_safe(tmp_path: Path) -> None:
-    assert_safe_command_cases(AWS_BATCH_5_SAFE_CASES, tmp_path)
+@pytest.mark.parametrize("case_start", _SAFE_CASE_STARTS, ids=lambda start: f"commands-{start:03d}")
+def test_aws_batch_5_help_and_request_skeletons_remain_safe(tmp_path: Path, case_start: int) -> None:
+    # Exercise every original command through the same real native security path.
+    # Bounded nodes can be scheduled across different CI shards and xdist workers.
+    assert_safe_command_cases(
+        AWS_BATCH_5_SAFE_CASES[case_start : case_start + _SAFE_CASE_CHUNK_SIZE], tmp_path
+    )
 
 
 def test_aws_batch_5_global_option_positions_and_native_launchers(tmp_path: Path) -> None:

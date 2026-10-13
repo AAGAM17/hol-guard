@@ -1,6 +1,6 @@
-//! Replays observed custom-extension retention vectors recorded from the
-//! original Python store (see
-//! `testdata/guard_store/record_local_cli_vectors.py`). Seeds, payloads,
+//! Replays observed custom-extension vectors recorded from the original
+//! Python store (see `testdata/guard_store/record_local_cli_vectors.py` and
+//! `record_local_mcp_vectors.py`). Seeds, payloads,
 //! errors and post-step table state all come from Python, never from Rust
 //! output.
 
@@ -13,7 +13,8 @@ use serde_json::{Map, Value};
 use crate::guard_store_cmd_vectors_tests::{apply_sql, dump, error_code, insert_rows, temp_home};
 use crate::guard_store_op::evaluate_guard_store_request;
 
-const VECTORS: &str = include_str!("../testdata/guard_store/local_cli_vectors.json");
+const LOCAL_CLI_VECTORS: &str = include_str!("../testdata/guard_store/local_cli_vectors.json");
+const LOCAL_MCP_VECTORS: &str = include_str!("../testdata/guard_store/local_mcp_vectors.json");
 
 fn build_database(path: &Path, vectors: &Value, scenario: &Value) {
     let connection = Connection::open(path).unwrap();
@@ -50,10 +51,9 @@ fn run_step(home: &Path, source: &str, now: &str, step: &Value) -> Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
-#[test]
-fn replays_every_recorded_local_cli_scenario() {
-    let vectors: Value = serde_json::from_str(VECTORS).unwrap();
-    assert_eq!(vectors["schema"], "guard-store-local-cli-vectors.v1");
+fn replay_vectors(text: &str, schema: &str) -> usize {
+    let vectors: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(vectors["schema"], schema);
     let (source, now) = (
         vectors["source"].as_str().unwrap(),
         vectors["now"].as_str().unwrap(),
@@ -104,5 +104,62 @@ fn replays_every_recorded_local_cli_scenario() {
         }
         let _ = std::fs::remove_dir_all(&home);
     }
+    compared_steps
+}
+
+#[test]
+fn replays_every_recorded_local_cli_scenario() {
+    let compared_steps = replay_vectors(LOCAL_CLI_VECTORS, "guard-store-local-cli-vectors.v1");
     assert!(compared_steps >= 45, "only {compared_steps} recorded steps");
+}
+
+#[test]
+fn replays_every_recorded_local_mcp_scenario() {
+    let compared_steps = replay_vectors(LOCAL_MCP_VECTORS, "guard-store-local-mcp-vectors.v1");
+    assert!(compared_steps >= 40, "only {compared_steps} recorded steps");
+}
+
+/// A legacy Deny carry first asks Python to close the policy barrier and
+/// writes nothing until it does.
+#[test]
+fn legacy_denial_waits_for_the_policy_barrier() {
+    let vectors: Value = serde_json::from_str(LOCAL_MCP_VECTORS).unwrap();
+    let (source, now) = (
+        vectors["source"].as_str().unwrap(),
+        vectors["now"].as_str().unwrap(),
+    );
+    let scenario = vectors["scenarios"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|scenario| scenario["name"] == "ensure_legacy_denial")
+        .unwrap();
+    let home = temp_home("local-mcp-barrier");
+    build_database(&home.join("guard.db"), &vectors, scenario);
+    let steps = scenario["steps"].as_array().unwrap();
+    apply_sql(&home, &steps[0]);
+    let mut open = steps[1].clone();
+    open["wire_args"]["barrier_closed"] = Value::Bool(false);
+    let before = Connection::open(home.join("guard.db"))
+        .unwrap()
+        .query_row("select count(*) from local_cli_observation", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap();
+    let reply = run_step(&home, source, now, &open);
+    assert_eq!(reply["status"], "ok", "{reply}");
+    assert_eq!(
+        reply["payload"],
+        serde_json::json!({ "need_barrier": true })
+    );
+    let after = Connection::open(home.join("guard.db"))
+        .unwrap()
+        .query_row("select count(*) from local_cli_observation", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap();
+    assert_eq!(before, after);
+    let reply = run_step(&home, source, now, &steps[1]);
+    assert_eq!(reply["payload"], steps[1]["native_payload"]);
+    let _ = std::fs::remove_dir_all(&home);
 }

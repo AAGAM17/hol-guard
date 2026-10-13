@@ -15,7 +15,7 @@ use crate::guard_store_json::{py_str, py_strip};
 use crate::guard_store_observed_mcp::is_local_cli_id;
 use crate::policy_bundle_time::{from_isoformat, micros_to_utc_isoformat};
 
-const RETENTION_DAYS: i64 = 30;
+pub(crate) const RETENTION_DAYS: i64 = 30;
 const MICROS_PER_DAY: i64 = 86_400_000_000;
 const SURFACES: [&str; 3] = ["cli", "mcp", "package-scripts"];
 
@@ -45,7 +45,7 @@ const FORGETTABLE_PREDICATE: &str =
      where enrolled.surface = 'mcp'))";
 
 /// `parse_utc_timestamp` as UTC microseconds since the epoch.
-fn parse_utc(value: &Value) -> Option<i64> {
+pub(crate) fn parse_utc(value: &Value) -> Option<i64> {
     let stripped = py_strip(value.as_str()?);
     if stripped.is_empty() {
         return None;
@@ -62,7 +62,7 @@ fn parse_text(value: Option<&str>) -> Option<i64> {
 }
 
 /// A parsed instant, else the caller's clock.
-fn instant_or_clock(value: Option<&str>, args: &Args) -> StoreResult<i64> {
+pub(crate) fn instant_or_clock(value: Option<&str>, args: &Args) -> StoreResult<i64> {
     match parse_text(value) {
         Some(micros) => Ok(micros),
         None => match parse_text(Some(args.str("clock")?)) {
@@ -121,7 +121,7 @@ fn delete_observations(
 /// `prune_expired_local_cli_observations`: delete un-enrolled observations
 /// last seen before `current - retention_days`. With `throttle` the scan
 /// runs at most once a day.
-fn prune(
+pub(crate) fn prune(
     connection: &Connection,
     current: i64,
     retention_days: i64,
@@ -184,7 +184,7 @@ fn prune(
 /// `replay_allowed`: a listed identity may always be refreshed; otherwise
 /// entries older than the retention window before `now`, or no later than
 /// when the user forgot the identity, are skipped.
-fn replay_allowed(
+pub(crate) fn replay_allowed(
     connection: &Connection,
     identity_hash: &str,
     seen_at: &str,
@@ -218,7 +218,7 @@ fn replay_allowed(
     })
 }
 
-fn opt(args: &Args, key: &str) -> StoreResult<Value> {
+pub(crate) fn opt(args: &Args, key: &str) -> StoreResult<Value> {
     Ok(args.opt_str(key)?.map_or(Value::Null, Value::from))
 }
 

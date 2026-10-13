@@ -31,6 +31,7 @@ use crate::guard_store_connect as connect;
 use crate::guard_store_db::{exec, query_all, query_one, text, StoreError, StoreResult};
 use crate::guard_store_inventory as inventory;
 use crate::guard_store_local_cli as local_cli;
+use crate::guard_store_local_mcp_observation as local_mcp;
 use crate::guard_store_native_review_consume as native_review_consume;
 use crate::guard_store_observed_mcp as observed_mcp;
 use crate::guard_store_outbox_binding::{
@@ -333,6 +334,8 @@ fn method_kind(method: &str) -> Option<Kind> {
         | "forget_local_cli_observation"
         | "local_cli_replay_allowed"
         | "prune_inactive_local_cli_observations" => Kind::Write,
+        "find_local_mcp_observation" => Kind::Read,
+        "ensure_local_mcp_observation" => Kind::Write,
         _ if connect::is_state_read(method) => Kind::Read,
         _ if connect::handles(method) => Kind::Write,
         _ => return None,
@@ -436,6 +439,8 @@ fn dispatch(
         "forget_local_cli_observation" => local_cli::forget_observation(connection, args),
         "local_cli_replay_allowed" => local_cli::replay_allowed_op(connection, args),
         "prune_inactive_local_cli_observations" => local_cli::prune_inactive(connection, args),
+        "find_local_mcp_observation" => local_mcp::find_observation(connection, args),
+        "ensure_local_mcp_observation" => local_mcp::ensure_observation(connection, args),
         "upsert_guard_session" => sessions::upsert_session(connection, args),
         "get_guard_session" => sessions::get_session(connection, args),
         "list_guard_sessions" => sessions::list_sessions(connection, args),

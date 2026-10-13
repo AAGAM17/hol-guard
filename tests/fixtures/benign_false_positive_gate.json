@@ -1475,6 +1475,86 @@
       "expect": "not_allow"
     },
     {
+      "id": "queue-kubectl-kubeconfig-get-pods",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "kubectl --kubeconfig ${HOME}/kubeconfig.yaml get pods -l app=frontend -o wide"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-export-kubeconfig-get-pods",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "export KUBECONFIG=${HOME}/kubeconfig.yaml && kubectl get pods -l app=frontend -o wide 2>&1 | head -15"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-kubectl-get-deployments-grep",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "kubectl --kubeconfig ${HOME}/kubeconfig.yaml get deployments -A -o wide 2>&1 | grep -Ei 'NAME|frontend' | head -20"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-curl-get-health",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "curl -s --max-time 15 https://example.com/api/health 2>&1 | head -c 600"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-curl-get-health-plain",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "curl -sS --max-time 20 https://example.com/api/health"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
       "id": "neg-curl-pipe-shell",
       "fix_area": "negative",
       "harnesses": [

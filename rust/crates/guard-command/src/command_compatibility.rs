@@ -275,7 +275,7 @@ pub fn compatibility_observations_with_context(
             "gh" => github::observe(segment, index, &mut result),
             _ => {}
         }
-        domains::observe(command, segment, index, &mut result);
+        domains::observe(command, segment, index, &mut result, context);
     }
     deadline_check(deadline)?;
     result.mark_uncertain(&steered);

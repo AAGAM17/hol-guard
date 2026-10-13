@@ -80,6 +80,7 @@ pub mod pretool_lockfile_install;
 pub mod pretool_lookup_reads;
 pub mod pretool_metadata_reads;
 pub mod pretool_native_home_writes;
+pub mod pretool_network_reads;
 pub mod pretool_npm_reads;
 pub mod pretool_omp_agent_listing;
 pub mod pretool_omp_artifact_search;

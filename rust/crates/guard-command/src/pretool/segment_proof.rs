@@ -485,6 +485,9 @@ pub(super) fn exact_safe_segment_with_context(
                 && super::directory_targets::home_targets_unquoted(segment)
         }
         "gh" => safe_gh_arguments(&segment.arguments, &segment.text),
+        "curl" => super::curl_reads::safe_curl_segment(model, segment),
+        "kubectl" => super::kubectl_reads::safe_kubectl_segment(model, segment, context),
+        "export" => super::kubectl_reads::safe_export_segment(model, segment, context),
         "wrangler" => super::wrangler_reads::safe_wrangler_arguments(&segment.arguments),
         "npm" => {
             super::npm_reads::read_only_neighbors(model)

@@ -152,12 +152,14 @@ pub(super) fn project(
 fn redirect_disqualifies_containment(reason: &str) -> bool {
     // A file redirect is a shell effect. Pytest and inline-eval profiles are
     // only valid for the exact command, so the projection must not inherit them.
+    // A network read's body is remote content, never a reviewed workspace edit.
     matches!(
         reason,
         "native_pytest_readonly_containment_required"
             | "native_python_eval_readonly_containment_required"
             | "native_node_eval_readonly_containment_required"
             | "native_workspace_containment_required"
+            | crate::pretool::curl_reads::NETWORK_READ_REASON
     )
 }
 

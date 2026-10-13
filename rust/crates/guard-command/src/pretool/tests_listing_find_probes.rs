@@ -285,7 +285,6 @@ fn version_probes_admit_lone_flags_and_keep_npx_review() {
         "node script.mjs",
         "npm test",
         "docker version",
-        "kubectl version",
         "yarn --version",
         "pnpm --version",
         "/usr/local/bin/uv --version",

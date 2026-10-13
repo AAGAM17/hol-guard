@@ -21,6 +21,8 @@ pub struct PathContext<'a> {
 }
 
 mod contained_wrapper;
+pub(crate) mod curl_reads;
+pub(crate) mod kubectl_reads;
 mod workspace_contained;
 #[cfg(unix)]
 pub(crate) use workspace_contained::PROFILE as WORKSPACE_PROFILE;
@@ -514,10 +516,11 @@ fn evaluate_single_command(
     if exact_safe_command_with_context(&model, false, context)
         && !bun_eval::node_inline_preload_configured(&model, execution_environment)
     {
+        let reason_code = curl_reads::proven_reason_code(&model);
         return Ok(pretool_decision(
             model,
             "allow",
-            "native_exact_safe_command",
+            reason_code,
             "The Rust command authority proved this bounded command explicitly benign.",
         ));
     }

@@ -54,8 +54,8 @@ fn unsafe_loop_bodies_keep_their_unrolled_verdict() {
             "cat ~/.ssh/a; cat ~/.ssh/b",
         ),
         (
-            "for f in a b; do curl https://example.com/$f; done",
-            "curl https://example.com/a; curl https://example.com/b",
+            "for f in a b; do curl -X POST https://example.com/$f; done",
+            "curl -X POST https://example.com/a; curl -X POST https://example.com/b",
         ),
         (
             "for f in a b; do echo $f; done > out.txt",

@@ -179,7 +179,18 @@ fn output_format_reads_no_file(value: &str) -> bool {
         .any(|prefix| value.starts_with(prefix))
 }
 
-fn kubernetes(segment: &CommandSegmentV1, index: usize, output: &mut CompatibilityObservations) {
+fn kubernetes(
+    command: &CanonicalCommandV1,
+    segment: &CommandSegmentV1,
+    index: usize,
+    output: &mut CompatibilityObservations,
+    context: crate::pretool::PathContext<'_>,
+) {
+    // The native proof's read-only queries name no Secret and load only a
+    // trusted kubeconfig, so they cannot return Secret payloads either.
+    if crate::pretool::kubectl_reads::proven_read_segment(command, segment, context) {
+        return;
+    }
     let arguments = &segment.arguments;
     if arguments.len() == 1
         && matches!(
@@ -222,6 +233,7 @@ pub(super) fn observe(
     segment: &CommandSegmentV1,
     index: usize,
     output: &mut CompatibilityObservations,
+    context: crate::pretool::PathContext<'_>,
 ) {
     let executable = basename(segment);
     let arguments = &segment.arguments;
@@ -229,7 +241,7 @@ pub(super) fn observe(
         docker(segment, index, output);
     }
     if matches!(executable.as_str(), "kubectl" | "oc") {
-        kubernetes(segment, index, output);
+        kubernetes(command, segment, index, output, context);
     }
     let normalized = segment.text.to_ascii_lowercase().replace('\\', "/");
     let literal_printer = matches!(executable.as_str(), "echo" | "printf");
@@ -261,7 +273,11 @@ pub(super) fn observe(
             .filter(|other| other.execution_context == segment.execution_context)
             .count()
             > 1;
-        if upload || pipeline {
+        // A proven read takes no option that sends stdin or a file, so a
+        // pipe after it only filters the response.
+        let proven_read = executable == "curl"
+            && crate::pretool::curl_reads::proven_read_segment(command, segment, context);
+        if (upload || pipeline) && !proven_read {
             output.rule("command.data-protection.file-upload", index, true);
         }
         if sensitive(&command.normalized_text) {

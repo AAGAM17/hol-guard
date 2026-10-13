@@ -54,6 +54,23 @@ _LFS_GITCONFIG = """[filter "lfs"]
 \tname = Fixture Author
 \temail = fixture@example.invalid
 """
+# Synthetic kubeconfig with no credentials; kubectl is never executed by the gate.
+_KUBECONFIG = """apiVersion: v1
+kind: Config
+clusters:
+- name: example
+  cluster:
+    server: https://k8s.example.invalid
+contexts:
+- name: example
+  context:
+    cluster: example
+    user: example
+current-context: example
+users:
+- name: example
+  user: {}
+"""
 
 
 @dataclass(frozen=True)
@@ -202,6 +219,7 @@ def build_fixture(root: Path) -> BenignFixture:
     _write(home / "other-project" / "package.json", '{\n  "name": "@acme/app",\n  "version": "1.0.0"\n}\n')
     _write(home / "other-project" / ".keep", "")
     _write(home / "acme-plain" / "README.txt", "Plain notes directory.\n")
+    _write(home / "kubeconfig.yaml", _KUBECONFIG)
     _write(home / ".ssh" / "id_rsa", "-----BEGIN FIXTURE KEY-----\nnot-a-real-key\n-----END FIXTURE KEY-----\n")
     # Sibling repository outside the workspace, as in the live Gauntlet fixture.
     _git(home / "other-project", "init", "--quiet", "--initial-branch=main", home=home)

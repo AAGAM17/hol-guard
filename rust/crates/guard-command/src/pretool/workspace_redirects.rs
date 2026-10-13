@@ -286,7 +286,7 @@ fn stays_offline(projected: &str, single: bool) -> bool {
                     .any(|argument| verbs.contains(&argument.as_str()))
             };
             match crate::pretool::executable_basename(executable) {
-                "gh" => true,
+                "gh" | "curl" | "kubectl" => true,
                 "git" => any(&[
                     "fetch",
                     "pull",

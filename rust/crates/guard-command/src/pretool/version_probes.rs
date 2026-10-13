@@ -16,6 +16,7 @@
 //! - `yarn` and `pnpm`: Yarn's `yarnPath` and Corepack's `packageManager`
 //!   field select a workspace-supplied binary that the probe would execute.
 //! - `docker version` and bare `kubectl version`: both contact a server.
+//!   `kubectl_reads` admits the kubectl form after its kubeconfig checks.
 //! - `cargo` and `rustc`: a workspace `rust-toolchain.toml` with a `path`
 //!   makes the rustup proxy run that directory's binary. `rust_toolchain`
 //!   admits their version queries only after checking the toolchain file.

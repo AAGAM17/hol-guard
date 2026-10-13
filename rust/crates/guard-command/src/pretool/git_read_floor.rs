@@ -14,6 +14,11 @@ pub(super) fn requires_review(
     deadline: Option<Instant>,
     execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
 ) -> bool {
+    // A proven read prefix holds no Git segment and changes nothing a later
+    // read depends on, so the floor judges the command from its `cd` onward.
+    if let Some(rest) = super::segment_proof::after_read_prefix(model, context) {
+        return requires_review(&rest, context, deadline, execution_environment);
+    }
     let destination = super::segment_proof::verified_cwd_compound_context(model, context);
     let read_context = super::PathContext {
         cwd: destination.as_deref().or(context.cwd),

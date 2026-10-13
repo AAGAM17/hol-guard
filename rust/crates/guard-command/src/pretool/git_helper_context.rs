@@ -8,6 +8,9 @@ pub(super) fn git_helper_context_required(
     if !exact_safe_command_with_context(model, true, context) {
         return false;
     }
+    // A proven read prefix holds no Git segment; judge from its `cd` onward.
+    let rest = super::segment_proof::after_read_prefix(model, context);
+    let model = rest.as_ref().unwrap_or(model);
     // A relative `-C` after a verified `cd` resolves against the destination.
     let destination = super::segment_proof::verified_cwd_compound_context(model, context);
     let context = PathContext {
@@ -64,6 +67,8 @@ pub(super) fn git_helpers_proven_inert(
     let Some(environment) = execution_environment else {
         return false;
     };
+    let rest = super::segment_proof::after_read_prefix(model, context);
+    let model = rest.as_ref().unwrap_or(model);
     // After a verified `cd`, the Git process reads configuration from the new
     // directory, so the probe must run there rather than in the reported cwd.
     let destination = super::segment_proof::verified_cwd_compound_context(model, context);

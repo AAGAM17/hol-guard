@@ -82,57 +82,117 @@ pub(super) fn exact_safe_cwd_compound(
         );
     }
     model.segments[1..].iter().all(|segment| {
-        matches!(
-            segment.executable.as_deref(),
-            Some(
-                "pwd"
-                    | "true"
-                    | "echo"
-                    | "printf"
-                    | "which"
-                    | "whoami"
-                    | "uname"
-                    | "date"
-                    | "sleep"
-                    | "uptime"
-                    | "pgrep"
-                    | "ls"
-                    | "cat"
-                    | "base64"
-                    | "stat"
-                    | "test"
-                    | "find"
-                    | "head"
-                    | "tail"
-                    | "git"
-                    | "gh"
-                    | "jq"
-                    | "wc"
-                    | "od"
-                    | "rg"
-                    | "grep"
-                    | "sed"
-                    | "sort"
-                    | "uniq"
-                    | "cut"
-                    | "du"
-                    | "df"
-                    | "diff"
+        cwd_read_executable(segment.executable.as_deref())
+            && exact_safe_segment_with_context(
+                model,
+                segment,
+                allow_git_helper_context,
+                crate::pretool::PathContext {
+                    home_dir: context.home_dir,
+                    cdpath_unset: context.cdpath_unset,
+                    rustup_override_absent: context.rustup_override_absent,
+                    npm_config_inert: context.npm_config_inert,
+                    shell_home_matches: context.shell_home_matches,
+                    cwd: Some(&cwd),
+                },
             )
-        ) && exact_safe_segment_with_context(
-            model,
-            segment,
-            allow_git_helper_context,
-            crate::pretool::PathContext {
-                home_dir: context.home_dir,
-                cdpath_unset: context.cdpath_unset,
-                rustup_override_absent: context.rustup_override_absent,
-                npm_config_inert: context.npm_config_inert,
-                shell_home_matches: context.shell_home_matches,
-                cwd: Some(&cwd),
-            },
-        )
     })
+}
+
+/// Executables a verified `cd` compound may run after the directory change.
+fn cwd_read_executable(executable: Option<&str>) -> bool {
+    matches!(
+        executable,
+        Some(
+            "pwd"
+                | "true"
+                | "echo"
+                | "printf"
+                | "which"
+                | "whoami"
+                | "uname"
+                | "date"
+                | "sleep"
+                | "uptime"
+                | "pgrep"
+                | "ls"
+                | "cat"
+                | "base64"
+                | "stat"
+                | "test"
+                | "find"
+                | "head"
+                | "tail"
+                | "git"
+                | "gh"
+                | "jq"
+                | "wc"
+                | "od"
+                | "rg"
+                | "grep"
+                | "sed"
+                | "sort"
+                | "uniq"
+                | "cut"
+                | "du"
+                | "df"
+                | "diff"
+        )
+    )
+}
+
+/// The command from its only `cd` onward, when everything before that `cd`
+/// is a proven read that neither depends on nor changes the directory or Git
+/// state the rest reads. `ls /tmp/a && cd /tmp/a/app && git status` then gets
+/// the same decision as `cd /tmp/a/app && git status`. The prefix keeps its
+/// own proof against the original directory; Git segments stay out of it so
+/// the Git execution floor always sees every Git read with its directory.
+pub(super) fn after_read_prefix(
+    model: &CanonicalCommandV1,
+    context: super::PathContext<'_>,
+) -> Option<CanonicalCommandV1> {
+    if model.confidence != "exact" || model.path_overridden || !model.wrapper_chain.is_empty() {
+        return None;
+    }
+    let mut changes = model
+        .segments
+        .iter()
+        .enumerate()
+        .filter(|(_, segment)| segment.executable.as_deref() == Some("cd"));
+    let (start, _) = changes.next()?;
+    if start == 0 || changes.next().is_some() {
+        return None;
+    }
+    for (index, pair) in model.segments[..=start].windows(2).enumerate() {
+        let length = pair[1].span.start.checked_sub(pair[0].span.end)?;
+        let separator: String = model
+            .normalized_text
+            .chars()
+            .skip(pair[0].span.end)
+            .take(length)
+            .collect();
+        let last = index + 2 == start + 1;
+        if (last && separator.trim() != "&&") || !matches!(separator.trim(), "&&" | "|") {
+            return None;
+        }
+    }
+    let proven = model.segments[..start].iter().all(|segment| {
+        segment.environment_names.is_empty()
+            && segment.wrapper_chain.is_empty()
+            && !segment.path_overridden
+            && segment
+                .executable
+                .as_deref()
+                .is_some_and(|executable| executable_basename(executable) != "git")
+            && cwd_read_executable(segment.executable.as_deref())
+            && exact_safe_segment_with_context(model, segment, false, context)
+    });
+    if !proven {
+        return None;
+    }
+    let mut rest = model.clone();
+    rest.segments = model.segments[start..].to_vec();
+    Some(rest)
 }
 
 /// `ln` and `rm` may follow `cd` only when the new directory is the original

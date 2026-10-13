@@ -208,3 +208,52 @@ fn relative_dash_c_after_cd_resolves_against_the_destination() {
     let result = decide(&space, &space.root, &command);
     assert_ne!(result.decision, "allow", "{command}");
 }
+
+#[test]
+fn read_prefix_before_a_verified_cd_keeps_the_cd_compound_decision() {
+    let (space, _cleanup) = workspace("prefix");
+    let root = space.root.to_str().unwrap();
+    let repository = space.repository.to_str().unwrap();
+    for command in [
+        format!("ls {root} && cd {repository} && git status"),
+        format!("ls {root} && cd {repository} && git remote -v"),
+        format!(
+            "ls {root} && echo \"---\" && cd {repository} && git status && echo \"---\" \
+             && git remote -v && echo \"---\" && git log --oneline -5"
+        ),
+        format!("pwd && cd {repository} && git log -1 --format=%h | head -1"),
+    ] {
+        let result = decide(&space, &space.root, &command);
+        assert_eq!(
+            result.decision, "allow",
+            "{command}: {}",
+            result.reason_code
+        );
+    }
+}
+
+#[test]
+fn only_a_proven_read_prefix_before_a_single_cd_is_set_aside() {
+    let (space, _cleanup) = workspace("prefix-deny");
+    let root = space.root.to_str().unwrap();
+    let home = space.home.to_str().unwrap();
+    let repository = space.repository.to_str().unwrap();
+    std::fs::create_dir_all(space.home.join(".ssh")).unwrap();
+    std::fs::write(space.home.join(".ssh/id_ed25519"), "fixture\n").unwrap();
+    for command in [
+        format!("cat {home}/.ssh/id_ed25519 && cd {repository} && git status"),
+        format!("touch {root}/marker && cd {repository} && git status"),
+        format!("ls {root} && cd {repository} && rm -rf app"),
+        format!("ls {root} && cd {repository} && git status && cd {root} && ls"),
+        format!("git -C {repository} status && cd {repository} && git log -1"),
+        format!("ls {root}; cd {repository} && git status"),
+        format!("ls {root} || cd {repository} && git status"),
+    ] {
+        let result = decide(&space, &space.root, &command);
+        assert_ne!(
+            result.reason_code, "native_exact_safe_command",
+            "{command}: {}",
+            result.decision
+        );
+    }
+}

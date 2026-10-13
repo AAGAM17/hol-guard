@@ -39,6 +39,8 @@ class NativePolicySnapshotPublisherInputs(NativePolicySnapshotDirectLaneAck):
     _pending_workspace_paths: set[Path]  # pyright: ignore[reportUninitializedInstanceVariable]
     _published_policy_fingerprint: tuple[str, str, str] | None  # pyright: ignore[reportUninitializedInstanceVariable]
     _observed_policy_fingerprint: tuple[str, str, str] | None  # pyright: ignore[reportUninitializedInstanceVariable]
+    # The blocked-request mode every config of the last compile agreed on.
+    _compiled_blocked_request_mode: str | None = None
 
     def _current_policy_input_stats(
         self,
@@ -226,6 +228,7 @@ class NativePolicySnapshotPublisherInputs(NativePolicySnapshotDirectLaneAck):
         """
 
         from .config import load_guard_config
+        from .native_policy_snapshot_direct_lane_review import uniform_blocked_request_mode
         from .runtime.observed_mcp_tools import bound_native_mcp_tool_actions, native_observed_mcp_tool_actions
 
         with self._condition:
@@ -236,6 +239,7 @@ class NativePolicySnapshotPublisherInputs(NativePolicySnapshotDirectLaneAck):
         configs = [load_guard_config(self.guard_home)]
         configs.extend(load_guard_config(self.guard_home, workspace=workspace) for workspace in selected_workspaces)
         policy = compose_effective_native_policies(tuple(configs))
+        self._compiled_blocked_request_mode = uniform_blocked_request_mode(configs)
         try:
             mcp_actions = native_observed_mcp_tool_actions(self.store)
         except sqlite3.Error as error:

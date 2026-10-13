@@ -281,6 +281,8 @@ class NativePolicySnapshotDirectLaneAck:
     _direct_lane_evidence_bound: bool = False
     # The home the serving daemon gives a hook that names none.
     _direct_lane_daemon_home: str | None = None
+    # The approval center origin and working directory the open lane bound.
+    _direct_lane_review_facts: tuple[object, object] | None = None
 
     def bind_direct_lane_daemon_home(self, home_dir: Path) -> None:
         """Record the home the serving daemon gives a hook that names none."""

@@ -44,6 +44,13 @@ pub const DIRECT_LANE_MAX_INTEGRITY_DEGRADED_REASONS: usize = 16;
 /// `policy_integrity_state` is the policy-integrity state the daemon refreshed
 /// when it published. Without all three, a saved decision for an exact action
 /// stays with the daemon.
+/// `blocked_request_mode`, `approval_center_origin`, `review_oauth_source` and
+/// `review_host_cwd` are what the daemon queues a reviewed `PreToolUse` for
+/// approval with: the blocked-request mode every bound config resolves to,
+/// the approval center it links, the connection source it binds the request
+/// to, and the working directory it rebuilds the action envelope with. The
+/// resident checks each one itself; one it cannot accept reads as absent, so
+/// such a hook stays with the daemon rather than costing the lane.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct DirectLaneBindingV1 {
@@ -69,6 +76,14 @@ pub struct DirectLaneBindingV1 {
     pub exact_action_control_digest: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy_integrity_state: Option<DirectLanePolicyIntegrityStateV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocked_request_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_center_origin: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_oauth_source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_host_cwd: Option<String>,
 }
 
 /// A process environment whose `Debug` output never shows the values.

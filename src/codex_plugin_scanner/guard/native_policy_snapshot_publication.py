@@ -21,6 +21,11 @@ from .native_policy_snapshot_direct_lane import (
     local_cli_block_rules_present,
     with_direct_hook_state,
 )
+from .native_policy_snapshot_direct_lane_review import (
+    recheckable_review_facts,
+    review_facts_bound,
+    with_review_facts,
+)
 from .native_policy_snapshot_direct_lane_saved import with_saved_decision_state
 from .native_policy_snapshot_harness_postures import (
     HARNESS_POSTURES_BINDING_KEY,
@@ -82,6 +87,7 @@ class NativePolicySnapshotPublicationMixin:
                 if publisher._policy_input_changed():
                     publisher._republish_preserving_watch()
                 publisher._recheck_direct_lane_local_cli(_local_cli_revision_or_none(publisher))
+                publisher._recheck_direct_lane_review_facts()
             with publisher._condition:
                 if publisher._closed:
                     return
@@ -128,6 +134,35 @@ class NativePolicySnapshotPublicationMixin:
                 renewal_after_generation = publisher._renewal_after_generation
             if should_publish:
                 publisher._publish_once(renew_after_generation=renewal_after_generation)
+
+    def _recheck_direct_lane_review_facts(self) -> None:
+        """Rebind the lane once a review fact no policy input covers moves.
+
+        Config files carry the blocked-request mode and are watched inputs,
+        and the store's source never changes. The approval center origin lives
+        in the daemon's runtime state row and the working directory in this
+        process, so they are compared here. A change closes the direct lane
+        and queues a republish that keeps the daemon's own ACK.
+        """
+
+        publisher = cast("NativePolicySnapshotPublisher", self)
+        bound = publisher._direct_lane_review_facts
+        if bound is None or publisher._direct_lane_ack_target is None:
+            return
+        current = recheckable_review_facts(publisher.store)
+        if current is None or current == bound:
+            return
+        publisher._close_direct_lane_ack()
+        with publisher._condition:
+            publisher._direct_lane_review_facts = None
+            snapshot = publisher._snapshot
+            generation = snapshot.get("generation") if snapshot is not None else None
+            if publisher._closed or not publisher._acked or not isinstance(generation, int) or generation <= 0:
+                return
+            publisher._renewal_after_generation = generation
+            publisher._retry_not_before_monotonic = publisher._monotonic_clock()
+            publisher._failure_count = 0
+        publisher._publish_event.set()
 
     def _record_error(self, error: str) -> None:
         publisher = cast("NativePolicySnapshotPublisher", self)
@@ -218,6 +253,12 @@ class NativePolicySnapshotPublicationMixin:
                 integrity_key=direct_lane_integrity_key(publisher.store, resident_features),
             )
             direct_lane = with_saved_decision_state(direct_lane, store=publisher.store, features=resident_features)
+            direct_lane = with_review_facts(
+                direct_lane,
+                store=publisher.store,
+                features=resident_features,
+                blocked_request_mode=publisher._compiled_blocked_request_mode,
+            )
             resident_fingerprint_before = publisher._current_input_fingerprint()[1]
             try:
                 business_source = publisher._compiled_business_source()
@@ -333,6 +374,11 @@ class NativePolicySnapshotPublicationMixin:
                     publisher._acked = True
                     if publisher._harness_postures == bound_postures:
                         publisher._direct_lane_local_cli_revision = local_cli_revision
+                        publisher._direct_lane_review_facts = (
+                            (direct_lane.get("approval_center_origin"), direct_lane.get("review_host_cwd"))
+                            if isinstance(direct_lane, Mapping) and review_facts_bound(resident_features)
+                            else None
+                        )
                         evidence_drain = isinstance(direct_lane, Mapping) and direct_lane.get("evidence_drain") is True
                         publisher._publish_direct_lane_ack(snapshot, evidence_drain=evidence_drain)
                     else:

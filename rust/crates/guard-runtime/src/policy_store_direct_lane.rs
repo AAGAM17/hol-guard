@@ -49,6 +49,9 @@ pub(crate) struct DirectLaneBinding {
     pub(crate) exact_action_control_digest: Option<String>,
     /// The policy-integrity state the daemon refreshed when it published.
     pub(crate) policy_integrity_state: Option<DirectLanePolicyIntegrityStateV1>,
+    /// What the daemon queues a reviewed `PreToolUse` for approval with.
+    #[allow(dead_code)]
+    pub(crate) review: DirectLaneReviewFacts,
 }
 
 /// The daemon's policy-integrity key, held only in memory.
@@ -92,6 +95,7 @@ impl DirectLaneBinding {
             exact_action_environment: None,
             exact_action_control_digest: None,
             policy_integrity_state: None,
+            review: DirectLaneReviewFacts::default(),
         }
     }
 }
@@ -159,6 +163,12 @@ impl PolicySnapshotStore {
                 exact_action_environment: binding.exact_action_environment,
                 exact_action_control_digest: binding.exact_action_control_digest,
                 policy_integrity_state: binding.policy_integrity_state,
+                review: DirectLaneReviewFacts::parse(
+                    binding.blocked_request_mode,
+                    binding.approval_center_origin,
+                    binding.review_oauth_source,
+                    binding.review_host_cwd,
+                ),
             })
         });
         match self.direct_lane.lock() {
@@ -312,6 +322,10 @@ fn observe_input(path: &str) -> Option<DirectLaneStatV1> {
 fn observe_input(_path: &str) -> Option<DirectLaneStatV1> {
     None
 }
+
+#[path = "policy_store_direct_lane_review.rs"]
+mod review;
+pub(crate) use review::{DirectLaneReviewFacts, HOOK_DIRECT_REVIEW_FACTS_FEATURE};
 
 #[cfg(all(test, unix))]
 #[path = "policy_store_direct_lane_tests.rs"]

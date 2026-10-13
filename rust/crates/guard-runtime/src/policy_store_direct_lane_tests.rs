@@ -327,3 +327,37 @@ fn the_bound_integrity_key_is_admitted_only_with_a_current_ack() {
         .integrity_key
         .is_none());
 }
+
+#[test]
+fn review_facts_bind_when_present_and_read_as_absent_otherwise() {
+    let fixture = fixture("review-facts");
+    push(&fixture, Some(binding(&fixture, "/work/repo"))).unwrap();
+    write_current_ack(&fixture);
+    let review = fixture.store.admit_direct_binding().unwrap().review.clone();
+    assert_eq!(review, super::DirectLaneReviewFacts::default());
+
+    let mut bound = binding(&fixture, "/work/repo");
+    bound["blocked_request_mode"] = json!("ask");
+    bound["approval_center_origin"] = json!("http://[::1]:4781");
+    bound["review_oauth_source"] = json!("default");
+    bound["review_host_cwd"] = json!("/work/repo");
+    push(&fixture, Some(bound.clone())).unwrap();
+    let review = fixture.store.admit_direct_binding().unwrap().review.clone();
+    assert_eq!(review.blocked_request_mode.as_deref(), Some("ask"));
+    assert_eq!(
+        review.approval_center_origin.as_deref(),
+        Some("http://[::1]:4781")
+    );
+    assert_eq!(review.review_oauth_source.as_deref(), Some("default"));
+    assert_eq!(review.review_host_cwd.as_deref(), Some("/work/repo"));
+
+    // A fact the resident cannot accept costs only that fact, never the lane.
+    bound["approval_center_origin"] = json!("http://192.168.1.10:4781");
+    bound["blocked_request_mode"] = json!("prompt");
+    push(&fixture, Some(bound)).unwrap();
+    assert!(fixture.store.admit_direct_lane("/work/repo").is_ok());
+    let review = fixture.store.admit_direct_binding().unwrap().review.clone();
+    assert_eq!(review.approval_center_origin, None);
+    assert_eq!(review.blocked_request_mode, None);
+    assert_eq!(review.review_oauth_source.as_deref(), Some("default"));
+}

@@ -283,6 +283,12 @@ pub fn compatibility_observations_with_context(
         }) {
             steered.push(index);
         }
+        // A trailing `2>&1` only joins stderr to the segment's own stdout. It
+        // writes no file and is not an operand, so the Git and GitHub CLI
+        // grammars attribute the command without it. A quoted `"2>&1"`
+        // operand is not a redirect and stays in place.
+        let merged = crate::pretool::without_stderr_merge(segment);
+        let cli_segment = merged.as_ref().unwrap_or(segment);
         match basename(segment).as_str() {
             "git" => {
                 let proof_context = match &leading_cd {
@@ -292,9 +298,9 @@ pub fn compatibility_observations_with_context(
                     },
                     _ => context,
                 };
-                git::observe_with_contexts(segment, index, &mut result, context, proof_context)
+                git::observe_with_contexts(cli_segment, index, &mut result, context, proof_context)
             }
-            "gh" => github::observe(segment, index, &mut result),
+            "gh" => github::observe(cli_segment, index, &mut result),
             _ => {}
         }
         domains::observe(command, segment, index, &mut result, context);

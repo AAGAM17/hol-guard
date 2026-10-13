@@ -23,6 +23,7 @@ pub mod business_input_properties;
 pub mod business_mime_properties;
 pub mod business_transfer_properties;
 pub mod command_compatibility;
+pub mod command_compatibility_stderr_merge;
 pub mod compatibility_safe_scope;
 pub mod data_flow_rules_parity;
 pub mod effect_decision_parity;

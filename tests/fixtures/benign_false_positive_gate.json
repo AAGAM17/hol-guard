@@ -1485,6 +1485,66 @@
       "expect": "allow"
     },
     {
+      "id": "gh-api-get-stderr-merged",
+      "fix_area": "gh-api",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "gh api repos/example/app/actions/jobs/123/logs 2>&1"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "gh-api-get-stderr-merged-tail",
+      "fix_area": "gh-api",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "gh api repos/example/app/actions/jobs/123/logs 2>&1 | tail -50"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "gh-api-paginate-stderr-merged",
+      "fix_area": "gh-api",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "gh api \"repos/example/app/check-runs/1/annotations\" --paginate 2>&1"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "gh-api-get-discard-all-output",
+      "fix_area": "gh-api",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "gh api repos/example/app/pulls/1/comments > /dev/null 2>&1"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "grep-count-absolute-home-path",
       "fix_area": "shell",
       "harnesses": [

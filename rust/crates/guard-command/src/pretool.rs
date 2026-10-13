@@ -39,6 +39,7 @@ pub(crate) mod git_config_reads;
 pub(crate) mod git_hash_object;
 mod git_read_floor;
 mod git_reads;
+mod repo_create_reason;
 use git_reads::safe_git_arguments;
 mod git_helper_context;
 mod git_probe;
@@ -504,7 +505,8 @@ pub(super) fn evaluate_pre_tool_with_execution_context(
             "HOL Guard is checking repository Git-helper configuration before allowing this read-only command.",
         ));
     }
-    let reason = compound_reason::unproven_steps_reason(&model, context);
+    let reason = compound_reason::unproven_steps_reason(&model, context)
+        .or_else(|| repo_create_reason::private_alternative_reason(&model));
     Ok(pretool_decision(
         model,
         "review",

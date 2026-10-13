@@ -156,18 +156,12 @@ from .store_supply_chain import (
     get_supply_chain_bundle as load_supply_chain_bundle,
 )
 from .store_supply_chain import (
-    get_supply_chain_evaluation as load_supply_chain_evaluation,
-)
-from .store_supply_chain import (
     supply_chain_bundle_schema_statement,
     supply_chain_eval_cache_schema_statement,
     supply_chain_index_statements,
 )
 from .store_supply_chain import (
     upsert_supply_chain_bundle as persist_supply_chain_bundle,
-)
-from .store_supply_chain import (
-    upsert_supply_chain_evaluation as persist_supply_chain_evaluation,
 )
 from .store_threat_intel import (
     threat_intel_bundle_schema_statement,

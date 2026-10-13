@@ -221,52 +221,6 @@ class StoreCloudEventsMixin:
         with self._connect() as connection:
             return load_supply_chain_bundle(connection, workspace_id=workspace_id)
 
-    def cache_supply_chain_evaluation(
-        self,
-        *,
-        workspace_id: str,
-        package_intent_hash: str,
-        feed_snapshot_hash: str,
-        policy_hash: str,
-        scoring_version: str,
-        bundle_version: str,
-        decision: dict[str, object],
-        now: str,
-    ) -> None:
-        with self._connect() as connection:
-            persist_supply_chain_evaluation(
-                connection,
-                workspace_id=workspace_id,
-                package_intent_hash=package_intent_hash,
-                feed_snapshot_hash=feed_snapshot_hash,
-                policy_hash=policy_hash,
-                scoring_version=scoring_version,
-                bundle_version=bundle_version,
-                decision=decision,
-                updated_at=now,
-            )
-
-    def get_cached_supply_chain_evaluation(
-        self,
-        *,
-        workspace_id: str,
-        package_intent_hash: str,
-        feed_snapshot_hash: str,
-        policy_hash: str,
-        scoring_version: str,
-        bundle_version: str,
-    ) -> dict[str, object] | None:
-        with self._connect() as connection:
-            return load_supply_chain_evaluation(
-                connection,
-                workspace_id=workspace_id,
-                package_intent_hash=package_intent_hash,
-                feed_snapshot_hash=feed_snapshot_hash,
-                policy_hash=policy_hash,
-                scoring_version=scoring_version,
-                bundle_version=bundle_version,
-            )
-
     def set_sync_payload(self, state_key: str, payload: Mapping[str, object] | Sequence[object], now: str) -> None:
         oauth_changed = state_key == _OAUTH_LOCAL_CREDENTIALS_STATE_KEY or state_key.startswith(
             _OAUTH_LOCAL_CREDENTIALS_STATE_KEY + ":"
@@ -301,9 +255,6 @@ class StoreCloudEventsMixin:
         if isinstance(payload, (dict, list)):
             return payload
         return None
-
-    def set_cloud_exceptions(self, items: list[dict[str, object]], now: str) -> None:
-        self.set_sync_payload("cloud_exceptions", items, now)
 
     def list_cloud_exceptions(self, harness: str | None = None) -> list[dict[str, object]]:
         from .cloud_exceptions import (

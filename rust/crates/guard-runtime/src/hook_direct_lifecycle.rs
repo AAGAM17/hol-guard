@@ -255,7 +255,7 @@ fn claude_permission_prompt_answer(
     }))
 }
 
-fn utc_now_isoformat() -> Option<String> {
+pub(super) fn utc_now_isoformat() -> Option<String> {
     let micros = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .ok()?

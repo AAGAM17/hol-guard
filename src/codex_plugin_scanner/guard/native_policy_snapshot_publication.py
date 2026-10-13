@@ -21,6 +21,7 @@ from .native_policy_snapshot_direct_lane import (
     local_cli_block_rules_present,
     with_direct_hook_state,
 )
+from .native_policy_snapshot_direct_lane_saved import with_saved_decision_state
 from .native_policy_snapshot_harness_postures import (
     HARNESS_POSTURES_BINDING_KEY,
     valid_harness_postures,
@@ -216,6 +217,7 @@ class NativePolicySnapshotPublicationMixin:
                 contained_sink_command=contained_sink_command(resident_features),
                 integrity_key=direct_lane_integrity_key(publisher.store, resident_features),
             )
+            direct_lane = with_saved_decision_state(direct_lane, store=publisher.store, features=resident_features)
             resident_fingerprint_before = publisher._current_input_fingerprint()[1]
             try:
                 business_source = publisher._compiled_business_source()

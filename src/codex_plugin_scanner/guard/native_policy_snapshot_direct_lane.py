@@ -32,6 +32,9 @@ DIRECT_HOOK_CONTAINED_ROUTE_FEATURE = "hook-direct-contained-route-v1"
 # The resident answers a Claude PermissionRequest from the session's notice,
 # verified and marked seen with the bound policy-integrity key.
 DIRECT_HOOK_PERMISSION_NOTICE_FEATURE = "hook-direct-permission-notice-v1"
+# The resident answers a reviewed PreToolUse from an exact-action decision
+# the user saved, verified with the bound policy-integrity key.
+DIRECT_HOOK_SAVED_DECISION_FEATURE = "hook-direct-saved-decision-v1"
 DIRECT_LANE_ACK_DIRECTORY = "direct-lane"
 DIRECT_LANE_ACK_FILE_NAME = "ack.json"
 DIRECT_LANE_ACK_SCHEMA = "guard-direct-lane-ack.v1"
@@ -165,12 +168,14 @@ def contained_sink_command(features: Iterable[str]) -> tuple[str, ...] | None:
 
 
 def direct_lane_integrity_key(store: object, features: Iterable[str]) -> tuple[bytes, str] | None:
-    """The policy-integrity key for a resident that answers permission notices.
+    """The policy-integrity key for a resident that answers permission notices
+    or saved exact-action decisions.
 
-    The key is read, never created: without one there is no notice to verify.
+    The key is read, never created: without one there is no notice or saved
+    decision to verify.
     """
 
-    if DIRECT_HOOK_PERMISSION_NOTICE_FEATURE not in set(features):
+    if not {DIRECT_HOOK_PERMISSION_NOTICE_FEATURE, DIRECT_HOOK_SAVED_DECISION_FEATURE} & set(features):
         return None
     material = getattr(store, "_policy_integrity_secret_material", None)
     if not callable(material):

@@ -26,8 +26,9 @@ mod canonical;
 mod crypto;
 mod direct_lane;
 pub use direct_lane::{
-    DirectLaneBindingV1, DirectLaneInputV1, DirectLaneSecretV1, DirectLaneStatV1,
-    DIRECT_LANE_MAX_INPUTS, DIRECT_LANE_MAX_PATH_BYTES, DIRECT_LANE_MAX_WORKSPACES,
+    DirectLaneBindingV1, DirectLaneEnvironmentV1, DirectLaneInputV1,
+    DirectLanePolicyIntegrityStateV1, DirectLaneSecretV1, DirectLaneStatV1, DIRECT_LANE_MAX_INPUTS,
+    DIRECT_LANE_MAX_PATH_BYTES, DIRECT_LANE_MAX_WORKSPACES,
 };
 #[path = "policy_snapshot_validation.rs"]
 mod validation;

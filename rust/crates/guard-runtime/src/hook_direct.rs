@@ -45,6 +45,9 @@ pub(crate) const HOOK_DIRECT_CONTAINED_ROUTE_FEATURE: &str = "hook-direct-contai
 /// Advertised once the resident answers a Claude PermissionRequest from the
 /// session's notice, verified and marked seen with the bound integrity key.
 pub(crate) const HOOK_DIRECT_PERMISSION_NOTICE_FEATURE: &str = "hook-direct-permission-notice-v1";
+/// The resident answers a reviewed `PreToolUse` from a saved exact-action
+/// decision when the binding carries what the daemon reads it with.
+pub(crate) const HOOK_DIRECT_SAVED_DECISION_FEATURE: &str = "hook-direct-saved-decision-v1";
 const HOOK_DIRECT_RESULT_SCHEMA: &str = "guard-hook-direct-result.v1";
 /// The harnesses whose allow the daemon returns as the edge rendered it.
 /// The bounded bridge harnesses after Cursor have no harness-specific step
@@ -143,6 +146,7 @@ enum HookDirectDefer {
     ContainedRouteFailed,
     EdgeFailed,
     NotAllow,
+    SavedDecision,
     RuntimeSuperseded,
 }
 
@@ -168,6 +172,7 @@ impl HookDirectDefer {
             Self::ContainedRouteFailed => "direct_hook_contained_route_failed",
             Self::EdgeFailed => "direct_hook_edge_failed",
             Self::NotAllow => "direct_hook_not_allow",
+            Self::SavedDecision => "direct_hook_saved_decision",
             Self::RuntimeSuperseded => "direct_hook_runtime_superseded",
         }
     }
@@ -324,6 +329,10 @@ fn answer(
     let contained = pre_tool && (request.harness == CLAUDE_CODE || request.harness == ZCODE);
     let sink_command = binding.contained_sink_command.clone().filter(|_| contained);
     let guard_home = request.guard_home.clone();
+    // Without custom rules, the daemon reads a reviewed `PreToolUse` against
+    // the exact-action decisions the user saved.
+    let saved_payload =
+        (pre_tool && !custom_rules && !recording_only && !cursor_harness).then(|| payload.clone());
     let envelope = GuardHookEnvelopeV2 {
         schema: GUARD_HOOK_ENVELOPE_V2_SCHEMA.to_owned(),
         request_id: None,
@@ -360,25 +369,42 @@ fn answer(
         // Watch never pauses or repairs a call: the daemon records the
         // edge's non-blocking response for every verdict, as the drain does.
         PRE_TOOL_USE if recording_only => reviewed_edge(&edge, PRE_TOOL_USE)?,
-        PRE_TOOL_USE => {
-            let mut answered = pre_tool_answer(&edge, contained && sink_command.is_none())?;
-            if let Some(command) = sink_command.as_deref() {
-                let target = contained::SinkTarget {
-                    command,
+        PRE_TOOL_USE => match (
+            pre_tool_answer(&edge, contained && sink_command.is_none()),
+            saved_payload.as_ref(),
+        ) {
+            // The daemon returns a saved decision's response as is.
+            (Err(HookDirectDefer::NotAllow), Some(payload)) => {
+                let context = saved_decision::Context {
                     harness: &request.harness,
-                    guard_home: &guard_home,
-                    home_dir: &request_home,
+                    payload,
                     workspace: &workspace,
+                    home_dir: &request_home,
+                    guard_home: &guard_home,
+                    binding: &binding,
                 };
-                if let Some((routed, written)) =
-                    contained::route(&answered["harness_response"], &evidence_payload, &target)?
-                {
-                    answered["harness_response"] = routed;
-                    snapshot = Some(written);
-                }
+                saved_decision::answer(&edge, &context)?
             }
-            answered
-        }
+            (passed, _) => {
+                let mut answered = passed?;
+                if let Some(command) = sink_command.as_deref() {
+                    let target = contained::SinkTarget {
+                        command,
+                        harness: &request.harness,
+                        guard_home: &guard_home,
+                        home_dir: &request_home,
+                        workspace: &workspace,
+                    };
+                    if let Some((routed, written)) =
+                        contained::route(&answered["harness_response"], &evidence_payload, &target)?
+                    {
+                        answered["harness_response"] = routed;
+                        snapshot = Some(written);
+                    }
+                }
+                answered
+            }
+        },
         POST_TOOL_USE => post_tool_answer(&edge)?,
         _ => prompt_answer(&edge, prompt_notice)?,
     };
@@ -539,6 +565,8 @@ mod cursor;
 mod lifecycle;
 #[path = "hook_direct_local_cli.rs"]
 mod local_cli;
+#[path = "hook_direct_saved_decision.rs"]
+mod saved_decision;
 #[path = "hook_direct_workspace.rs"]
 mod workspace;
 

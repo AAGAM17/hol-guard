@@ -12,6 +12,10 @@ pub const DIRECT_LANE_MAX_SINK_ARGS: usize = 8;
 pub const DIRECT_LANE_MAX_SINK_ARG_BYTES: usize = 16_384;
 pub const DIRECT_LANE_MAX_INTEGRITY_KEY_B64_BYTES: usize = 2048;
 pub const DIRECT_LANE_MAX_INTEGRITY_KEY_ID_BYTES: usize = 256;
+pub const DIRECT_LANE_MAX_ENVIRONMENT_ENTRIES: usize = 1024;
+pub const DIRECT_LANE_MAX_ENVIRONMENT_BYTES: usize = 262_144;
+pub const DIRECT_LANE_MAX_INTEGRITY_STATE_FIELD_BYTES: usize = 256;
+pub const DIRECT_LANE_MAX_INTEGRITY_DEGRADED_REASONS: usize = 16;
 
 /// Publisher-observed state that a pushed snapshot was compiled against.
 ///
@@ -34,6 +38,12 @@ pub const DIRECT_LANE_MAX_INTEGRITY_KEY_ID_BYTES: usize = 256;
 /// daemon signs and verifies hook authority state with, as the daemon sends
 /// it on every hook authority state request. Without both, a hook that needs
 /// that state stays with the daemon.
+/// `exact_action_environment` and `exact_action_control_digest` are the
+/// process environment and extension-control digest the daemon sends with
+/// every exact-action proof it asks the resident for, and
+/// `policy_integrity_state` is the policy-integrity state the daemon refreshed
+/// when it published. Without all three, a saved decision for an exact action
+/// stays with the daemon.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct DirectLaneBindingV1 {
@@ -53,6 +63,77 @@ pub struct DirectLaneBindingV1 {
     pub integrity_key_b64: Option<DirectLaneSecretV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub integrity_key_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exact_action_environment: Option<DirectLaneEnvironmentV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exact_action_control_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy_integrity_state: Option<DirectLanePolicyIntegrityStateV1>,
+}
+
+/// A process environment whose `Debug` output never shows the values.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct DirectLaneEnvironmentV1(pub BTreeMap<String, String>);
+
+impl std::fmt::Debug for DirectLaneEnvironmentV1 {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "DirectLaneEnvironmentV1({} entries)",
+            self.0.len()
+        )
+    }
+}
+
+impl DirectLaneEnvironmentV1 {
+    fn is_valid(&self) -> bool {
+        if self.0.len() > DIRECT_LANE_MAX_ENVIRONMENT_ENTRIES {
+            return false;
+        }
+        let mut total = 0usize;
+        for (name, value) in &self.0 {
+            if name.is_empty() || name.contains(['=', '\0']) || value.contains('\0') {
+                return false;
+            }
+            total = total.saturating_add(name.len()).saturating_add(value.len());
+        }
+        total <= DIRECT_LANE_MAX_ENVIRONMENT_BYTES
+    }
+}
+
+/// The `_refresh_policy_integrity_state` payload the daemon stores in
+/// `sync_state`, field for field.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct DirectLanePolicyIntegrityStateV1 {
+    pub backend: String,
+    pub cutover_complete: bool,
+    pub degraded_reasons: Vec<String>,
+    pub enforcement: String,
+    pub generation: Option<u64>,
+    pub key_id: Option<String>,
+    pub mode: String,
+}
+
+impl DirectLanePolicyIntegrityStateV1 {
+    fn is_valid(&self) -> bool {
+        let field_valid = integrity_state_field_valid;
+        field_valid(&self.backend)
+            && field_valid(&self.enforcement)
+            && field_valid(&self.mode)
+            && self.key_id.as_deref().is_none_or(field_valid)
+            && self.degraded_reasons.len() <= DIRECT_LANE_MAX_INTEGRITY_DEGRADED_REASONS
+            && self
+                .degraded_reasons
+                .iter()
+                .all(|reason| field_valid(reason))
+    }
+}
+
+fn integrity_state_field_valid(value: &str) -> bool {
+    value.len() <= DIRECT_LANE_MAX_INTEGRITY_STATE_FIELD_BYTES
+        && !value.chars().any(char::is_control)
 }
 
 /// Key material whose `Debug` output never shows the value.
@@ -150,6 +231,21 @@ impl DirectLaneBindingV1 {
                 }
             }
             _ => return false,
+        }
+        if self
+            .exact_action_environment
+            .as_ref()
+            .is_some_and(|environment| !environment.is_valid())
+            || self
+                .exact_action_control_digest
+                .as_deref()
+                .is_some_and(|digest| !integrity_state_field_valid(digest))
+            || self
+                .policy_integrity_state
+                .as_ref()
+                .is_some_and(|state| !state.is_valid())
+        {
+            return false;
         }
         true
     }

@@ -56,6 +56,16 @@ fn evaluate_with(
     })
 }
 
+/// The persistent exact-action token of `query`, or the reason the action
+/// stays one-time, for a resident caller that already holds the query.
+pub(crate) fn exact_action_token(query: &NativeExactActionQueryV1) -> Result<String, &'static str> {
+    let NativeExactActionQueryV1::ExactAction { budget_ms, .. } = query else {
+        return Err("native_exact_action_query_invalid");
+    };
+    let budget = Duration::from_millis((*budget_ms).min(NATIVE_EXACT_ACTION_MAX_BUDGET_MS));
+    token::exact_action(query, Instant::now() + budget, &ResidentEngines)
+}
+
 fn decide(
     request: &NativeExactActionRequestV1,
     engines: &dyn Engines,

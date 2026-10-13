@@ -396,6 +396,11 @@ mod query;
 #[path = "hook_direct_saved_consume.rs"]
 mod consume;
 
+// Read once the direct lane queues a reviewed `PreToolUse` itself.
+#[allow(dead_code)]
+#[path = "hook_direct_review_request.rs"]
+mod review_request;
+
 #[cfg(test)]
 #[path = "hook_direct_saved_decision_tests.rs"]
 mod tests;

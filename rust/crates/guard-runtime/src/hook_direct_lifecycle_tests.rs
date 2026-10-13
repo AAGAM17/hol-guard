@@ -208,3 +208,205 @@ fn a_session_with_a_permission_notice_keeps_the_daemon_path() {
     }
     assert_eq!(claude("synthetic")["outcome"], "answer");
 }
+
+const BOUND_KEY: [u8; 32] = [7; 32];
+const BOUND_KEY_ID: &str = "synthetic:0707070707070707";
+
+fn key_b64(key: &[u8]) -> String {
+    use base64ct::{Base64UrlUnpadded, Encoding};
+    Base64UrlUnpadded::encode_string(key)
+}
+
+fn utc_now() -> String {
+    let micros = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_micros();
+    crate::policy_bundle_time::micros_to_utc_isoformat(i64::try_from(micros).unwrap(), "+00:00")
+        .unwrap()
+}
+
+/// Records a notice the way the daemon does, signed under `key`.
+fn record_notice(lane: &super::Lane, key: &[u8], key_id: &str, session: &str, notice: Value) {
+    let root = lane.fixture.root.to_str().unwrap();
+    let request: guard_contracts::HookAuthorityStateRequestV1 = serde_json::from_value(json!({
+        "schema": guard_contracts::HOOK_AUTHORITY_STATE_REQUEST_SCHEMA,
+        "store_path": format!("{root}/guard.db"),
+        "guard_home": root,
+        "op": "claude_record_notice",
+        "now": utc_now(),
+        "integrity_key_b64": key_b64(key),
+        "integrity_key_id": key_id,
+        "session_id": session,
+        "tool_name": "Bash",
+        "payload": notice,
+    }))
+    .unwrap();
+    crate::hook_authority_state_op::evaluate(&request).unwrap();
+}
+
+fn keyed_lane(label: &str) -> (super::Lane, rusqlite::Connection) {
+    let lane = lane(
+        label,
+        json!({ "integrity_key_b64": key_b64(&BOUND_KEY), "integrity_key_id": BOUND_KEY_ID }),
+    );
+    let connection = rusqlite::Connection::open(lane.fixture.root.join("guard.db")).unwrap();
+    connection
+        .execute_batch(
+            "create table if not exists sync_state (
+                 state_key text primary key, payload_json text not null, updated_at text not null
+             );
+             create table if not exists guard_events (
+                 event_name text not null, payload_json text not null, occurred_at text not null
+             );",
+        )
+        .unwrap();
+    (lane, connection)
+}
+
+fn notice(session: &str, artifact_type: &str) -> Value {
+    json!({
+        "session_id": session,
+        "artifact_id": format!("{session}-artifact"),
+        "artifact_hash": "synthetic-hash",
+        "command": "npm install synthetic-package",
+        "tool_name": "Bash",
+        "artifact_type": artifact_type,
+        "reason": "Synthetic review reason",
+        // The daemon stamps every notice; a row without it reads as expired.
+        "saved_at": utc_now(),
+    })
+}
+
+fn pending(connection: &rusqlite::Connection, session: &str) -> Value {
+    let payload: String = connection
+        .query_row(
+            "select payload_json from sync_state where state_key like ?1",
+            [format!("claude_pending_permission:{session}:%")],
+            |row| row.get(0),
+        )
+        .unwrap();
+    serde_json::from_str(&payload).unwrap()
+}
+
+#[test]
+fn a_notice_under_the_bound_key_is_answered_and_marked_seen() {
+    let (lane, connection) = keyed_lane("permission-notice-keyed");
+    record_notice(
+        &lane,
+        &BOUND_KEY,
+        BOUND_KEY_ID,
+        "package",
+        notice("package", "package_request"),
+    );
+    record_notice(
+        &lane,
+        &BOUND_KEY,
+        BOUND_KEY_ID,
+        "tool",
+        notice("tool", "tool_call"),
+    );
+    assert_eq!(
+        pending(&connection, "package").get("permission_prompt_seen"),
+        None
+    );
+
+    // A package request leaves the dialog to Claude and explains the review.
+    let answered = run_as(
+        &lane,
+        "claude-code",
+        Some(HOME),
+        permission_request(json!(" package ")),
+    );
+    assert_eq!(answered["outcome"], "answer", "{answered}");
+    let response = &answered["edge"]["harness_response"];
+    assert_eq!(response["guard_permission_passthrough"], true, "{response}");
+    assert_eq!(
+        response["hookSpecificOutput"]["hookEventName"],
+        "PermissionRequest"
+    );
+    assert!(response["systemMessage"].is_string(), "{response}");
+    let seen = pending(&connection, "package");
+    assert_eq!(seen["permission_prompt_seen"], true, "{seen}");
+    assert!(seen["permission_prompt_seen_at"].is_string(), "{seen}");
+    // The mark is signed under the bound key, so the daemon still accepts it.
+    assert_eq!(seen["integrity"]["integrity_key_id"], BOUND_KEY_ID);
+
+    // Any other artifact asks the user through Guard's question instead.
+    let asked = run_as(
+        &lane,
+        "claude-code",
+        Some(HOME),
+        permission_request(json!("tool")),
+    );
+    assert_eq!(asked["outcome"], "answer", "{asked}");
+    let decision = &asked["edge"]["harness_response"]["hookSpecificOutput"]["decision"];
+    assert_eq!(decision["behavior"], "deny", "{asked}");
+    assert_eq!(decision["interrupt"], false, "{asked}");
+    assert_eq!(pending(&connection, "tool")["permission_prompt_seen"], true);
+}
+
+#[test]
+fn a_notice_signed_under_another_key_is_left_to_the_daemon_untouched() {
+    let (lane, connection) = keyed_lane("permission-notice-foreign");
+    record_notice(
+        &lane,
+        &[9; 32],
+        "synthetic:0909090909090909",
+        "rotated",
+        notice("rotated", "package_request"),
+    );
+    let rows = |connection: &rusqlite::Connection| -> Vec<(String, String)> {
+        let mut statement = connection
+            .prepare("select state_key, payload_json from sync_state order by state_key")
+            .unwrap();
+        statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    };
+    let before = rows(&connection);
+    assert_eq!(
+        deferred(&run_as(
+            &lane,
+            "claude-code",
+            Some(HOME),
+            permission_request(json!("rotated"))
+        )),
+        "direct_hook_permission_notice"
+    );
+    // Nothing was invalidated, marked or audited under the stale key.
+    assert_eq!(rows(&connection), before);
+    let events: i64 = connection
+        .query_row("select count(*) from guard_events", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(events, 0);
+}
+
+#[test]
+fn a_busy_store_leaves_the_notice_to_the_daemon() {
+    let (lane, connection) = keyed_lane("permission-notice-busy");
+    record_notice(
+        &lane,
+        &BOUND_KEY,
+        BOUND_KEY_ID,
+        "busy",
+        notice("busy", "package_request"),
+    );
+    connection.execute_batch("BEGIN IMMEDIATE").unwrap();
+    assert_eq!(
+        deferred(&run_as(
+            &lane,
+            "claude-code",
+            Some(HOME),
+            permission_request(json!("busy"))
+        )),
+        "direct_hook_permission_notice"
+    );
+    connection.execute_batch("ROLLBACK").unwrap();
+    assert_eq!(
+        pending(&connection, "busy").get("permission_prompt_seen"),
+        None
+    );
+}

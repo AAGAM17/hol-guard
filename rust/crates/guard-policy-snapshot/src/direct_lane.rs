@@ -10,6 +10,8 @@ pub const DIRECT_LANE_MAX_INPUTS: usize = 256;
 pub const DIRECT_LANE_MAX_PATH_BYTES: usize = 4096;
 pub const DIRECT_LANE_MAX_SINK_ARGS: usize = 8;
 pub const DIRECT_LANE_MAX_SINK_ARG_BYTES: usize = 16_384;
+pub const DIRECT_LANE_MAX_INTEGRITY_KEY_B64_BYTES: usize = 2048;
+pub const DIRECT_LANE_MAX_INTEGRITY_KEY_ID_BYTES: usize = 256;
 
 /// Publisher-observed state that a pushed snapshot was compiled against.
 ///
@@ -28,6 +30,10 @@ pub const DIRECT_LANE_MAX_SINK_ARG_BYTES: usize = 16_384;
 /// `contained_sink_command` is the argv prefix that starts the daemon's
 /// Guard CLI, which the daemon puts in front of a contained execution
 /// rewrite; without it such a rewrite stays with the daemon.
+/// `integrity_key_b64` and `integrity_key_id` are the policy-integrity key the
+/// daemon signs and verifies hook authority state with, as the daemon sends
+/// it on every hook authority state request. Without both, a hook that needs
+/// that state stays with the daemon.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct DirectLaneBindingV1 {
@@ -43,6 +49,21 @@ pub struct DirectLaneBindingV1 {
     pub evidence_drain: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contained_sink_command: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub integrity_key_b64: Option<DirectLaneSecretV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub integrity_key_id: Option<String>,
+}
+
+/// Key material whose `Debug` output never shows the value.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct DirectLaneSecretV1(pub String);
+
+impl std::fmt::Debug for DirectLaneSecretV1 {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("DirectLaneSecretV1(..)")
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -111,6 +132,24 @@ impl DirectLaneBindingV1 {
             {
                 return false;
             }
+        }
+        match (&self.integrity_key_b64, &self.integrity_key_id) {
+            (None, None) => {}
+            (Some(key), Some(key_id)) => {
+                if key.0.is_empty()
+                    || key.0.len() > DIRECT_LANE_MAX_INTEGRITY_KEY_B64_BYTES
+                    || !key
+                        .0
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+                    || key_id.is_empty()
+                    || key_id.len() > DIRECT_LANE_MAX_INTEGRITY_KEY_ID_BYTES
+                    || key_id.chars().any(char::is_control)
+                {
+                    return false;
+                }
+            }
+            _ => return false,
         }
         true
     }

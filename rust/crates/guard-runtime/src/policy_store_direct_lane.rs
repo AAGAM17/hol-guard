@@ -15,8 +15,12 @@
 //! Any failure defers to the daemon path, which is unchanged.
 
 use super::*;
-use guard_policy_snapshot::{DirectLaneBindingV1, DirectLaneInputV1, DirectLaneStatV1};
+use base64ct::{Base64UrlUnpadded, Encoding};
+use guard_policy_snapshot::{
+    DirectLaneBindingV1, DirectLaneInputV1, DirectLaneSecretV1, DirectLaneStatV1,
+};
 use std::collections::{BTreeMap, BTreeSet};
+use zeroize::Zeroizing;
 
 /// The ACK lives in its own directory so that writing, renewing or unlinking
 /// it never changes the state directory identity the publisher fences on.
@@ -37,6 +41,29 @@ pub(crate) struct DirectLaneBinding {
     pub(crate) local_cli_block_rules: Option<bool>,
     pub(crate) evidence_drain: Option<bool>,
     pub(crate) contained_sink_command: Option<Vec<String>>,
+    pub(crate) integrity_key: Option<DirectLaneIntegrityKey>,
+}
+
+/// The daemon's policy-integrity key, held only in memory.
+pub(crate) struct DirectLaneIntegrityKey {
+    pub(crate) key: Zeroizing<Vec<u8>>,
+    pub(crate) key_id: String,
+}
+
+impl DirectLaneIntegrityKey {
+    /// The bound key, or `None` when it does not decode; the hooks that need
+    /// it then stay with the daemon.
+    fn decode(key_b64: Option<DirectLaneSecretV1>, key_id: Option<String>) -> Option<Self> {
+        let encoded = Zeroizing::new(key_b64?.0);
+        let key = Zeroizing::new(Base64UrlUnpadded::decode_vec(&encoded).ok()?);
+        if key.is_empty() {
+            return None;
+        }
+        Some(Self {
+            key,
+            key_id: key_id?,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,6 +122,10 @@ impl PolicySnapshotStore {
                 local_cli_block_rules: binding.local_cli_block_rules,
                 evidence_drain: binding.evidence_drain,
                 contained_sink_command: binding.contained_sink_command,
+                integrity_key: DirectLaneIntegrityKey::decode(
+                    binding.integrity_key_b64,
+                    binding.integrity_key_id,
+                ),
             })
         });
         match self.direct_lane.lock() {
@@ -145,6 +176,39 @@ impl PolicySnapshotStore {
         if !binding.workspaces.contains(workspace) {
             return Err(DirectLaneDefer::WorkspaceUnknown);
         }
+        let snapshot = self.admit_binding_lease(&binding)?;
+        if binding
+            .inputs
+            .iter()
+            .any(|input| observe_input(&input.path) != input.stat)
+        {
+            return Err(DirectLaneDefer::InputChanged);
+        }
+        Ok((snapshot, binding))
+    }
+
+    /// The bound binding while its lease holds, for a hook that reads no
+    /// policy input, such as the Claude permission notice lane.
+    pub(crate) fn admit_direct_binding(&self) -> Result<Arc<DirectLaneBinding>, DirectLaneDefer> {
+        if !cfg!(unix) {
+            return Err(DirectLaneDefer::Unsupported);
+        }
+        let binding = self
+            .direct_lane
+            .lock()
+            .ok()
+            .and_then(|binding| binding.clone())
+            .ok_or(DirectLaneDefer::Unbound)?;
+        self.admit_binding_lease(&binding)?;
+        Ok(binding)
+    }
+
+    /// The admitted snapshot when `binding` matches it and the publisher's
+    /// ACK lease for it is current.
+    fn admit_binding_lease(
+        &self,
+        binding: &DirectLaneBinding,
+    ) -> Result<Arc<AdmittedPolicySnapshot>, DirectLaneDefer> {
         let snapshot = self
             .current_admitted_snapshot()
             .map_err(|_| DirectLaneDefer::SnapshotUnavailable)?;
@@ -165,14 +229,7 @@ impl PolicySnapshotStore {
         if ack.lease_expires_at_ms <= now {
             return Err(DirectLaneDefer::AckExpired);
         }
-        if binding
-            .inputs
-            .iter()
-            .any(|input| observe_input(&input.path) != input.stat)
-        {
-            return Err(DirectLaneDefer::InputChanged);
-        }
-        Ok((snapshot, binding))
+        Ok(snapshot)
     }
 
     fn read_direct_lane_ack(&self) -> Result<DirectLaneAckV1, DirectLaneDefer> {

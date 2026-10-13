@@ -27,8 +27,8 @@ use crate::codex_hook_response::{POST_TOOL_USE, PRE_TOOL_USE};
 const STATE_DIRECTORY: &str = "native-runtime";
 const DIRECT_RESULT_SCHEMA: &str = "guard-hook-direct-result.v1";
 const USER_PROMPT_SUBMIT: &str = "UserPromptSubmit";
-/// Claude Code's permission dialog, which the resident answers when the
-/// session has no permission notice.
+/// Claude Code's permission dialog, which the resident answers from the
+/// session's permission notice.
 const PERMISSION_REQUEST: &str = "PermissionRequest";
 
 /// A harness whose passed-through `PreToolUse` hook the daemon answers with

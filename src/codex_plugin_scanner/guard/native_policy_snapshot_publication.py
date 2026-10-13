@@ -17,6 +17,7 @@ from .native_policy_snapshot_constants import (
 from .native_policy_snapshot_direct_lane import (
     contained_sink_command,
     direct_lane_binding,
+    direct_lane_integrity_key,
     local_cli_block_rules_present,
     with_direct_hook_state,
 )
@@ -213,6 +214,7 @@ class NativePolicySnapshotPublicationMixin:
                 local_cli_block_rules=local_cli_block_rules,
                 evidence_drain=publisher.direct_evidence_bound(resident_features),
                 contained_sink_command=contained_sink_command(resident_features),
+                integrity_key=direct_lane_integrity_key(publisher.store, resident_features),
             )
             resident_fingerprint_before = publisher._current_input_fingerprint()[1]
             try:

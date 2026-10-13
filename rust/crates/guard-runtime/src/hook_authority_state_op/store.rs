@@ -173,6 +173,17 @@ impl Env<'_> {
             }
             Stored::Object(object) => object,
         };
+        if let Some(flag) = self.foreign_key {
+            let signed_key_id = persisted
+                .get("integrity")
+                .and_then(Value::as_object)
+                .and_then(|integrity| integrity.get("integrity_key_id"))
+                .and_then(Value::as_str);
+            if signed_key_id.is_some_and(|signed| Some(signed) != self.key_id) {
+                flag.set(true);
+                return None;
+            }
+        }
         let (status, message) = self.verify(&persisted, kind, true);
         let context_matches = exact_str(&persisted, "state_key") == Some(state_key);
         if status != "valid" || !context_matches {

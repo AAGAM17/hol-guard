@@ -41,6 +41,9 @@ use workspace::{python_strip, settled_directory, workspace_candidate};
 pub(crate) const HOOK_DIRECT_FEATURE: &str = "hook-direct-v1";
 /// The resident accepts the sink command that routes a sandbox requirement.
 pub(crate) const HOOK_DIRECT_CONTAINED_ROUTE_FEATURE: &str = "hook-direct-contained-route-v1";
+/// Advertised once the resident answers a Claude PermissionRequest from the
+/// session's notice, verified and marked seen with the bound integrity key.
+pub(crate) const HOOK_DIRECT_PERMISSION_NOTICE_FEATURE: &str = "hook-direct-permission-notice-v1";
 const HOOK_DIRECT_RESULT_SCHEMA: &str = "guard-hook-direct-result.v1";
 /// The harnesses whose allow the daemon returns as the edge rendered it.
 /// The bounded bridge harnesses after Cursor have no harness-specific step
@@ -514,6 +517,8 @@ fn direct_event(payload: &Map<String, Value>) -> Result<Option<&'static str>, Ho
     Ok(Some(PRE_TOOL_USE))
 }
 
+#[path = "hook_direct_claude_permission_text.rs"]
+mod claude_permission_text;
 #[path = "hook_direct_contained.rs"]
 mod contained;
 #[path = "hook_direct_cursor.rs"]

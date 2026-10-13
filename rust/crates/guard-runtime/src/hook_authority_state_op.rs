@@ -95,6 +95,8 @@ const CURSOR_FAMILY: Family = Family {
 
 const ERROR_INVALID: &str = "native_hook_authority_state_invalid";
 const ERROR_STORE: &str = "native_hook_authority_state_store_unavailable";
+/// How long a direct hook waits for another writer before deferring.
+const DIRECT_BUSY_TIMEOUT_MS: u64 = 250;
 
 pub(crate) fn evaluate_hook_authority_state_request(
     request: &HookAuthorityStateRequestV1,
@@ -144,6 +146,7 @@ pub(crate) fn evaluate(request: &HookAuthorityStateRequestV1) -> Result<Value, &
             .and_then(|encoded| Base64UrlUnpadded::decode_vec(encoded).ok()),
         key_id: request.integrity_key_id.as_deref(),
         now: &request.now,
+        foreign_key: None,
     };
     match env.dispatch(request) {
         Ok(value) => {
@@ -219,6 +222,70 @@ struct Env<'a> {
     key: Option<Vec<u8>>,
     key_id: Option<&'a str>,
     now: &'a str,
+    /// Set by the direct hook lane, which holds a key the daemon published
+    /// earlier: a row signed under another key id is left untouched and
+    /// flagged here, so the daemon judges it with its current key.
+    foreign_key: Option<&'a std::cell::Cell<bool>>,
+}
+
+/// Why the direct hook lane leaves a Claude permission dialog to the daemon.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DirectNoticeDefer {
+    StoreUnavailable,
+    ForeignKey,
+}
+
+/// `_peek_claude_permission_notice` followed, when it finds a notice, by
+/// `_mark_claude_pending_permission_prompt_seen`, in one transaction under
+/// the key the daemon bound to the direct lane.
+///
+/// A busy or unavailable store, or any row signed under another key id,
+/// rolls everything back and defers, so the daemon's own path still runs
+/// exactly as before.
+pub(crate) fn claude_permission_notice_direct(
+    store_path: &std::path::Path,
+    key: &[u8],
+    key_id: &str,
+    now: &str,
+    session_id: &str,
+    tool_name: Option<&str>,
+) -> Result<Option<Map<String, Value>>, DirectNoticeDefer> {
+    let connection = Connection::open_with_flags(store_path, OpenFlags::SQLITE_OPEN_READ_WRITE)
+        .map_err(|_| DirectNoticeDefer::StoreUnavailable)?;
+    // A held write lock sends the hook to the daemon, which waits for it.
+    connection
+        .busy_timeout(Duration::from_millis(DIRECT_BUSY_TIMEOUT_MS))
+        .map_err(|_| DirectNoticeDefer::StoreUnavailable)?;
+    connection
+        .execute_batch("BEGIN IMMEDIATE")
+        .map_err(|_| DirectNoticeDefer::StoreUnavailable)?;
+    let foreign_key = std::cell::Cell::new(false);
+    let env = Env {
+        connection: &connection,
+        key: Some(key.to_vec()),
+        key_id: Some(key_id),
+        now,
+        foreign_key: Some(&foreign_key),
+    };
+    let notice = env.claude_load_notice(session_id, tool_name);
+    if let Some(notice) = &notice {
+        if let (Some(artifact_id), Some(artifact_hash), Some(command)) = (
+            opt_str(notice, "artifact_id"),
+            opt_str(notice, "artifact_hash"),
+            opt_str(notice, "command"),
+        ) {
+            env.claude_mark_prompt_seen(session_id, &artifact_id, &artifact_hash, &command);
+        }
+    }
+    if foreign_key.get() {
+        let _ = connection.execute_batch("ROLLBACK");
+        return Err(DirectNoticeDefer::ForeignKey);
+    }
+    if connection.execute_batch("COMMIT").is_err() {
+        let _ = connection.execute_batch("ROLLBACK");
+        return Err(DirectNoticeDefer::StoreUnavailable);
+    }
+    Ok(notice)
 }
 
 fn required(value: &Option<String>) -> Result<&str, &'static str> {

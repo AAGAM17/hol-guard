@@ -61,6 +61,7 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         "policy-snapshot-direct-lane-v1".into(),
         crate::hook_direct::HOOK_DIRECT_FEATURE.into(),
         crate::hook_direct::HOOK_DIRECT_CONTAINED_ROUTE_FEATURE.into(),
+        crate::hook_direct::HOOK_DIRECT_PERMISSION_NOTICE_FEATURE.into(),
         crate::hook_direct_evidence::HOOK_DIRECT_EVIDENCE_FEATURE.into(),
         "native-approval-artifact-v3".into(),
         "native-approval-challenge-v3".into(),

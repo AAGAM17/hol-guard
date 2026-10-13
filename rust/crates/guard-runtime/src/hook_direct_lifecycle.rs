@@ -6,22 +6,27 @@
 //! and returns `fail_closed_response`: a constant that carries no verdict
 //! and depends only on the harness and the event name. This module returns
 //! that same constant without the daemon round trip. It never answers a
-//! hook the daemon handles itself or answers with a deny.
+//! hook the daemon handles itself or answers a lifecycle hook with a deny.
 //!
 //! Claude Code's `PermissionRequest` is the exception the daemon answers
 //! from the session's permission notice. Without a notice row its answer is
-//! also a constant, which this module returns; a session with one keeps
-//! the daemon path.
+//! also a constant, which this module returns. With the daemon's integrity
+//! key bound, the resident verifies the notice and marks it seen as the
+//! daemon does, then renders the daemon's answer; without the key, or when
+//! a row is signed under another key, the session keeps the daemon path.
 
 use std::path::Path;
 
 use serde_json::{json, Map, Value};
 
+use super::claude_permission_text::{notification_tool_name, permission_request_response};
 use super::workspace::python_strip;
 use super::{
     HookDirectDefer, CLAUDE_CODE, CURSOR, EVENT_NAME_FIELDS, GROK, PAYLOAD_REFERENCE_FIELDS,
     TRANSITION_PROBE_FIELD,
 };
+use crate::hook_authority_state_op::claude_permission_notice_direct;
+use crate::policy_bundle_time::micros_to_utc_isoformat;
 use crate::policy_store::PolicySnapshotStore;
 
 /// The daemon's `reason_code` when the edge does not review an event.
@@ -128,40 +133,65 @@ pub(super) fn answer(
         return Err(HookDirectDefer::HarnessUnmanaged);
     }
     if claude_permission {
-        return claude_permission_answer(guard_home, payload);
+        return claude_permission_answer(guard_home, payload, policy_store);
     }
     Ok(json!({ "harness_response": constant_response(harness, event) }))
 }
 
-/// `claude_permission_request_response` for a session without a permission
-/// notice: Guard leaves the decision to Claude's own dialog. A notice row,
-/// even one the daemon would reject, takes the daemon path, since only the
-/// daemon holds the key that verifies it.
+/// `claude_permission_request_response`. Without a session the daemon looks
+/// up no notice and leaves the decision to Claude's own dialog.
 fn claude_permission_answer(
     guard_home: &str,
     payload: &Map<String, Value>,
+    policy_store: &PolicySnapshotStore,
 ) -> Result<Value, HookDirectDefer> {
-    // `_optional_string(payload.get("session_id"))`; without a session the
-    // daemon looks up no notice.
+    // `_optional_string(payload.get("session_id"))`.
     let session_id = match payload.get("session_id").and_then(Value::as_str) {
         Some(value) => python_strip(value).map_err(|_| HookDirectDefer::EventUnsupported)?,
         None => None,
     };
-    if let Some(session_id) = session_id {
-        let present = crate::local_store_read::claude_permission_notice_present(
-            Path::new(guard_home),
-            session_id,
-        )
-        .map_err(|_| HookDirectDefer::PermissionNotice)?;
-        if present {
-            return Err(HookDirectDefer::PermissionNotice);
-        }
+    let Some(session_id) = session_id else {
+        return Ok(json!({ "harness_response": permission_request_response(payload, None) }));
+    };
+    // Without a notice row `claude_load_notice` reads nothing it would
+    // change, so only a session with one opens the store for writing.
+    let present = crate::local_store_read::claude_permission_notice_present(
+        Path::new(guard_home),
+        session_id,
+    )
+    .map_err(|_| HookDirectDefer::PermissionNotice)?;
+    if !present {
+        return Ok(json!({ "harness_response": permission_request_response(payload, None) }));
     }
-    Ok(json!({
-        "harness_response": {
-            // CLAUDE_GUARD_PERMISSION_PASSTHROUGH_KEY
-            "guard_permission_passthrough": true,
-            "hookSpecificOutput": { "hookEventName": "PermissionRequest" },
-        }
-    }))
+    // Only the daemon's key verifies a notice row, so a row, even one the
+    // daemon would reject, takes the daemon path when the key is not bound.
+    let binding = policy_store
+        .admit_direct_binding()
+        .map_err(|_| HookDirectDefer::PermissionNotice)?;
+    let integrity_key = binding
+        .integrity_key
+        .as_ref()
+        .ok_or(HookDirectDefer::PermissionNotice)?;
+    let store_path = Path::new(guard_home).join("guard.db");
+    // `datetime.now(timezone.utc).isoformat()`.
+    let now = utc_now_isoformat().ok_or(HookDirectDefer::PermissionNotice)?;
+    let tool_name = notification_tool_name(payload);
+    let notice = claude_permission_notice_direct(
+        &store_path,
+        &integrity_key.key,
+        &integrity_key.key_id,
+        &now,
+        session_id,
+        tool_name.as_deref(),
+    )
+    .map_err(|_| HookDirectDefer::PermissionNotice)?;
+    Ok(json!({ "harness_response": permission_request_response(payload, notice.as_ref()) }))
+}
+
+fn utc_now_isoformat() -> Option<String> {
+    let micros = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_micros();
+    micros_to_utc_isoformat(i64::try_from(micros).ok()?, "+00:00")
 }

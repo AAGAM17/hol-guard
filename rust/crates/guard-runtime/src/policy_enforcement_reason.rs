@@ -5,6 +5,7 @@ use super::policy_enforcement_helpers::FloorCause;
 pub(super) fn policy_override_reason(
     action: &str,
     cause: Option<FloorCause>,
+    prompt: bool,
 ) -> (&'static str, String) {
     let (code, outcome) = match action {
         "block" => ("native_policy_block", "blocked this hook action"),
@@ -19,6 +20,9 @@ pub(super) fn policy_override_reason(
         "review" => ("native_policy_review_required", "requires review"),
         _ => ("native_policy_warning", "raised this action"),
     };
+    if prompt && action != "warn" {
+        return (code, prompt_stop_reason(cause));
+    }
     let Some(cause) = cause else {
         return (
             code,
@@ -64,4 +68,40 @@ fn risk_label(risk: &str) -> &'static str {
         "policy_bypass" => "policy bypass",
         _ => "risk",
     }
+}
+
+/// Prompts never create an approval request, so the text says the prompt was
+/// not sent and what to change instead of pointing at an approval inbox.
+fn prompt_stop_reason(cause: Option<FloorCause>) -> String {
+    let (kind, setting) = match cause {
+        Some(FloorCause::Risk(risk)) => (
+            match risk {
+                "local_secret_read" => "asks to read credentials or other sensitive local data",
+                "credential_exfiltration" | "data_flow_exfiltration" | "encoded_exfiltration" => {
+                    "asks to send data to an external place"
+                }
+                "destructive_shell" => "asks to delete or overwrite local files",
+                "prompt_injection" => "asks to override trusted instructions",
+                "execution" | "encoded_execution" => "asks to run commands or a subprocess",
+                "guard_bypass" | "policy_bypass" => "asks to disable Guard protection",
+                _ => "matches a guarded request type",
+            },
+            // Only risk classes the settings command accepts get a setting hint.
+            match risk {
+                "execution" | "policy_bypass" => None,
+                _ => Some(risk),
+            },
+        ),
+        _ => ("matches a guarded request type", None),
+    };
+    let mut text = format!(
+        "HOL Guard did not send this prompt because it {kind}. Nothing is waiting for approval; rephrase that part of the request"
+    );
+    match setting {
+        Some(risk) => text.push_str(&format!(
+            ", or change the prompt protection with `hol-guard settings set risk {risk} <action>`."
+        )),
+        None => text.push('.'),
+    }
+    text
 }

@@ -132,11 +132,16 @@ fn guard_markers_cannot_be_unset() {
 fn reviewable_settings_project_and_name_the_first_setting() {
     let reviewed = project_reviewed(
         "REPORT_DIR=/ws/out REPORT_NOW=2026-10-11T12:00:00.000Z node scripts/report.mjs",
+        Default::default(),
     )
     .unwrap();
     assert_eq!(reviewed.command, "node scripts/report.mjs");
     assert_eq!(reviewed.setting, "REPORT_DIR");
-    let reviewed = project_reviewed("env APP_REGION=eu LC_ALL=C git fetch origin").unwrap();
+    let reviewed = project_reviewed(
+        "env APP_REGION=eu LC_ALL=C git fetch origin",
+        Default::default(),
+    )
+    .unwrap();
     assert_eq!(reviewed.command, "git fetch origin");
     assert_eq!(reviewed.setting, "APP_REGION");
 }
@@ -174,7 +179,10 @@ fn reviewed_projection_refuses_program_loader_and_credential_settings() {
         "LESSCLOSE=/ws/x less README.md",
         "'REPORT_DIR=out' node x.mjs",
     ] {
-        assert!(project_reviewed(command).is_none(), "{command}");
+        assert!(
+            project_reviewed(command, Default::default()).is_none(),
+            "{command}"
+        );
     }
 }
 

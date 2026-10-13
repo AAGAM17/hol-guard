@@ -77,6 +77,55 @@ fn a_reviewable_setting_before_an_unmodeled_script_reaches_ordinary_review() {
         result.reason
     );
 
+    // A canonical, existing `node_modules` directory inside the working tree
+    // is a dependency tree the project already trusts: the setting is named in
+    // an ordinary review instead of the hard block, and never settles lower.
+    std::fs::create_dir_all(&modules).unwrap();
+    let modules = modules.canonicalize().unwrap();
+    for command in [
+        format!("NODE_PATH={} node scripts/report.mjs", modules.display()),
+        format!(
+            "env NODE_PATH={} node scripts/report.mjs",
+            modules.display()
+        ),
+    ] {
+        let result = evaluate(&root, &command);
+        assert_eq!(
+            result.minimum_action, "review",
+            "{command}: {}",
+            result.reason
+        );
+        assert_ne!(
+            result.reason_code, "native_command_extension_evaluation_failed",
+            "{command}"
+        );
+    }
+    // Other paths and other loader settings keep the block.
+    std::fs::create_dir_all(root.join("project/vendor")).unwrap();
+    for command in [
+        format!(
+            "NODE_PATH={} node scripts/report.mjs",
+            root.join("project/vendor").display()
+        ),
+        format!(
+            "NODE_PATH={}:/usr/lib node scripts/report.mjs",
+            modules.display()
+        ),
+        "NODE_PATH=node_modules node scripts/report.mjs".to_owned(),
+        format!(
+            "NODE_PATH={}/../project/node_modules node scripts/report.mjs",
+            modules.display()
+        ),
+        "NODE_OPTIONS=--require=./hook.js node scripts/report.mjs".to_owned(),
+    ] {
+        let result = evaluate(&root, &command);
+        assert_eq!(
+            result.minimum_action, "block",
+            "{command}: {}",
+            result.reason
+        );
+    }
+
     for command in [
         "NODE_OPTIONS=--require=./hook.js node scripts/report.mjs",
         "BASH_ENV=./hook.sh node scripts/report.mjs",
@@ -115,4 +164,33 @@ fn an_open_quote_is_named_instead_of_the_extension_controls() {
         "{}",
         result.reason
     );
+}
+
+#[test]
+fn a_substituted_setting_is_named_with_a_safe_alternative() {
+    let root = std::env::temp_dir()
+        .canonicalize()
+        .unwrap()
+        .join(format!("guard-env-substitution-{}", std::process::id()));
+    std::fs::create_dir_all(root.join("project")).unwrap();
+    let _cleanup = FixtureCleanup(root.clone());
+    for command in [
+        "SERVICE_TOKEN=$(echo x) echo done",
+        "env SERVICE_TOKEN=$(echo x) echo done",
+        "SERVICE_TOKEN=`echo x` echo done",
+    ] {
+        let result = evaluate(&root, command);
+        assert_eq!(
+            result.minimum_action, "block",
+            "{command}: {}",
+            result.reason
+        );
+        assert!(
+            result.reason.contains("SERVICE_TOKEN")
+                && result.reason.contains("command substitution")
+                && result.reason.contains("run the commands separately"),
+            "{command}: {}",
+            result.reason
+        );
+    }
 }

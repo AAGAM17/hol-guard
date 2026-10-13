@@ -250,3 +250,44 @@ pub(super) fn credential_helper_shape(value: &str) -> Option<HelperShape<'_>> {
 #[cfg(test)]
 #[path = "git_remote_config_tests.rs"]
 mod tests;
+
+/// The URL Git connects to for `url` after one `url.<base>.insteadOf`
+/// rewrite: the longest matching prefix wins, as in Git. `None` when the
+/// choice is ambiguous (an empty prefix or several rules matching with the
+/// same length). `pushInsteadOf` never applies here; callers refuse it.
+pub(super) fn rewritten_remote_url(config: &GitConfig, url: &str) -> Option<String> {
+    let mut best: Option<(usize, &str, &str)> = None;
+    let mut tied = false;
+    for (key, values) in config {
+        let Some(base) = key
+            .strip_prefix("url.")
+            .and_then(|rest| rest.strip_suffix(".insteadof"))
+        else {
+            continue;
+        };
+        for prefix in values {
+            let prefix = prefix.trim();
+            if prefix.is_empty() {
+                return None;
+            }
+            if !url.starts_with(prefix) {
+                continue;
+            }
+            match best {
+                Some((length, _, _)) if length > prefix.len() => {}
+                Some((length, _, _)) if length == prefix.len() => tied = true,
+                _ => {
+                    best = Some((prefix.len(), base, prefix));
+                    tied = false;
+                }
+            }
+        }
+    }
+    if tied {
+        return None;
+    }
+    Some(match best {
+        Some((length, base, _)) => format!("{base}{}", &url[length..]),
+        None => url.to_owned(),
+    })
+}

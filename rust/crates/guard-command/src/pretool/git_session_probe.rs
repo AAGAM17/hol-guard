@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 use std::time::Instant;
 
-const CONFIG_LIMIT: u64 = 262_144;
+const CONFIG_LIMIT: u64 = 4 * 1024 * 1024;
 const TEXT_LIMIT: u64 = 4096;
 
 /// Session variables Git reads for its own behavior that cannot change where

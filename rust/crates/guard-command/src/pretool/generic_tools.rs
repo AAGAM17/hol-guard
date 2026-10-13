@@ -76,6 +76,8 @@ fn is_network_tool(tool: &str) -> bool {
         &[
             "web_fetch",
             "web_search",
+            "webfetch",
+            "websearch",
             "fetch_web",
             "http",
             "request",
@@ -277,6 +279,9 @@ pub(super) fn infer_action_type(
     }
     if is_file_read_tool(tool) {
         return (PreToolActionTypeV1::FileRead, PreToolOperationV1::Read);
+    }
+    if is_network_tool(tool) {
+        return (PreToolActionTypeV1::Network, PreToolOperationV1::Request);
     }
     if signals.prompt_present {
         return (PreToolActionTypeV1::Prompt, PreToolOperationV1::Submit);

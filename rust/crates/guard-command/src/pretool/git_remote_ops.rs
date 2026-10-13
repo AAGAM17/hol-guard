@@ -117,9 +117,10 @@ fn prove(
         .get("remote.origin.url")
         .map_or(&[][..], Vec::as_slice);
     if urls.is_empty()
-        || !urls
-            .iter()
-            .all(|url| config::safe_github_https_remote_url(url.trim()))
+        || !urls.iter().all(|url| {
+            config::rewritten_remote_url(&effective, url.trim())
+                .is_some_and(|url| config::safe_github_https_remote_url(&url))
+        })
         || config::fetch_config_routes_execution(&effective)
         || !probe.credential_helpers_trusted(&config::credential_helpers(&effective))
     {

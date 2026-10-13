@@ -73,9 +73,10 @@ pub(super) fn unproven_steps_reason(
         ("Steps", "are")
     };
     Some(format!(
-        "HOL Guard requires review because this command chains {total} steps and {noun} {}{more} ({}) {verb} not proven explicitly benign. The other steps were proven safe; run them as separate commands to continue without review.",
+        "HOL Guard requires review because this command chains {total} steps and {noun} {}{more} ({}) {verb} not proven read-only. The other steps were proven safe; run them as separate commands, and approve the named {} in the HOL Guard inbox.",
         steps.join(", "),
         labels.join(", "),
+        noun.to_lowercase(),
     ))
 }
 

@@ -69,3 +69,77 @@ fn a_raised_result_names_the_setting_that_raised_it() {
         "HOL Guard requires review under the installed policy's subprocess setting."
     );
 }
+
+#[test]
+fn network_floor_decides_a_proven_plain_web_fetch() {
+    let mut fetch = generic_result("allow");
+    fetch.action.action_type = PreToolActionTypeV1::Network;
+    fetch.action.operation = PreToolOperationV1::Request;
+    fetch.reason_code = "native_plain_web_request".into();
+    let payload =
+        json!({"tool_name": "WebFetch", "tool_input": {"url": "https://status.example.test/"}});
+    for (setting, minimum, decision) in [
+        ("allow", "allow", "allow"),
+        ("warn", "warn", "allow"),
+        ("review", "review", "deny"),
+        ("block", "block", "deny"),
+    ] {
+        let mut network = policy("allow");
+        network.new_network_domain_action = setting.into();
+        let result = apply_pre_tool_policy(&snapshot(network), &payload, fetch.clone()).unwrap();
+        assert_eq!(result.minimum_action, minimum, "{setting}");
+        assert_eq!(result.decision, decision, "{setting}");
+    }
+}
+
+#[test]
+fn proven_no_scripts_install_skips_only_the_package_script_floor() {
+    let mut review = generic_result("review");
+    review.action.action_type = PreToolActionTypeV1::Package;
+    review.action.operation = PreToolOperationV1::Install;
+    review.reason_code = "native_package_review".into();
+    let mut script_policy = policy("allow");
+    script_policy
+        .risk_actions
+        .insert("package_script".into(), "require-reapproval".into());
+    let installed = snapshot(script_policy);
+    let apply = |command: &str| {
+        let payload = json!({"tool_name": "Bash", "tool_input": {"command": command}});
+        apply_pre_tool_policy(&installed, &payload, review.clone()).unwrap()
+    };
+    for command in [
+        "bun install --frozen-lockfile --ignore-scripts",
+        "npm ci --ignore-scripts",
+        "pnpm install --ignore-scripts --ignore-pnpmfile",
+    ] {
+        let result = apply(command);
+        assert_eq!(result.minimum_action, "review", "{command}");
+        assert_eq!(result.reason_code, "native_package_review", "{command}");
+    }
+    for command in [
+        "bun install --frozen-lockfile",
+        "bun install --ignore-scripts=false",
+        "pnpm install --ignore-scripts",
+        "yarn install --mode=skip-build",
+        "npm run build",
+        "bun run build",
+        "npm ci --ignore-scripts && npm run build",
+        "npm_config_ignore_scripts=false npm ci --ignore-scripts",
+    ] {
+        let result = apply(command);
+        assert_eq!(result.minimum_action, "require-reapproval", "{command}");
+        assert_eq!(
+            result.reason_code, "native_policy_reapproval_required",
+            "{command}"
+        );
+    }
+    // A stronger default floor still applies to the proven form.
+    let mut strict = policy("block");
+    strict
+        .risk_actions
+        .insert("package_script".into(), "require-reapproval".into());
+    let payload =
+        json!({"tool_name": "Bash", "tool_input": {"command": "npm ci --ignore-scripts"}});
+    let blocked = apply_pre_tool_policy(&snapshot(strict), &payload, review).unwrap();
+    assert_eq!(blocked.minimum_action, "block");
+}

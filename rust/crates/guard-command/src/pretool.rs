@@ -55,8 +55,9 @@ mod lookup_reads;
 mod metadata_reads;
 mod npm_reads;
 mod pytest_contained;
+mod tool_bin_listing;
 mod trusted_location;
-pub(crate) use git_routes::git_route_within_workspace;
+pub(crate) use git_routes::{git_dir_route_within_scope, git_route_within_workspace};
 mod apply_patch_writes;
 mod pure_expression;
 mod read_paths;
@@ -88,6 +89,8 @@ mod worktree_writes;
 mod wrangler_reads;
 
 pub mod generic;
+mod package_scripts_disabled;
+pub use package_scripts_disabled::no_script_install_command;
 
 pub use generic::bounded_task_metadata_output;
 pub use generic::evaluate_pre_tool_envelope;
@@ -513,7 +516,7 @@ pub(super) fn evaluate_pre_tool_with_execution_context(
         "review",
         "native_command_review_required",
         reason.as_deref().unwrap_or(
-            "HOL Guard requires review because the Rust authority could not prove this command explicitly benign.",
+            "HOL Guard requires review because this command could not be confirmed read-only. Approve it in the HOL Guard inbox (choose Always for a repeated read-only command), or split it into simpler commands.",
         ),
     ))
 }

@@ -114,6 +114,18 @@ const MAX_FACT_DEPTH: usize = 32;
 const MAX_FACT_NODES: usize = 2_048;
 
 /// Apply the authenticated policy to a generic native PreTool result.
+/// A package-manager install proven to run no lifecycle scripts has nothing
+/// for the `package_script` risk setting to govern. The proof is the native
+/// command authority's; every other floor and intrinsic review still applies.
+fn package_scripts_disabled(payload: &Value, result: &PreToolResultV1) -> bool {
+    result.action.action_type == PreToolActionTypeV1::Package
+        && result.reason_code == "native_package_review"
+        && guard_command::pretool::generic::extract_untrusted_command_context(payload)
+            .ok()
+            .and_then(|context| context.command)
+            .is_some_and(|command| guard_command::pretool::no_script_install_command(&command))
+}
+
 pub(crate) fn apply_pre_tool_policy(
     snapshot: &AdmittedPolicySnapshot,
     payload: &Value,
@@ -258,6 +270,7 @@ pub(crate) fn apply_pre_tool_policy(
             reason_code: &result.reason_code,
             prompt_classes: &result.prompt_risk_classes,
             benign_prompt,
+            package_scripts_disabled: package_scripts_disabled(payload, &result),
         },
     )?;
     let effective = join_action(&result.minimum_action, &policy_floor)?;
@@ -306,7 +319,11 @@ pub(crate) fn apply_pre_tool_policy(
     }
 
     if policy_raised {
-        let (reason_code, reason) = policy_override_reason(&effective, Some(floor_cause));
+        let (reason_code, reason) = policy_override_reason(
+            &effective,
+            Some(floor_cause),
+            output.action.action_type == guard_contracts::PreToolActionTypeV1::Prompt,
+        );
         output.reason_code = reason_code.to_owned();
         output.reason = reason;
     }
@@ -396,6 +413,7 @@ pub(crate) fn apply_post_tool_policy(
             },
             prompt_classes: &[],
             benign_prompt: false,
+            package_scripts_disabled: false,
         },
     )?;
     let effective = join_action(&intrinsic, &floor)?;
@@ -447,7 +465,7 @@ pub(crate) fn apply_post_tool_policy(
     // Name the setting only when the policy floor, not the intrinsic
     // result, set the outcome.
     let cause = (action_rank(&floor) > action_rank(&intrinsic)).then_some(floor_cause);
-    let (reason_code, reason) = policy_override_reason(&effective, cause);
+    let (reason_code, reason) = policy_override_reason(&effective, cause, false);
     let mut denied = HookReviewResponseV1::deny(reason_code, reason);
     denied.policy_action = Some(effective);
     Ok(denied)

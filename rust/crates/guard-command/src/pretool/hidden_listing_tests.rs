@@ -76,7 +76,6 @@ fn credential_agent_and_unrepositoried_hidden_directories_stay_guarded() {
         repo.join(".ssh"),
         home.join(".ssh"),
         plain.join(".cache"),
-        repo.join(".lockfile"),
         repo.join(".npm/_cacache"),
         repo.join(".password-store"),
         repo.join("missing.d/.x"),
@@ -88,6 +87,20 @@ fn credential_agent_and_unrepositoried_hidden_directories_stay_guarded() {
             !repository_hidden_directory(value, home.to_str(), repo.to_str()),
             "{value}"
         );
+    }
+    // Hidden regular files may be listed (names and metadata only) under the
+    // same screens, but credential-named ones and links into guarded trees
+    // may not.
+    std::fs::write(repo.join(".env"), "").unwrap();
+    std::fs::write(repo.join(".npmrc"), "").unwrap();
+    std::fs::write(home.join(".ssh/id_rsa"), "key").unwrap();
+    assert!(listed(&repo.join(".lockfile"), &home, &repo));
+    for denied in [
+        repo.join(".env"),
+        repo.join(".npmrc"),
+        home.join(".ssh/id_rsa"),
+    ] {
+        assert!(!listed(&denied, &home, &repo), "{}", denied.display());
     }
     #[cfg(unix)]
     {

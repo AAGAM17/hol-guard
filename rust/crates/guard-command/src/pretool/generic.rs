@@ -88,6 +88,8 @@ pub fn bounded_task_metadata_output(payload: &serde_json::Value, harness: &str) 
 }
 #[path = "generic_tools.rs"]
 mod tools;
+#[path = "generic_web_fetch.rs"]
+mod web_fetch;
 pub(in crate::pretool) use tools::is_package_tool;
 
 /// Evaluate the complete raw PreToolUse payload in native code. This stays
@@ -165,12 +167,21 @@ pub fn evaluate_pre_tool_envelope_with_execution_context(
         let command = extract_generic_signals(payload)
             .ok()
             .and_then(|signals| signals.command);
+        // A code-loading setting refuses on its own, so name it before any
+        // expanded setting that may sit beside it.
         if let Some(setting) = command
             .as_deref()
             .and_then(env_prefix_projection::code_loading_setting)
         {
             result.reason = format!(
                 "HOL Guard blocked this command because the {setting} setting can load code that the installed extension controls cannot check. Run the command without it."
+            );
+        } else if let Some(setting) = command
+            .as_deref()
+            .and_then(env_prefix_projection::substituted_setting)
+        {
+            result.reason = format!(
+                "HOL Guard blocked this command because the {setting} setting is filled by a command substitution or variable expansion, which Guard does not allow in an environment prefix. Do not capture credentials or other output into a setting. Rely on the tool's own login (for example gh's active account), or run the commands separately without passing the output through the environment."
             );
         } else if command
             .as_deref()
@@ -226,6 +237,35 @@ fn evaluate_envelope(
         && signals.command.as_deref().is_some_and(|patch| {
             super::apply_patch_writes::routine_apply_patch(patch, home_dir, cwd)
         });
+    // Exporting only Git-config isolation (`GIT_CONFIG_GLOBAL=/dev/null`)
+    // removes configuration sources, so the remaining command's allow carries.
+    if let Some(projected) = signals
+        .command
+        .as_deref()
+        .filter(|_| !search_scope_proven && !apply_patch_proven)
+        .and_then(env_prefix_projection::project_git_config_isolation)
+    {
+        let projected_payload = payload_with_command(
+            payload,
+            signals.command.as_deref().unwrap_or_default(),
+            &projected,
+        );
+        if projected_payload != *payload {
+            let projected = evaluate_envelope(
+                harness,
+                event,
+                &projected_payload,
+                controls,
+                deadline,
+                context,
+                execution_environment,
+                project_redirects,
+            );
+            if projected.minimum_action == "allow" {
+                return projected;
+            }
+        }
+    }
     if let Some(contained) = signals
         .command
         .as_deref()
@@ -286,7 +326,7 @@ fn evaluate_envelope(
         .command
         .as_deref()
         .filter(|_| controls.is_some() && !search_scope_proven && !apply_patch_proven)
-        .and_then(env_prefix_projection::project_reviewed)
+        .and_then(|command| env_prefix_projection::project_reviewed(command, context))
     {
         let projected_payload = payload_with_command(
             payload,

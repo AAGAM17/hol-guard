@@ -78,6 +78,19 @@ fn helper_paths_in_any_word_are_write_denied() {
 }
 
 #[test]
+fn a_quoted_helper_path_with_spaces_stays_at_review() {
+    let ws = Path::new("/w/repo");
+    for config in [
+        "[alias]\n\tcommit = !sh \\\"./tools/my hook.sh\\\"\n",
+        "[alias]\n\tcommit = !sh './tools/my hook.sh'\n",
+        "[core]\n\tsshCommand = \"\\\"./my ssh.sh\\\"\"\n",
+        "[alias]\n\tcommit = !'./tools/my hook.sh'\n",
+    ] {
+        assert_eq!(denials(config, ws), None, "{config}");
+    }
+}
+
+#[test]
 fn remote_and_submodule_data_keys_are_not_helpers() {
     let ws = Path::new("/w/repo");
     let config = "[remote \"origin\"]\n\turl = ../origin.git\n\
@@ -291,5 +304,55 @@ fn global_helper_programs_in_the_workspace_are_denied() {
         std::fs::write(&global, format!("[alias]\n\tz = {value}\n")).unwrap();
         assert_eq!(workspace_write_denials(&ws, Some(&home)), None, "{value}");
     }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn quoted_and_escaped_values_are_decoded_like_git() {
+    let ws = Path::new("/w/repo");
+    // An escaped-quote alias naming an absolute script outside the workspace.
+    let escaped = "[alias]\n\tcommit = !bash \\\"/opt/hooks/commit.sh\\\"\n";
+    assert_eq!(denials(escaped, ws), Some(vec![]));
+    let quoted = "[alias]\n\tcommit = \"!bash /opt/hooks/commit.sh\"\n";
+    assert_eq!(denials(quoted, ws), Some(vec![]));
+    // A relative script is still write-denied, escaped or not.
+    let relative = "[alias]\n\tcommit = !bash \\\"./tools/commit.sh\\\"\n";
+    let plain = "[alias]\n\tcommit = !bash ./tools/commit.sh\n";
+    assert_eq!(denials(relative, ws), denials(plain, ws));
+    assert_eq!(
+        denials(relative, ws),
+        Some(vec![ws.join("tools/commit.sh")])
+    );
+    // A backtick, a glob, an escaped backslash, an unknown escape, a trailing
+    // continuation and an unterminated quote all keep the command at review.
+    for value in [
+        "!bash \\\"`id`\\\"",
+        "!bash \\\"/opt/*.sh\\\"",
+        "!bash \\\\x",
+        "!bash \\q",
+        "!bash /opt/x.sh \\",
+        "\"!bash /opt/x.sh",
+    ] {
+        let config = format!("[alias]\n\tcommit = {value}\n");
+        assert_eq!(denials(&config, ws), None, "{value}");
+    }
+}
+
+#[test]
+fn large_repository_config_is_read_within_the_bound() {
+    let root = scratch("large-config");
+    std::fs::create_dir_all(root.join(".git")).unwrap();
+    let mut config = String::new();
+    for index in 0..9000 {
+        config.push_str(&format!(
+            "[branch \"b{index}\"]\n\tmerge = refs/heads/b{index}\n"
+        ));
+    }
+    assert!(config.len() > 64 * 1024);
+    std::fs::write(root.join(".git/config"), &config).unwrap();
+    assert!(super::repository_config(&root).unwrap().is_some());
+    config.push_str(&"#".repeat(5 * 1024 * 1024));
+    std::fs::write(root.join(".git/config"), &config).unwrap();
+    assert!(super::repository_config(&root).is_err());
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -189,7 +189,11 @@ def pause_native_pre_tool_for_approval(
             decision="deny",
             minimum_action="block",
             policy_action="block",
-            reason=safe_alternative_reason(str(native_result.get("reason") or "HOL Guard blocked this action.")),
+            reason=safe_alternative_reason(
+                str(native_result.get("reason") or "HOL Guard blocked this action."),
+                reason_code=str(native_result.get("reason_code") or "") or "unknown",
+                approval_queued=queued is not None,
+            ),
         )
         response = render_pre_tool(harness, blocked, guard_home=guard_home, deadline=deadline)
         response["prompted"] = False

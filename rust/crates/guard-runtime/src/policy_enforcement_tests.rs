@@ -244,6 +244,30 @@ fn prompt_risk_floor_remains_for_unproven_prompt_intent() {
     .unwrap();
     assert_eq!(result.minimum_action, "require-reapproval");
     assert_eq!(result.decision, "deny");
+    assert!(
+        result.reason.contains("did not send this prompt"),
+        "{}",
+        result.reason
+    );
+    assert!(
+        result
+            .reason
+            .contains("asks to override trusted instructions"),
+        "{}",
+        result.reason
+    );
+    assert!(
+        result.reason.contains("Nothing is waiting for approval"),
+        "{}",
+        result.reason
+    );
+    assert!(
+        result
+            .reason
+            .contains("hol-guard settings set risk prompt_injection"),
+        "{}",
+        result.reason
+    );
 }
 
 #[test]

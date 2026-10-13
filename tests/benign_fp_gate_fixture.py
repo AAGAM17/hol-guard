@@ -179,11 +179,25 @@ def build_fixture(root: Path) -> BenignFixture:
     _write(home / ".agent" / "skills" / "x" / "SKILL.md", "---\nname: x\n---\nSynthetic home skill body.\n")
     _write(home / ".agent" / "artifacts" / "report.md", "# Report\nInert build report text.\n")
     _write(home / "other-project" / "notes.md", "Notes kept outside the project.\nretry policy: three attempts.\n")
+    _write(home / "other-project" / "src" / "report.ts", "export const reportWindow = 'report-window-marker';\n")
+    _write(home / "other-project" / "package.json", '{\n  "name": "@acme/app",\n  "version": "1.0.0"\n}\n')
+    _write(home / "other-project" / ".keep", "")
+    _write(home / "acme-plain" / "README.txt", "Plain notes directory.\n")
     _write(home / ".ssh" / "id_rsa", "-----BEGIN FIXTURE KEY-----\nnot-a-real-key\n-----END FIXTURE KEY-----\n")
     # Sibling repository outside the workspace, as in the live Gauntlet fixture.
     _git(home / "other-project", "init", "--quiet", "--initial-branch=main", home=home)
     _git(home / "other-project", "add", "-A", home=home)
     _git(home / "other-project", "commit", "--quiet", "-m", "sibling base", home=home)
+    _git(
+        home / "other-project",
+        "worktree",
+        "add",
+        "--quiet",
+        "-b",
+        "fix/report-window",
+        str(home / "other-project-wt"),
+        home=home,
+    )
 
     parent.mkdir(parents=True)
     _git(parent, "init", "--quiet", "--initial-branch=main", home=home)

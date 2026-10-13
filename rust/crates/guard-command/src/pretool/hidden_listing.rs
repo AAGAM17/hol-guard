@@ -1,4 +1,4 @@
-//! `ls` of a hidden directory inside a repository work tree, such as a deploy
+//! `ls` of a hidden directory or file inside a repository work tree, such as a deploy
 //! lock directory or the `.git` marker an agent probes for. Listing returns
 //! names, not file content. Credential stores and agent state keep their
 //! guard, and the repository root must clear every sensitive-path screen.
@@ -56,7 +56,9 @@ pub(in crate::pretool) fn repository_hidden_directory(
     let Ok(canonical) = std::fs::canonicalize(candidate) else {
         return false;
     };
-    if !canonical.is_dir() {
+    // A listing prints names and metadata only, so an existing regular file
+    // is as safe as a directory under the same screens.
+    if !canonical.is_dir() && !canonical.is_file() {
         return false;
     }
     // Ancestors run from the deepest path up, so the last hidden one found is

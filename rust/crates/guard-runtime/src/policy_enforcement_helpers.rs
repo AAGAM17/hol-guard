@@ -12,6 +12,8 @@ pub(super) struct FloorInput<'a> {
     pub(super) reason_code: &'a str,
     pub(super) prompt_classes: &'a [NativePromptRiskClassV1],
     pub(super) benign_prompt: bool,
+    /// The command is a proven install that runs no lifecycle scripts.
+    pub(super) package_scripts_disabled: bool,
 }
 
 /// The setting that set a policy floor, so a raised result can say why.
@@ -115,6 +117,9 @@ pub(super) fn policy_floor_with_cause(
         input.reason_code,
         input.prompt_classes,
     ) {
+        if risk == "package_script" && input.package_scripts_disabled {
+            continue;
+        }
         if let Some(action) = policy_map_action(&policy.risk_actions, risk)? {
             raise(&mut floor, &action, FloorCause::Risk(risk))?;
         }

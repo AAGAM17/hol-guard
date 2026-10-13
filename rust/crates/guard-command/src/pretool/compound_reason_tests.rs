@@ -2,7 +2,7 @@ use super::super::evaluate_pre_tool_with_context;
 use crate::CommandModelRequestV1;
 
 const GENERIC: &str =
-    "HOL Guard requires review because the Rust authority could not prove this command explicitly benign.";
+    "HOL Guard requires review because this command could not be confirmed read-only. Approve it in the HOL Guard inbox (choose Always for a repeated read-only command), or split it into simpler commands.";
 
 fn decision(command: &str) -> (String, String, String) {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -33,6 +33,10 @@ fn a_proven_compound_names_only_its_unproven_step() {
         "{reason}"
     );
     assert!(reason.contains("run them as separate commands"), "{reason}");
+    assert!(
+        reason.contains("approve the named step in the HOL Guard inbox"),
+        "{reason}"
+    );
 
     let (_, _, reason) = decision("git status --short; git -C src push; ls src");
     assert!(

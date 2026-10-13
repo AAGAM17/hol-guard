@@ -6,7 +6,7 @@ use std::fs;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
-const MAX_CONFIG_BYTES: u64 = 64 * 1024;
+const MAX_CONFIG_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_DENIALS: usize = 64;
 const MAX_GLOBAL_FILES: usize = 32;
 const MAX_INCLUDE_DEPTH: usize = 4;
@@ -125,16 +125,16 @@ fn write_denials_from(
         let directory = resolved.parent()?.to_path_buf();
         for (section, key, value) in entries(&config)? {
             if section.starts_with("include") && key == "path" {
-                pending.push((expand(&directory, home, value)?, depth + 1));
+                pending.push((expand(&directory, home, &value)?, depth + 1));
             } else if key == "hookspath" {
                 let relative = !value.trim_matches('"').starts_with(['~', '/']);
-                let path = expand(base, home, value)?;
+                let path = expand(base, home, &value)?;
                 if relative && !path.starts_with(base) {
                     return None;
                 }
                 deny_linked(&mut denials, path, workspace)?;
             } else if section != "branch" && section != "user" && !names_data(&section, &key) {
-                helper_word_denials(&mut denials, value, base, home, workspace)?;
+                helper_word_denials(&mut denials, &value, base, home, workspace)?;
             }
         }
     }
@@ -266,7 +266,7 @@ fn names_data(section: &str, key: &str) -> bool {
 /// Section, key and value of each `key = value` line. `None` when a header
 /// carries text after its `]`: Git parses that as a key, as in
 /// `[core] hooksPath = x`, and this reader does not.
-fn entries(config: &str) -> Option<Vec<(String, String, &str)>> {
+fn entries(config: &str) -> Option<Vec<(String, String, String)>> {
     let mut result = Vec::new();
     let mut section = String::new();
     for line in config.lines() {
@@ -292,11 +292,36 @@ fn entries(config: &str) -> Option<Vec<(String, String, &str)>> {
             result.push((
                 section.clone(),
                 key.trim().to_ascii_lowercase(),
-                value.trim(),
+                decode_value(value.trim())?,
             ));
         }
     }
     Some(result)
+}
+
+/// A configuration value the way Git reads it: double-quoted spans lose their
+/// quotes, and `\"` and `\\` (plus `\n`, `\t`, `\b`) become the character
+/// they name. `None` for anything ambiguous: another escape, a trailing
+/// backslash (line continuation) or an unterminated quote.
+fn decode_value(raw: &str) -> Option<String> {
+    let mut decoded = String::with_capacity(raw.len());
+    let mut quoted = false;
+    let mut chars = raw.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => quoted = !quoted,
+            '\\' => match chars.next()? {
+                '"' => decoded.push('"'),
+                '\\' => decoded.push('\\'),
+                'n' => decoded.push('\n'),
+                't' => decoded.push('\t'),
+                'b' => decoded.push('\u{8}'),
+                _ => return None,
+            },
+            other => decoded.push(other),
+        }
+    }
+    (!quoted).then_some(decoded)
 }
 
 /// Workspace paths a configured hook directory or helper command names, for
@@ -328,7 +353,7 @@ fn helper_denials(
             // Git resolves a relative include against the including file's
             // directory, `.git/`. Included repository configuration could
             // name its own helpers, and this reader does not follow it.
-            if inside(&git_dir, root, value).is_some() {
+            if inside(&git_dir, root, &value).is_some() {
                 return None;
             }
         } else if key == "hookspath" {
@@ -337,9 +362,9 @@ fn helper_denials(
             if value.contains(['#', ';', '\\']) {
                 return None;
             }
-            candidates.push(inside(root, root, value)?);
+            candidates.push(inside(root, root, &value)?);
         } else if section != "branch" && section != "user" && !names_data(section, key) {
-            helper_word_denials(&mut denials, value, root, home, workspace)?;
+            helper_word_denials(&mut denials, &value, root, home, workspace)?;
         }
         for path in candidates {
             // An unbounded list, or a path that is or holds the workspace,
@@ -369,6 +394,18 @@ fn helper_word_denials(
 ) -> Option<()> {
     if value.contains(['`', '\\', '*', '?', '[']) {
         return None;
+    }
+    // A quoted word with whitespace names one path that the splitter below
+    // would break apart, so keep it at review. Scan before trimming so an
+    // opening quote still counts.
+    let mut quote = None;
+    for c in value.chars() {
+        match (quote, c) {
+            (None, '"' | '\'') => quote = Some(c),
+            (Some(open), c) if c == open => quote = None,
+            (Some(_), c) if c.is_whitespace() => return None,
+            _ => {}
+        }
     }
     let value = value
         .trim_start_matches(['"', '\''])

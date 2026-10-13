@@ -30,7 +30,8 @@ _REASON_CODE_HINTS = {
         "or target one specific path."
     ),
     "native_package_review": (
-        "Package installs run code from a registry. Use `--ignore-scripts` where the package manager allows it."
+        "Package installs download code from a registry, so Guard reviews them even with "
+        "`--ignore-scripts`. Reuse dependencies that are already installed where you can."
     ),
     "native_network_review": "This makes a network request that Guard has not seen before.",
     "native_file_read_review": "This reads a file outside what Guard treats as safe to read.",

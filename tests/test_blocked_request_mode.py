@@ -76,6 +76,22 @@ def test_specific_deny_text_names_reason_and_inbox_when_approval_queued(code: st
     assert "safe, permitted alternative" not in text
 
 
+def test_package_hint_does_not_offer_ignore_scripts_as_the_way_through() -> None:
+    # A no-script install still reaches this review, so suggesting the flag as
+    # the fix sends an agent that already used it around in a loop.
+    text = safe_alternative_reason("Blocked.", reason_code="native_package_review", approval_queued=True)
+    assert "even with `--ignore-scripts`" in text
+    assert "Use `--ignore-scripts`" not in text
+
+
+def test_package_hint_leaves_the_approval_step_to_the_queue_state() -> None:
+    # Without an inbox row, the hint must not send the agent to ask for an approval that cannot be given.
+    text = safe_alternative_reason("Blocked.", reason_code="native_package_review", approval_queued=False)
+    assert "even with `--ignore-scripts`" in text
+    assert "approve this install" not in text
+    assert "No approval is waiting in HOL Guard" in text
+
+
 def test_specific_deny_text_without_queued_approval_points_to_no_approval() -> None:
     text = safe_alternative_reason("Blocked.", reason_code="native_policy_reapproval_required", approval_queued=False)
     assert text.startswith("Blocked. No approval is waiting in HOL Guard")

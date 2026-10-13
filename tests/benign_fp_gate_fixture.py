@@ -199,6 +199,8 @@ def _session_worktree(org: Path, home: Path) -> None:
     # A clone records the remote's default branch; `remote add` alone does not.
     _git(portal, "update-ref", "refs/remotes/origin/main", "HEAD", home=home)
     _git(portal, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main", home=home)
+    # An existing branch no worktree has checked out, for `git worktree add <path> <branch>`.
+    _git(portal, "branch", "feat/discovery-review", home=home)
     (portal / ".deploy-production.lock.d").mkdir()
     (portal / "node_modules").mkdir()
     worktree = org.parent / "app-portal-fix"

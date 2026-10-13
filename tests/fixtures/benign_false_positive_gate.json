@@ -6397,6 +6397,36 @@
       "expect": "allow"
     },
     {
+      "id": "git-worktree-add-existing-branch",
+      "fix_area": "worktree-add",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git worktree add ${ORG}/app-portal-review feat/discovery-review"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "git-worktree-add-existing-branch-tail",
+      "fix_area": "worktree-add",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git worktree add ${ORG}/app-portal-review feat/discovery-review 2>&1 | tail -2"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
       "id": "session-git-worktree-add-chain-log-status",
       "fix_area": "git-sibling-worktree",
       "harnesses": [

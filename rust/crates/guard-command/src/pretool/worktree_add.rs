@@ -19,6 +19,9 @@ struct WorktreeAdd<'a> {
     branch: Option<&'a str>,
     destination: &'a str,
     reference: Option<&'a str>,
+    /// Neither `-b` nor `--detach`: Git checks out the local branch the
+    /// reference names when one exists, and detaches otherwise.
+    attach: bool,
 }
 
 const MAX_DESTINATION_BYTES: usize = 4096;
@@ -276,6 +279,7 @@ fn proven_checkout(
         &destination,
         spec.branch,
         spec.reference,
+        spec.attach,
         reference_may_move,
         context,
         deadline,
@@ -354,16 +358,22 @@ fn parse(segment: &CommandSegmentV1) -> Option<WorktreeAdd<'_>> {
             _ => return None,
         }
     }
-    // Without `-b` Git checks the reference out detached. With neither a
-    // reference nor `--detach` it would create a branch named after the
-    // destination, which stays reviewed.
+    // With neither a reference nor `--detach` Git would create a branch
+    // named after the destination, which stays reviewed.
     match branch {
         Some(value) if detach || !valid_branch_name(value) => return None,
         None if !detach && reference.is_none() => return None,
         _ => {}
     }
     let destination = destination.filter(|value| valid_path_text(value))?;
-    if reference.is_some_and(|value| !valid_local_reference(value)) {
+    // A bare name such as `feat/x` is accepted only without `-b` and
+    // `--detach`, where Git checks out the existing branch of that name (or
+    // detaches at what the name resolves to) and the probe reads the same
+    // commit. With `-b` or `--detach` the reference stays qualified.
+    let attach = branch.is_none() && !detach;
+    if reference.is_some_and(|value| {
+        !(valid_local_reference(value) || (attach && valid_branch_name(value)))
+    }) {
         return None;
     }
     Some(WorktreeAdd {
@@ -372,6 +382,7 @@ fn parse(segment: &CommandSegmentV1) -> Option<WorktreeAdd<'_>> {
         branch,
         destination,
         reference,
+        attach,
     })
 }
 

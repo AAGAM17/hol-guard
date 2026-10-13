@@ -18,6 +18,7 @@ pub(super) fn worktree_add_execution_free(
     destination: &Path,
     branch: Option<&str>,
     reference: Option<&str>,
+    attach: bool,
     reference_may_move: bool,
     context: super::PathContext<'_>,
     deadline: Option<Instant>,
@@ -81,8 +82,8 @@ pub(super) fn worktree_add_execution_free(
     {
         return Some(false);
     }
-    // Without `-b` the checkout is detached at the reference and no branch
-    // is created, so there is no name that could already exist.
+    // Without `-b` no branch is created, so there is no name that could
+    // already exist.
     if let Some(branch) = branch {
         let branch_ref = format!("refs/heads/{branch}");
         let (status, output) = git_query_with_args(
@@ -99,7 +100,31 @@ pub(super) fn worktree_add_execution_free(
             return None;
         }
     }
-    let reference = reference.unwrap_or("HEAD");
+    let branch_ref: String;
+    let mut reference = reference.unwrap_or("HEAD");
+    // Without `-b` or `--detach`, `git worktree add <path> <name>` checks
+    // out `refs/heads/<name>` when that branch exists (Git never treats
+    // `HEAD` as a branch name here), whatever the name would otherwise
+    // resolve to. Read that branch's tip so the tree proven is the tree
+    // checked out. Otherwise Git detaches at the commit the name resolves
+    // to, which the `rev-parse` below resolves the same way; a name that
+    // resolves to nothing would make Git create a tracking branch and fails
+    // the proof there.
+    if attach && reference != "HEAD" {
+        branch_ref = format!("refs/heads/{reference}");
+        let (status, output) = git_query_with_args(
+            &base,
+            leading,
+            &["show-ref", "--verify", "--quiet", &branch_ref],
+            deadline,
+            WORKTREE_PROBE_LIMIT,
+        )?;
+        if status.success() {
+            reference = branch_ref.as_str();
+        } else if status.code() != Some(1) || !output.is_empty() {
+            return None;
+        }
+    }
     let commit_ref = format!("{reference}^{{commit}}");
     let (status, output) = git_query_with_args(
         &base,

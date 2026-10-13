@@ -193,3 +193,64 @@ fn fallback_reads_after_a_routed_add_stay_reviewed() {
         ),
     );
 }
+
+/// Without `-b` or `--detach`, `git worktree add <path> <branch>` checks an
+/// existing local branch out into the new checkout, running the same
+/// checkout as the `-b` form. The proof reads that branch's tip.
+#[test]
+fn existing_branch_worktree_add_is_allowed() {
+    let (_cleanup, home, repository) = repository("existing-branch");
+    git(&home, &repository, &["branch", "feat/discovery-fix"]);
+    git(
+        &home,
+        &repository,
+        &["update-ref", "refs/tags/release-lane", "HEAD"],
+    );
+    let organization = repository.parent().unwrap().display().to_string();
+    for command in [
+        "git worktree add ../app-discovery-fix feat/discovery-fix".to_owned(),
+        "git worktree add ../app-discovery-fix feat/discovery-fix 2>&1 | tail -2".to_owned(),
+        "git worktree add --quiet ../app-discovery-fix feat/discovery-fix".to_owned(),
+        format!("git worktree add {organization}/app-discovery-fix feat/discovery-fix"),
+        "git worktree add ../app-discovery-fix feat/discovery-fix && cd ../app-discovery-fix && git log --oneline -3".to_owned(),
+        // No branch of that name: Git detaches at the tag.
+        "git worktree add ../app-release release-lane".to_owned(),
+    ] {
+        assert_allowed(&home, &repository, &command);
+    }
+}
+
+/// Force-resets, forced checkouts, routed or reconfigured Git, other
+/// destinations and names that resolve to nothing keep their review.
+#[test]
+fn existing_branch_worktree_add_neighbours_stay_reviewed() {
+    let (_cleanup, home, repository) = repository("existing-branch-reviewed");
+    git(&home, &repository, &["branch", "feat/discovery-fix"]);
+    for command in [
+        // Git would create a tracking branch or fail.
+        "git worktree add ../app-discovery-fix missing-branch",
+        "git worktree add -B feat/discovery-fix ../app-discovery-fix origin/main",
+        "git worktree add -f ../app-discovery-fix feat/discovery-fix",
+        "git worktree add --force ../app-discovery-fix feat/discovery-fix",
+        "git worktree add --detach ../app-discovery-fix feat/discovery-fix",
+        "git worktree add -b other ../app-discovery-fix feat/discovery-fix",
+        "git worktree add ../app-discovery-fix feat/discovery-fix~1",
+        "git -c core.hooksPath=hooks worktree add ../app-discovery-fix feat/discovery-fix",
+        "GIT_DIR=../service/.git git worktree add ../app-discovery-fix feat/discovery-fix",
+        "git worktree add ../service feat/discovery-fix",
+        "git worktree add ../link/review feat/discovery-fix",
+        "git worktree add ../.app-discovery-fix feat/discovery-fix",
+        "git worktree add ../app-discovery-fix feat/discovery-fix && cd ../app-discovery-fix && git commit --allow-empty -m wip",
+    ] {
+        assert_reviewed(&home, &repository, command);
+    }
+    // A post-checkout hook runs in the new checkout.
+    let hook = repository.join(".git/hooks/post-checkout");
+    std::fs::write(&hook, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_reviewed(
+        &home,
+        &repository,
+        "git worktree add ../app-discovery-fix feat/discovery-fix",
+    );
+}

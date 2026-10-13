@@ -21,6 +21,7 @@ struct Input {
     command: Vec<String>,
     backend_executable: PathBuf,
     user_site_root: Option<PathBuf>,
+    linked_git: Option<super::workspace_linked::LinkedGit>,
     #[serde(rename = "search_path")]
     _search_path: String,
 }

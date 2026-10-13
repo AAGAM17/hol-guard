@@ -45,6 +45,7 @@ def plan(workspace: Path, text: str = COMMAND, **changes: object) -> dict[str, o
         "read_only_roots": [],
         "exec_roots": [],
         "write_denials": [],
+        "linked_git": None,
         "sandbox_path": "/usr/bin:/bin",
         "bootstrap_git": None,
         "prefix_command": None,
@@ -160,6 +161,11 @@ def test_changed_evidence_before_launch_never_starts(monkeypatch: pytest.MonkeyP
         {"profile_version": "pytest-readonly-v2"},
         {"command_sha256": "0" * 64},
         {"prefix_command": "./todo.py"},
+        {"linked_git": "/repo/.git"},
+        {"linked_git": {"common": "/repo/.git"}},
+        {"linked_git": {"common": "repo/.git", "admin": "/repo/.git/worktrees/w"}},
+        {"linked_git": {"common": "/repo/.git", "admin": "/repo/.git/worktrees/w", "extra": "/x"}},
+        {"linked_git": {"common": "/repo/.git", "admin": 3}},
     ],
 )
 def test_a_plan_that_differs_from_the_authorized_command_is_rejected(
@@ -335,3 +341,54 @@ def test_a_denied_overlay_change_fails_the_run(monkeypatch: pytest.MonkeyPatch, 
         )
     assert raised.value.reason_code == "workspace_contained_write_denied"
     assert roots and not roots[0].exists()
+
+
+LINKED = {"common": "/repo/.git", "admin": "/repo/.git/worktrees/report"}
+
+
+def test_a_linked_worktree_overlays_the_shared_git_directory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(workspace_sink, "_host_backend", lambda: "linux-bubblewrap")
+    linux_plan = plan(tmp_path, backend="linux-bubblewrap", backend_executable="/usr/bin/bwrap", linked_git=LINKED)
+    calls: dict[str, dict[str, object]] = {}
+
+    def fake_native(operation: str, fields: dict[str, object], expected: object) -> object:
+        calls[operation] = dict(fields)
+        if operation == "workspace_bubblewrap_argv":
+            assert Path(str(fields["shared_upper"])).is_dir() and Path(str(fields["shared_work"])).is_dir()
+            return ["/usr/bin/bwrap", "--", *fields["command"]]
+        return {"applied": 1} if operation == "apply_workspace_overlay" else linux_plan
+
+    monkeypatch.setattr(workspace_sink, "restricted_native", fake_native)
+    monkeypatch.setattr(workspace_sink, "trusted_git_binary_for_cwd", lambda cwd: None)
+    monkeypatch.setattr(workspace_sink, "_restricted_environment", lambda source, **kwargs: {"PATH": "/host/bin"})
+    monkeypatch.setattr(workspace_sink, "_run_backend_process", lambda argv, **kwargs: 0)
+    status = workspace_sink.run_workspace_contained(
+        payload(), workspace=tmp_path, cwd=tmp_path, authorize=lambda original: receipt(), first_receipt=receipt()
+    )
+    assert status == 0
+    argv_fields, applied = calls["workspace_bubblewrap_argv"], calls["apply_workspace_overlay"]
+    shared_upper = Path(str(argv_fields["shared_upper"]))
+    assert argv_fields["linked_git"] == applied["linked_git"] == LINKED
+    assert shared_upper.parent.parent == Path(str(argv_fields["upper"])).parent
+    assert applied["shared_upper"] == shared_upper
+    assert "shared_work" not in applied
+    assert not shared_upper.parent.parent.exists()
+
+
+def test_macos_profile_receives_the_linked_worktree(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    profiles: list[dict[str, object]] = []
+
+    def fake_native(operation: str, fields: dict[str, object], expected: object) -> object:
+        if operation == "macos_profile":
+            profiles.append(dict(fields))
+            return "(version 1)"
+        return plan(tmp_path, linked_git=LINKED)
+
+    monkeypatch.setattr(workspace_sink, "restricted_native", fake_native)
+    monkeypatch.setattr(workspace_sink, "trusted_git_binary_for_cwd", lambda cwd: None)
+    monkeypatch.setattr(workspace_sink, "_restricted_environment", lambda source, **kwargs: {"PATH": "/host/bin"})
+    monkeypatch.setattr(workspace_sink, "_run_backend_process", lambda argv, **kwargs: 0)
+    workspace_sink.run_workspace_contained(
+        payload(), workspace=tmp_path, cwd=tmp_path, authorize=lambda original: receipt(), first_receipt=receipt()
+    )
+    assert profiles[0]["linked_git"] == LINKED

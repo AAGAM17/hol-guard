@@ -13,7 +13,7 @@ use super::*;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::os::unix::fs::DirBuilderExt;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -50,6 +50,13 @@ struct Input {
     work: PathBuf,
     exec_roots: Vec<PathBuf>,
     command: Vec<String>,
+    /// A linked worktree's shared Git directory, with its overlay layers.
+    #[serde(default)]
+    linked_git: Option<super::workspace_linked::LinkedGit>,
+    #[serde(default)]
+    shared_upper: Option<PathBuf>,
+    #[serde(default)]
+    shared_work: Option<PathBuf>,
     /// Added to every request by the Python bridge; unused here.
     #[serde(default, rename = "search_path")]
     _search_path: String,
@@ -86,7 +93,7 @@ fn probe() -> Option<()> {
     ));
     std::fs::DirBuilder::new().mode(0o700).create(&root).ok()?;
     let result = run_probe(&bwrap, &root);
-    super::workspace_overlay::remove_overlay_root(&root);
+    remove_overlay_root(&root);
     result
 }
 
@@ -255,10 +262,16 @@ fn workspace_argv(input: &Input) -> Result<Vec<String>, RestrictedPytestError> {
     {
         return Err(invalid());
     }
+    let shared = shared_layers(input)?;
     let backend = trusted_backend_executable(&input.backend_executable)
         .ok_or_else(|| unavailable("The workspace sandbox backend is not trusted."))?;
-    let masks = credential_masks(&input.workspace)
-        .ok_or_else(|| unavailable("The workspace is too large for the workspace sandbox."))?;
+    let too_large = || unavailable("The workspace is too large for the workspace sandbox.");
+    let mut masks = credential_masks(&input.workspace).ok_or_else(too_large)?;
+    if let Some((linked, _, _)) = shared {
+        masks.extend(credential_masks(linked.checkout()).ok_or_else(too_large)?);
+        masks.sort();
+        masks.dedup();
+    }
     let exec_roots: Vec<PathBuf> = input
         .exec_roots
         .iter()
@@ -268,6 +281,13 @@ fn workspace_argv(input: &Input) -> Result<Vec<String>, RestrictedPytestError> {
     let mut argv = base_argv(&backend, &exec_roots);
     let private = input.private_root.to_string_lossy().into_owned();
     argv.extend(["--bind".to_owned(), private.clone(), private]);
+    if let Some((linked, upper, work)) = shared {
+        // The main checkout is readable; only its shared `.git` takes writes,
+        // which the overlay check confines to objects, refs and the entry.
+        let checkout = linked.checkout().to_string_lossy().into_owned();
+        argv.extend(["--ro-bind".to_owned(), checkout.clone(), checkout]);
+        argv.extend(overlay_argv(&linked.common.to_string_lossy(), upper, work));
+    }
     let workspace = input.workspace.to_string_lossy().into_owned();
     argv.extend(overlay_argv(&workspace, &input.upper, &input.work));
     for (path, directory) in masks {
@@ -286,6 +306,35 @@ fn workspace_argv(input: &Input) -> Result<Vec<String>, RestrictedPytestError> {
     argv.extend(["--chdir".to_owned(), workspace, "--".to_owned()]);
     argv.extend(input.command.iter().cloned());
     Ok(argv)
+}
+
+/// The linked worktree's shared directory and its overlay layers, when the
+/// request names all three, each apart from the other run directories.
+fn shared_layers(
+    input: &Input,
+) -> Result<Option<(&super::workspace_linked::LinkedGit, &Path, &Path)>, RestrictedPytestError> {
+    match (&input.linked_git, &input.shared_upper, &input.shared_work) {
+        (None, None, None) => Ok(None),
+        (Some(linked), Some(upper), Some(work)) => {
+            let others = [input.private_root.as_path(), &input.upper, &input.work];
+            let linked = linked.with_layers(&input.workspace, &[upper, work], &others)?;
+            Ok(Some((linked, upper, work)))
+        }
+        _ => Err(invalid()),
+    }
+}
+
+/// Remove an overlay root. The kernel leaves the work directory's inner
+/// directory unreadable, so it is made traversable first.
+pub(super) fn remove_overlay_root(root: &Path) {
+    let inner = root.join("work").join("work");
+    if inner
+        .symlink_metadata()
+        .is_ok_and(|metadata| metadata.is_dir())
+    {
+        let _ = fs::set_permissions(&inner, fs::Permissions::from_mode(0o700));
+    }
+    let _ = fs::remove_dir_all(root);
 }
 
 pub(super) fn evaluate(operation: &str, input: &Value) -> Option<Value> {

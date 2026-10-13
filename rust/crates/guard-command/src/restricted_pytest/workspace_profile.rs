@@ -228,6 +228,11 @@ pub(super) fn compose(
     if !workspace.is_absolute() || !input.private_root.is_absolute() {
         return Err(invalid());
     }
+    let linked = input
+        .linked_git
+        .as_ref()
+        .map(|linked| linked.checked(workspace))
+        .transpose()?;
     let mut extra_reads = existing(&[
         "/bin",
         "/usr/bin",
@@ -237,6 +242,7 @@ pub(super) fn compose(
     extra_reads.extend(input.exec_roots.iter().cloned());
     extra_reads.extend(input.read_only_roots.iter().cloned());
     let mut roots = vec![workspace.clone(), input.private_root.clone()];
+    roots.extend(linked.map(|linked| linked.checkout().to_path_buf()));
     roots.extend_from_slice(system_roots);
     roots.extend(extra_reads.iter().cloned());
     let mut metadata = vec![PathBuf::from("/")];
@@ -245,6 +251,7 @@ pub(super) fn compose(
     let mut files = files.to_vec();
     files.extend(existing(TOOLCHAIN_FILES));
     let mut executable = vec![workspace.clone()];
+    executable.extend(linked.map(|linked| linked.checkout().to_path_buf()));
     executable.extend(existing(&["/bin", "/usr/bin"]));
     executable.extend(input.exec_roots.iter().cloned());
     let privileged: Vec<PathBuf> = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
@@ -284,10 +291,26 @@ pub(super) fn compose(
             filter(std::slice::from_ref(workspace), "literal")
         ),
     ];
+    let mut repositories: Vec<&Path> = vec![workspace, &input.private_root];
+    if let Some(linked) = linked {
+        // A linked worktree's objects, refs and reflogs live in the main
+        // checkout's `.git`, which its rules below cover as well.
+        let (shared, _) = linked.files();
+        let trees = linked.shared_trees();
+        lines.push(format!(
+            "(allow file-write* {} {})",
+            filter(&trees, "subpath"),
+            filter(&shared, "literal")
+        ));
+        let mut fixed = trees;
+        fixed.push(linked.common.clone());
+        lines.push(format!("(deny file-write* {})", filter(&fixed, "literal")));
+        repositories.push(linked.checkout());
+    }
     // Seatbelt checks only the paths an operation names, so a repository or
     // protected file built or edited in the private root could be moved into
     // the workspace. Both roots therefore get the same rules.
-    for root in [workspace, &input.private_root] {
+    for root in repositories {
         lines.push(regex_rule("file-write*", &git_exec_pattern(root)?));
         lines.push(regex_rule("file-write*", &bare_head_pattern(root)?));
         lines.push(regex_rule(
@@ -314,6 +337,19 @@ pub(super) fn compose(
             "literal"
         )
     ));
+    if let Some(linked) = linked {
+        lines.push(format!(
+            "(allow file-write* {})",
+            filter(&linked.files().1, "literal")
+        ));
+        // Its reflog directory holds a `HEAD`. Renaming it into a shared
+        // tree would carry that `HEAD` past `bare_head_pattern`, so, as with
+        // `head_carrier_pattern`, Git may create it but not move it.
+        lines.push(format!(
+            "(deny file-write-unlink {})",
+            filter(&[linked.admin.join("logs")], "literal")
+        ));
+    }
     for pattern in denial_patterns(workspace, &input.write_denials)? {
         lines.push(regex_rule("file-write*", &pattern));
     }

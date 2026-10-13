@@ -221,6 +221,7 @@ mod toolchains;
 mod user_site;
 mod validation;
 mod workspace;
+mod workspace_linked;
 mod workspace_linux;
 mod workspace_overlay;
 pub fn evaluate_with_deadline(

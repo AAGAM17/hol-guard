@@ -37,6 +37,7 @@ _PLAN_FIELDS = frozenset(
         "read_only_roots",
         "exec_roots",
         "write_denials",
+        "linked_git",
         "sandbox_path",
         "bootstrap_git",
         "prefix_command",
@@ -96,9 +97,21 @@ def _validated_plan(plan: object, command: str, workspace: Path) -> dict[str, ob
         or Path(str(plan["workspace"])) != workspace.resolve(strict=True)
         or plan["allowed_executables"] != []
         or plan["read_only_roots"] != []
+        or not (plan["linked_git"] is None or _linked_git(plan["linked_git"]))
     ):
         raise _reject("The workspace sandbox plan does not match the authorized command.")
     return plan
+
+
+def _linked_git(value: object) -> dict[str, str] | None:
+    """A linked worktree's shared `.git` and admin entry, as the plan names them."""
+    if (
+        isinstance(value, dict)
+        and set(value) == {"common", "admin"}
+        and all(isinstance(item, str) and Path(item).is_absolute() for item in value.values())
+    ):
+        return value
+    return None
 
 
 def _plan_paths(value: object) -> list[Path]:
@@ -265,6 +278,7 @@ def run_workspace_contained(
                     "output_roots": [],
                     "exec_roots": exec_roots,
                     "write_denials": write_denials,
+                    "linked_git": plan["linked_git"],
                     "command": argv_to_run,
                     "backend_executable": Path(str(plan["backend_executable"])),
                 },
@@ -292,9 +306,9 @@ def run_workspace_contained(
 
 
 def _remove_overlay(root: Path) -> None:
-    inner = root / "work" / "work"
-    if inner.is_dir() and not inner.is_symlink():
-        inner.chmod(0o700)
+    for inner in (root / "work" / "work", root / "shared" / "work" / "work"):
+        if inner.is_dir() and not inner.is_symlink():
+            inner.chmod(0o700)
     shutil.rmtree(root, ignore_errors=True)
 
 
@@ -317,6 +331,14 @@ def _run_overlay(
         work = overlay_root / "work"
         upper.mkdir(mode=0o700)
         work.mkdir(mode=0o700)
+        # A linked worktree's shared `.git` gets its own overlay layers.
+        linked: dict[str, object] = {}
+        if plan["linked_git"] is not None:
+            shared = overlay_root / "shared"
+            shared.mkdir(mode=0o700)
+            (shared / "upper").mkdir(mode=0o700)
+            (shared / "work").mkdir(mode=0o700)
+            linked = {"linked_git": plan["linked_git"], "shared_upper": shared / "upper"}
         argv = restricted_native(
             "workspace_bubblewrap_argv",
             {
@@ -327,6 +349,7 @@ def _run_overlay(
                 "work": work,
                 "exec_roots": exec_roots,
                 "command": command,
+                **({**linked, "shared_work": overlay_root / "shared" / "work"} if linked else {}),
             },
             list,
         )
@@ -339,7 +362,7 @@ def _run_overlay(
         )
         restricted_native(
             "apply_workspace_overlay",
-            {"workspace": workspace.resolve(strict=True), "upper": upper, "write_denials": write_denials},
+            {"workspace": workspace.resolve(strict=True), "upper": upper, "write_denials": write_denials, **linked},
             dict,
         )
         return status

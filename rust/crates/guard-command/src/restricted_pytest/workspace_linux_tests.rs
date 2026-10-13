@@ -19,6 +19,9 @@ fn input(root: &Path, command: &[&str]) -> Input {
         work: root.join("overlay/work"),
         exec_roots: vec![root.join("ws/.venv"), PathBuf::from("/opt/tool")],
         command: command.iter().map(|value| (*value).to_owned()).collect(),
+        linked_git: None,
+        shared_upper: None,
+        shared_work: None,
         _search_path: String::new(),
     }
 }
@@ -109,5 +112,45 @@ fn the_sandbox_confines_a_real_run_when_available() {
     );
     assert!(!ws.join("keep.txt").exists());
     assert!(!root.join("escape").exists());
-    super::super::workspace_overlay::remove_overlay_root(&root.join("overlay"));
+    super::remove_overlay_root(&root.join("overlay"));
+}
+
+#[test]
+fn a_linked_worktree_reads_its_checkout_and_overlays_the_shared_git() {
+    let root = root("linked");
+    let main = root.join("main");
+    std::fs::create_dir_all(main.join(".git/worktrees/ws")).unwrap();
+    std::fs::create_dir_all(root.join("shared/upper")).unwrap();
+    std::fs::create_dir_all(root.join("shared/work")).unwrap();
+    std::fs::write(main.join(".env"), "SECRET=1").unwrap();
+    let mut request = input(&root, &["/bin/sh", "-c", "git commit -m x"]);
+    request.linked_git = Some(super::super::workspace_linked::LinkedGit {
+        common: main.join(".git"),
+        admin: main.join(".git/worktrees/ws"),
+    });
+    request.shared_upper = Some(root.join("shared/upper"));
+    request.shared_work = Some(root.join("shared/work"));
+    let argv = workspace_argv(&request).unwrap();
+    let text = |path: PathBuf| path.to_string_lossy().into_owned();
+    let position = |flag: &str, value: String| {
+        argv.windows(2)
+            .position(|pair| pair[0] == flag && pair[1] == value)
+            .unwrap()
+    };
+    let checkout = position("--ro-bind", text(main.clone()));
+    let shared = position("--overlay-src", text(main.join(".git")));
+    let workspace = position("--overlay-src", text(root.join("ws")));
+    assert!(checkout < shared && shared < workspace, "{argv:?}");
+    assert!(
+        after(&argv, "/dev/null", &text(main.join(".env"))),
+        "{argv:?}"
+    );
+    // All three are required, and the layers stay apart from the run's own.
+    request.shared_work = None;
+    assert!(workspace_argv(&request).is_err());
+    request.shared_work = Some(root.join("overlay/upper/work"));
+    assert!(workspace_argv(&request).is_err());
+    request.shared_work = Some(root.join("main/work"));
+    assert!(workspace_argv(&request).is_err());
+    let _ = std::fs::remove_dir_all(&root);
 }

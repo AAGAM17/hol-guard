@@ -12,6 +12,7 @@ use super::credentials::patterns;
 use super::profiles::workspace_profile::{
     bare_head_pattern, git_exec_pattern, protected_patterns, ref_store_repository_pattern,
 };
+use super::workspace_linked::LinkedGit;
 use super::*;
 use regex::Regex;
 use serde::Deserialize;
@@ -29,6 +30,11 @@ struct Input {
     workspace: PathBuf,
     upper: PathBuf,
     write_denials: Vec<PathBuf>,
+    /// A linked worktree's shared Git directory and its overlay upper layer.
+    #[serde(default)]
+    linked_git: Option<LinkedGit>,
+    #[serde(default)]
+    shared_upper: Option<PathBuf>,
     /// Added to every request by the Python bridge; unused here.
     #[serde(default, rename = "search_path")]
     _search_path: String,
@@ -77,7 +83,16 @@ struct Denials {
     /// Any `HEAD` but the repository's own, which checkout rewrites, and its
     /// reflog, which every commit appends to.
     head: Regex,
-    own_heads: [PathBuf; 2],
+    own_heads: Vec<PathBuf>,
+    /// When set, the only paths a change may touch.
+    only: Option<Regex>,
+}
+
+fn compiled(sources: &[String]) -> Result<Vec<Regex>, RestrictedPytestError> {
+    sources
+        .iter()
+        .map(|source| Regex::new(source).map_err(|_| invalid()))
+        .collect()
 }
 
 impl Denials {
@@ -88,18 +103,27 @@ impl Denials {
         ];
         sources.extend(protected_patterns(workspace)?);
         sources.extend(patterns());
-        let patterns = sources
-            .iter()
-            .map(|source| Regex::new(source).map_err(|_| invalid()))
-            .collect::<Result<_, _>>()?;
         Ok(Self {
-            patterns,
+            patterns: compiled(&sources)?,
             prefixes: prefixes.to_vec(),
             head: Regex::new(&bare_head_pattern(workspace)?).map_err(|_| invalid())?,
-            own_heads: [
+            own_heads: vec![
                 workspace.join(".git/HEAD"),
                 workspace.join(".git/logs/HEAD"),
             ],
+            only: None,
+        })
+    }
+
+    /// A linked worktree's run may change only its paths in the shared
+    /// directory, and no bare repository planted beside a ref store `HEAD`.
+    fn shared(linked: &LinkedGit) -> Result<Self, RestrictedPytestError> {
+        Ok(Self {
+            patterns: compiled(&linked.denial_patterns()?)?,
+            prefixes: Vec::new(),
+            head: Regex::new(&bare_head_pattern(linked.checkout())?).map_err(|_| invalid())?,
+            own_heads: linked.heads(),
+            only: Some(Regex::new(&linked.overlay_pattern()?).map_err(|_| invalid())?),
         })
     }
 
@@ -114,6 +138,7 @@ impl Denials {
                 .iter()
                 .any(|prefix| path.starts_with(prefix) || prefix.starts_with(path))
             || (self.head.is_match(&text) && !self.own_heads.iter().any(|own| path == own))
+            || self.only.as_ref().is_some_and(|only| !only.is_match(&text))
     }
 }
 
@@ -357,15 +382,46 @@ fn apply_change(
 
 /// Check every change in `upper`, then apply them all to `workspace`.
 /// Returns how many entries changed.
+#[cfg(test)]
 pub(crate) fn apply(
     upper: &Path,
     workspace: &Path,
     write_denials: &[PathBuf],
 ) -> Result<usize, RestrictedPytestError> {
-    let denials = Denials::new(workspace, write_denials)?;
-    let changes = changes(upper, workspace)?;
-    validate(&changes, workspace, &denials)?;
-    for change in &changes {
+    apply_linked(upper, workspace, write_denials, None)
+}
+
+/// [`apply`], and for a linked worktree also `shared`'s upper layer to its
+/// shared Git directory. Both layers are checked before either is applied.
+pub(crate) fn apply_linked(
+    upper: &Path,
+    workspace: &Path,
+    write_denials: &[PathBuf],
+    shared: Option<(&LinkedGit, &Path)>,
+) -> Result<usize, RestrictedPytestError> {
+    let mut layers = vec![(upper, workspace, Denials::new(workspace, write_denials)?)];
+    if let Some((linked, shared_upper)) = shared {
+        layers.push((shared_upper, &linked.common, Denials::shared(linked)?));
+    }
+    let mut checked = Vec::new();
+    for (upper, root, denials) in &layers {
+        let changes = changes(upper, root)?;
+        validate(&changes, root, denials)?;
+        checked.push(changes);
+    }
+    let mut count = 0;
+    for ((upper, root, _), changes) in layers.iter().zip(&checked) {
+        count += apply_checked(upper, root, changes)?;
+    }
+    Ok(count)
+}
+
+fn apply_checked(
+    upper: &Path,
+    workspace: &Path,
+    changes: &[Change],
+) -> Result<usize, RestrictedPytestError> {
+    for change in changes {
         apply_change(change, upper, workspace)?;
     }
     // New directories were writable while their children were applied.
@@ -402,19 +458,6 @@ pub(crate) fn probe_changes(upper: &Path) -> Option<bool> {
     )
 }
 
-/// Remove an overlay root. The kernel leaves the work directory's inner
-/// directory unreadable, so it is made traversable first.
-pub(crate) fn remove_overlay_root(root: &Path) {
-    let inner = root.join("work").join("work");
-    if inner
-        .symlink_metadata()
-        .is_ok_and(|metadata| metadata.is_dir())
-    {
-        let _ = fs::set_permissions(&inner, fs::Permissions::from_mode(0o700));
-    }
-    let _ = fs::remove_dir_all(root);
-}
-
 pub(super) fn evaluate(operation: &str, input: &Value) -> Option<Value> {
     if operation != "apply_workspace_overlay" {
         return None;
@@ -429,7 +472,15 @@ pub(super) fn evaluate(operation: &str, input: &Value) -> Option<Value> {
             {
                 return Err(invalid());
             }
-            apply(&input.upper, &input.workspace, &input.write_denials)
+            let shared = match (&input.linked_git, &input.shared_upper) {
+                (None, None) => None,
+                (Some(linked), Some(upper)) => Some((
+                    linked.with_layers(&input.workspace, &[upper], &[&input.upper])?,
+                    upper.as_path(),
+                )),
+                _ => return Err(invalid()),
+            };
+            apply_linked(&input.upper, &input.workspace, &input.write_denials, shared)
         });
     Some(match result {
         Ok(count) => json!({"value": {"applied": count}}),

@@ -1,4 +1,4 @@
-use super::{helper_write_denials, write_denials_from};
+use super::{helper_write_denials, linked_git_dirs, repository_config, write_denials_from};
 use std::path::{Path, PathBuf};
 
 /// Only the user's files, so the host's system configuration and environment
@@ -304,6 +304,56 @@ fn global_helper_programs_in_the_workspace_are_denied() {
         std::fs::write(&global, format!("[alias]\n\tz = {value}\n")).unwrap();
         assert_eq!(workspace_write_denials(&ws, Some(&home)), None, "{value}");
     }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_verified_linked_worktree_reads_and_guards_its_shared_repository() {
+    let root = scratch("linked");
+    let home = root.join("home");
+    let common = home.join("main/.git");
+    let admin = common.join("worktrees/wt");
+    let wt = home.join("wt");
+    std::fs::create_dir_all(&admin).unwrap();
+    std::fs::create_dir_all(wt.join("src")).unwrap();
+    std::fs::write(common.join("config"), "[core]\n\tbare = false\n").unwrap();
+    std::fs::write(admin.join("commondir"), "../..\n").unwrap();
+    std::fs::write(
+        admin.join("gitdir"),
+        format!("{}\n", wt.join(".git").display()),
+    )
+    .unwrap();
+    std::fs::write(wt.join(".git"), format!("gitdir: {}\n", admin.display())).unwrap();
+    assert_eq!(
+        linked_git_dirs(&wt.join("src"), Some(&home)),
+        Some((common.clone(), admin.clone()))
+    );
+    assert_eq!(
+        repository_config(&wt),
+        Ok(Some("[core]\n\tbare = false\n".to_string()))
+    );
+    assert_eq!(workspace_write_denials(&wt, Some(&home)), Some(vec![]));
+    // A helper in the shared directory, which the run may write, keeps the
+    // command at review.
+    std::fs::write(
+        home.join(".gitconfig"),
+        format!("[alias]\n\tx = !{}/x\n", common.join("objects").display()),
+    )
+    .unwrap();
+    assert_eq!(workspace_write_denials(&wt, Some(&home)), None);
+    std::fs::remove_file(home.join(".gitconfig")).unwrap();
+    // A worktree configuration is read by Git and not by this reader.
+    std::fs::write(admin.join("config.worktree"), "").unwrap();
+    assert_eq!(repository_config(&wt), Err(()));
+    std::fs::remove_file(admin.join("config.worktree")).unwrap();
+    // An admin entry that does not link back is no verified worktree.
+    std::fs::write(
+        admin.join("gitdir"),
+        format!("{}\n", home.join("other/.git").display()),
+    )
+    .unwrap();
+    assert_eq!(linked_git_dirs(&wt, Some(&home)), None);
+    assert_eq!(repository_config(&wt), Err(()));
     let _ = std::fs::remove_dir_all(&root);
 }
 

@@ -236,7 +236,7 @@ def run_authorized_contained_test(
         )
 
     try:
-        peeled = peel_contained_wrapper(tool_input["command"], workspace=workspace, home=home_dir)
+        peeled = peel_contained_wrapper(tool_input["command"], workspace=workspace, home=home_dir, cwd=cwd)
     except (OSError, RuntimeError, ValueError) as error:
         # Pipelines and lists the wrapper cannot peel (`| grep`, `&&`) still
         # run as issued when Rust chose the workspace sandbox for them.

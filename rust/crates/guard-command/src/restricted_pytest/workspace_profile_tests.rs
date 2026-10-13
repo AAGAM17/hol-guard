@@ -275,3 +275,51 @@ fn system_links_and_toolchain_config_stay_readable() {
     }
     assert!(!profile.contains("(subpath \"/private/var\")"));
 }
+
+#[test]
+fn a_linked_worktree_writes_only_shared_stores_and_its_admin_entry() {
+    let mut value = input("/w/proj");
+    value.linked_git = Some(super::super::workspace_linked::LinkedGit {
+        common: PathBuf::from("/w/main/.git"),
+        admin: PathBuf::from("/w/main/.git/worktrees/proj"),
+    });
+    let profile = workspace_profile::compose(&value, &[], &[]).unwrap();
+    let line = |prefix: &str, needle: &str| {
+        profile
+            .lines()
+            .any(|line| line.starts_with(prefix) && line.contains(needle))
+    };
+    assert!(line("(allow process-exec", "(subpath \"/w/main\")"));
+    assert!(line("(allow file-read*", "(subpath \"/w/main\")"));
+    for tree in ["objects", "refs", "logs"] {
+        let needle = format!("(subpath \"/w/main/.git/{tree}\")");
+        assert!(line("(allow file-write*", &needle), "{tree}");
+    }
+    assert!(line(
+        "(allow file-write*",
+        "(literal \"/w/main/.git/packed-refs\")"
+    ));
+    assert!(line("(deny file-write*", "(literal \"/w/main/.git\")"));
+    for file in ["index", "HEAD", "logs/HEAD"] {
+        let needle = format!("(literal \"/w/main/.git/worktrees/proj/{file}\")");
+        assert!(line("(allow file-write*", &needle), "{file}");
+    }
+    let logs = "(literal \"/w/main/.git/worktrees/proj/logs\")";
+    let allow = profile
+        .lines()
+        .position(|line| line.starts_with("(allow file-write*") && line.contains(logs))
+        .unwrap();
+    let unlink = profile
+        .lines()
+        .position(|line| line == format!("(deny file-write-unlink {logs})"))
+        .unwrap();
+    assert!(allow < unlink);
+    assert!(!profile.contains("(subpath \"/w/main/.git\")"));
+    assert!(!profile.contains("(subpath \"/w/main/.git/worktrees"));
+    // An admin entry anywhere but directly under the shared `worktrees`.
+    value.linked_git = Some(super::super::workspace_linked::LinkedGit {
+        common: PathBuf::from("/w/main/.git"),
+        admin: PathBuf::from("/w/main/.git/proj"),
+    });
+    assert!(workspace_profile::compose(&value, &[], &[]).is_err());
+}

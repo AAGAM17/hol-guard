@@ -54,8 +54,10 @@ const MAX_RUNTIME_BYTES: u64 = 128 * 1024 * 1024;
 const LOCK_STALE_AFTER: Duration = Duration::from_secs(10);
 const MAX_STARTUP_LOCK_BYTES: u64 = 4 * 1024;
 
-#[allow(unused_imports)]
-pub(crate) use resident_state_discovery::{discover_home_states, discover_home_states_prefer};
+#[cfg(test)]
+pub(crate) use resident_state_discovery::discover_home_states;
+pub(crate) use resident_state_discovery::discover_home_states_prefer;
+pub(crate) use resident_state_discovery::discover_same_executable_states;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

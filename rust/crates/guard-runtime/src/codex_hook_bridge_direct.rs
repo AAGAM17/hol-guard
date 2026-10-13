@@ -343,7 +343,7 @@ fn send_to_live_resident(state_base: &Path, request: &[u8], deadline: Instant) -
     if !std::fs::symlink_metadata(state_base).is_ok_and(|metadata| metadata.is_dir()) {
         return None;
     }
-    let states = crate::resident_state::discover_home_states_prefer(state_base, None).ok()?;
+    let states = crate::resident_state::discover_same_executable_states(state_base).ok()?;
     for (_scope, _digest, state) in states {
         if crate::resident_state::validate_same_executable_process_identity(
             state.process_id,

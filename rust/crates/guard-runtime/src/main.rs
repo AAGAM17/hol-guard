@@ -180,6 +180,10 @@ mod continuation_metadata;
 mod continuation_store;
 mod contributed_mcp_decision_op;
 mod critical_floor_op;
+#[cfg(unix)]
+mod cursor_hook_bridge;
+#[cfg(unix)]
+mod cursor_hook_bridge_script;
 mod cursor_observer_proof_op;
 mod custom_extension_continuity;
 mod custom_extension_suggestion;

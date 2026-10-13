@@ -393,7 +393,7 @@ fn request_shapes_the_daemon_must_handle_defer() {
 fn other_harnesses_and_homes_defer() {
     let lane = lane("harness", json!({}));
     let mut request = HookDirectRequestV1 {
-        harness: "cursor".to_owned(),
+        harness: "opencode".to_owned(),
         guard_home: lane.fixture.root.to_str().unwrap().to_owned(),
         home_dir: Some(HOME.to_owned()),
         workspace: None,
@@ -607,6 +607,47 @@ fn a_command_the_policy_warns_on_is_answered() {
     assert_eq!(result["edge"]["result"]["decision"], "allow");
     assert_eq!(result["edge"]["result"]["minimum_action"], "warn");
     assert_eq!(drain(&lane, None)["records"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn a_cursor_pre_tool_use_is_answered_only_when_its_client_allows_it() {
+    let cursor = lane("cursor", json!({}));
+    let result = run_as(&cursor, "cursor", Some(HOME), allowed_payload(&cursor));
+    assert_eq!(result["outcome"], "answer", "{result}");
+    assert_eq!(result["edge"]["harness_response"]["policy_action"], "warn");
+    assert_eq!(drain(&cursor, None)["records"][0]["harness"], "cursor");
+    let mut post = allowed_payload(&cursor);
+    post["hook_event_name"] = json!("PostToolUse");
+    assert_eq!(
+        deferred(&run_as(&cursor, "cursor", Some(HOME), post)),
+        "direct_hook_event_unsupported"
+    );
+    let sensitive_read = |lane: &Lane| {
+        json!({
+            "hook_event_name": "PreToolUse",
+            "toolName": "read_file",
+            "toolInput": { "file_path": ".env.synthetic" },
+            "cwd": lane.workspace,
+        })
+    };
+    assert_eq!(
+        deferred(&run_as(
+            &cursor,
+            "cursor",
+            Some(HOME),
+            sensitive_read(&cursor)
+        )),
+        "direct_hook_not_allow"
+    );
+    // Watch lets the call run, so the Cursor client allows whatever the
+    // edge would have stopped.
+    let watch = lane(
+        "cursor-watch",
+        json!({ "harness_postures": { "cursor": "watch" } }),
+    );
+    let result = run_as(&watch, "cursor", Some(HOME), sensitive_read(&watch));
+    assert_eq!(result["outcome"], "answer", "{result}");
+    assert_eq!(result["edge"]["harness_response"]["policy_action"], "warn");
 }
 
 /// The next evidence page, after acknowledging `acked`, a page drained before.

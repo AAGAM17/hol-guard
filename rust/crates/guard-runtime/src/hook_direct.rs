@@ -9,7 +9,8 @@
 //! `PreToolUse` allow or terminal block, any `PreToolUse` verdict in Watch,
 //! any reviewed `PostToolUse` of those harnesses, and a reviewed
 //! `UserPromptSubmit` with its receipt, for Codex always and for Claude Code
-//! in Watch. The daemon never changes those responses. Every other request,
+//! in Watch, and a Cursor `PreToolUse` its hook client runs as an allow. The
+//! daemon never changes those responses. Every other request,
 //! and every `PreToolUse` verdict the daemon turns into an approval or a
 //! repair link, defers so the caller takes the daemon path, which is
 //! unchanged. A Claude Code sandbox requirement outside Watch is routed to
@@ -41,7 +42,7 @@ pub(crate) const HOOK_DIRECT_FEATURE: &str = "hook-direct-v1";
 pub(crate) const HOOK_DIRECT_CONTAINED_ROUTE_FEATURE: &str = "hook-direct-contained-route-v1";
 const HOOK_DIRECT_RESULT_SCHEMA: &str = "guard-hook-direct-result.v1";
 /// The harnesses whose allow the daemon returns as the edge rendered it.
-const DIRECT_HARNESSES: [&str; 2] = ["codex", "claude-code"];
+const DIRECT_HARNESSES: [&str; 3] = ["codex", CLAUDE_CODE, CURSOR];
 const TRANSITION_PROBE_FIELD: &str = "guard_transition_probe";
 const EXECUTION_ENVIRONMENT_FIELD: &str = "guard_execution_environment";
 const PAYLOAD_REFERENCE_FIELDS: [&str; 2] = ["guard_payload_ref", "guard_source_ref"];
@@ -60,6 +61,7 @@ const REPAIRABLE_BLOCK_REASON: &str = "native_command_control_authority_block";
 const USER_PROMPT_SUBMIT: &str = "UserPromptSubmit";
 const USER_PROMPT_EVENT_NAMES: [&str; 3] = ["prompt", "userpromptsubmit", "userpromptsubmitted"];
 const CLAUDE_CODE: &str = "claude-code";
+const CURSOR: &str = "cursor";
 const PRE_TOOL_EVENT_NAMES: [&str; 7] = [
     "pretool",
     "pretooluse",
@@ -198,6 +200,10 @@ fn answer(
     };
     let event = direct_event(&payload)?.ok_or(HookDirectDefer::EventUnsupported)?;
     let pre_tool = event == PRE_TOOL_USE;
+    let cursor_harness = request.harness == CURSOR;
+    if cursor_harness && !pre_tool {
+        return Err(HookDirectDefer::EventUnsupported);
+    }
     if payload.contains_key(TRANSITION_PROBE_FIELD) {
         // A probe carries a request identity only the daemon assigns.
         return Err(HookDirectDefer::TransitionProbe);
@@ -318,6 +324,7 @@ fn answer(
     // Removed again unless the answer that runs it is returned.
     let mut snapshot = None;
     let answered = match event {
+        PRE_TOOL_USE if cursor_harness => cursor::answer(&edge, recording_only)?,
         // Watch never pauses or repairs a call: the daemon records the
         // edge's non-blocking response for every verdict, as the drain does.
         PRE_TOOL_USE if recording_only => reviewed_edge(&edge, PRE_TOOL_USE)?,
@@ -479,13 +486,14 @@ fn direct_event(payload: &Map<String, Value>) -> Result<Option<&'static str>, Ho
     Ok(Some(PRE_TOOL_USE))
 }
 
+#[path = "hook_direct_contained.rs"]
+mod contained;
+#[path = "hook_direct_cursor.rs"]
+mod cursor;
 #[path = "hook_direct_local_cli.rs"]
 mod local_cli;
 #[path = "hook_direct_workspace.rs"]
 mod workspace;
-
-#[path = "hook_direct_contained.rs"]
-mod contained;
 
 #[cfg(all(test, unix))]
 #[path = "hook_direct_tests.rs"]

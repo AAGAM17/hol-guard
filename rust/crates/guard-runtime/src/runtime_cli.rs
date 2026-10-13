@@ -35,6 +35,12 @@ pub(super) fn run() -> Result<(), String> {
         {
             std::process::exit(bounded_hook_bridge::run(python_argv))
         }
+        #[cfg(unix)]
+        [command, python_argv @ ..]
+            if command == cursor_hook_bridge::BRIDGE_COMMAND && python_argv.len() >= 2 =>
+        {
+            std::process::exit(cursor_hook_bridge::run(python_argv))
+        }
         [command, flag] if command == "hook" && flag == "--stdin" => {
             let bytes = read_stdin_bounded()?;
             let response = oneshot::evaluate_hook_bytes(&bytes)?;

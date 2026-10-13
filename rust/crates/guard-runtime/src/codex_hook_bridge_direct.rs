@@ -1,4 +1,4 @@
-//! Direct resident answers for Codex and Claude Code tool hooks.
+//! Direct resident answers for Codex, Claude Code and Cursor tool hooks.
 //!
 //! For a `PreToolUse` hook the edge allows or blocks outright, and for every
 //! reviewed `PostToolUse` and `UserPromptSubmit` hook the daemon does not
@@ -43,6 +43,10 @@ pub(crate) const CODEX: DirectHarness = DirectHarness {
 pub(crate) const CLAUDE_CODE: DirectHarness = DirectHarness {
     name: "claude-code",
     switch: "HOL_GUARD_CLAUDE_DIRECT_HOOK",
+};
+pub(crate) const CURSOR: DirectHarness = DirectHarness {
+    name: "cursor",
+    switch: "HOL_GUARD_CURSOR_DIRECT_HOOK",
 };
 /// A resident answers an allow well inside this. A slower resident leaves
 /// the daemon most of the hook's budget.

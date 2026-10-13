@@ -174,4 +174,10 @@ fn prompt_capability_is_portable_and_containment_matches_dispatch() {
             .any(|feature| feature == "bounded-hook-bridge-v1"),
         cfg!(unix)
     );
+    assert_eq!(
+        features
+            .iter()
+            .any(|feature| feature == "cursor-hook-bridge-v1"),
+        cfg!(unix)
+    );
 }

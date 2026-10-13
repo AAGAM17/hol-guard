@@ -85,14 +85,15 @@ def test_a_drained_answer_is_recorded_like_a_daemon_allow(tmp_path: Path, observ
     assert activity["receipt_id"] == RECEIPT["decision_id"]
 
 
-def test_a_drained_claude_code_answer_is_recorded_for_claude_code(
-    tmp_path: Path, observed: list[dict[str, object]]
+@pytest.mark.parametrize("harness", ["claude-code", "cursor"])
+def test_a_drained_answer_is_recorded_for_its_harness(
+    tmp_path: Path, observed: list[dict[str, object]], harness: str
 ) -> None:
     host = _host(tmp_path)
-    assert record_direct_hook_evidence(host, _record(harness="claude-code"))
+    assert record_direct_hook_evidence(host, _record(harness=harness))
 
     [activity] = host.activity_writer.activity
-    assert activity["harness"] == "claude-code"
+    assert activity["harness"] == harness
     assert activity["policy_action"] == "allow"
 
 
@@ -105,7 +106,7 @@ class _Capture:
         return True
 
 
-@pytest.mark.parametrize(("harness", "captured"), [("codex", 1), ("claude-code", 0)])
+@pytest.mark.parametrize(("harness", "captured"), [("codex", 1), ("claude-code", 0), ("cursor", 0)])
 def test_a_codex_receipt_reaches_the_binding_capture(
     tmp_path: Path, observed: list[dict[str, object]], harness: str, captured: int
 ) -> None:
@@ -124,7 +125,7 @@ def test_a_codex_receipt_reaches_the_binding_capture(
     "record",
     [
         "not a record",
-        _record(harness="cursor"),
+        _record(harness="gemini"),
         _record(payload="ls"),
         _record(workspace=None),
         _record(harness_response=None),

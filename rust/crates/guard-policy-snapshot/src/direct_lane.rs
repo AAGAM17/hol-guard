@@ -21,6 +21,8 @@ pub const DIRECT_LANE_MAX_PATH_BYTES: usize = 4096;
 /// the daemon's home directory, the per-harness posture overrides it binds to
 /// the same ACK, and whether any custom command-line block rule existed when
 /// the snapshot was compiled. A direct hook defers whenever one is absent.
+/// `evidence_drain` says the daemon drains the evidence of direct answers;
+/// without it the resident answers nothing directly.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct DirectLaneBindingV1 {
@@ -32,6 +34,8 @@ pub struct DirectLaneBindingV1 {
     pub harness_postures: Option<BTreeMap<String, String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local_cli_block_rules: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_drain: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

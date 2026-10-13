@@ -199,6 +199,7 @@ pub(crate) struct PolicySnapshotStore {
     authority_changed: Arc<AtomicBool>,
     state: Mutex<PolicyState>,
     direct_lane: Mutex<Option<Arc<policy_store_direct_lane::DirectLaneBinding>>>,
+    direct_evidence: crate::hook_direct_evidence::DirectEvidenceQueue,
 }
 
 impl PolicySnapshotStore {
@@ -302,11 +303,17 @@ impl PolicySnapshotStore {
                 business_policy_floor: loaded.business_policy_floor,
             }),
             direct_lane: Mutex::new(None),
+            direct_evidence: crate::hook_direct_evidence::DirectEvidenceQueue::default(),
         })
     }
 
     pub(crate) fn state_base(&self) -> &Path {
         &self.state_base
+    }
+
+    /// Evidence of direct hook answers, waiting for the daemon to drain it.
+    pub(crate) fn direct_evidence(&self) -> &crate::hook_direct_evidence::DirectEvidenceQueue {
+        &self.direct_evidence
     }
 
     /// Migrate legacy policy files only on an explicit upgrade command.

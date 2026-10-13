@@ -23,6 +23,7 @@ use std::time::{Duration, Instant};
 
 use crate::claude_hook_bridge_http::remaining;
 use crate::claude_hook_bridge_render::py_strip;
+use crate::codex_hook_bridge_direct::{direct_answer, CODEX};
 use crate::codex_hook_bridge_transport::authenticated_codex_hook_response;
 use crate::codex_hook_identity::current_process_identity;
 use crate::codex_hook_response::{
@@ -318,6 +319,20 @@ pub(crate) fn route_hook(
         RPC_TIMEOUT
     };
     let rpc_deadline = Instant::now() + remaining(deadline).min(cap);
+    if let Some(text) = guard_home(&config.state_path).and_then(|home| {
+        direct_answer(
+            CODEX,
+            &home,
+            &config.query,
+            &prepared.event_name,
+            &prepared.data,
+            rpc_deadline,
+        )
+    }) {
+        // A resident answer never touched the daemon, so its start-failure
+        // marker stays as it was.
+        return (route_response(&text, &prepared.event_name), Some(prepared));
+    }
     let Ok(text) = authenticated_codex_hook_response(
         Path::new(&config.state_path),
         &config.query,

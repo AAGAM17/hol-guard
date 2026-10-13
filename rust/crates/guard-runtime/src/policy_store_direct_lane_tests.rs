@@ -1,4 +1,6 @@
-use super::super::tests::{install_test_key, signed_snapshot, test_root};
+use super::super::tests::{
+    install_test_key, policy_with_default, signed_snapshot, signed_snapshot_with_policy, test_root,
+};
 use super::{now_ms, PolicySnapshotStore};
 use super::{
     observe_input, DirectLaneDefer, DIRECT_LANE_ACK_DIRECTORY, DIRECT_LANE_ACK_FILE_NAME,
@@ -25,10 +27,23 @@ impl Drop for Fixture {
 }
 
 pub(crate) fn fixture(label: &str) -> Fixture {
+    open_fixture(label, false)
+}
+
+/// Same fixture with an allow default, so a native allow is not raised to warn.
+pub(crate) fn allowing_fixture(label: &str) -> Fixture {
+    open_fixture(label, true)
+}
+
+fn open_fixture(label: &str, allow_default: bool) -> Fixture {
     let root = test_root(&format!("direct-lane-{label}"));
     let key = install_test_key(&root, 9);
     let store = PolicySnapshotStore::new(&root, &"a".repeat(64)).unwrap();
-    let snapshot = signed_snapshot(1, &key, &root);
+    let snapshot = if allow_default {
+        signed_snapshot_with_policy(1, &key, &root, policy_with_default("allow"))
+    } else {
+        signed_snapshot(1, &key, &root)
+    };
     let input = root.join("config.toml");
     fs::write(&input, b"mode = \"enforce\"\n").unwrap();
     Fixture {

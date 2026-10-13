@@ -4,10 +4,15 @@
 //! The daemon path derives the workspace, checks daemon state the snapshot
 //! does not carry, builds the edge envelope and, for an allow, returns the
 //! edge's harness response verbatim. This operation repeats that path for the
-//! one shape where the daemon adds nothing: a Codex `PreToolUse` allow outside
-//! Watch, in a workspace the current snapshot settled, while the publisher's
-//! ACK still holds. Every other request, and every verdict other than allow,
-//! defers so the caller takes the daemon path, which is unchanged.
+//! shapes where the daemon adds nothing, in a workspace the current snapshot
+//! settled, while the publisher's ACK still holds: a Codex or Claude Code
+//! `PreToolUse` allow outside Watch, and any reviewed `PostToolUse` of those
+//! harnesses, whose response the daemon never changes. Every other request,
+//! and every other `PreToolUse` verdict, defers so the caller takes the daemon
+//! path, which is unchanged.
+//!
+//! The daemon also records evidence after it answers. An answer is returned
+//! only once that evidence is queued for the daemon to drain.
 
 use crate::policy_store::policy_store_direct_lane::DirectLaneDefer;
 use crate::policy_store::PolicySnapshotStore;
@@ -18,10 +23,15 @@ use guard_contracts::{
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(all(test, unix))]
+use workspace::{expanduser, normalized_workspace, normpath};
+use workspace::{python_strip, settled_directory, workspace_candidate};
 
 pub(crate) const HOOK_DIRECT_FEATURE: &str = "hook-direct-v1";
 const HOOK_DIRECT_RESULT_SCHEMA: &str = "guard-hook-direct-result.v1";
-const DIRECT_HARNESS: &str = "codex";
+/// The harnesses whose allow the daemon returns as the edge rendered it.
+const DIRECT_HARNESSES: [&str; 2] = ["codex", "claude-code"];
 const TRANSITION_PROBE_FIELD: &str = "guard_transition_probe";
 const EXECUTION_ENVIRONMENT_FIELD: &str = "guard_execution_environment";
 const PAYLOAD_REFERENCE_FIELDS: [&str; 2] = ["guard_payload_ref", "guard_source_ref"];
@@ -33,6 +43,8 @@ const EVENT_NAME_FIELDS: [&str; 6] = [
     "hook_name",
     "hookName",
 ];
+const PRE_TOOL_USE: &str = "PreToolUse";
+const POST_TOOL_USE: &str = "PostToolUse";
 const PRE_TOOL_EVENT_NAMES: [&str; 7] = [
     "pretool",
     "pretooluse",
@@ -41,6 +53,15 @@ const PRE_TOOL_EVENT_NAMES: [&str; 7] = [
     "beforereadfile",
     "beforewritefile",
     "beforemcpexecution",
+];
+const POST_TOOL_EVENT_NAMES: [&str; 7] = [
+    "posttool",
+    "posttooluse",
+    "posttoolcall",
+    "aftershellexecution",
+    "afterreadfile",
+    "afterwritefile",
+    "aftermcpexecution",
 ];
 /// The daemon's budget when the caller sends none, and its upper bound.
 const DEFAULT_DEADLINE_BUDGET_MS: u64 = 750;
@@ -51,7 +72,9 @@ const MAX_DEADLINE_BUDGET_MS: u64 = 9_000;
 pub(crate) struct HookDirectRequestV1 {
     pub(crate) harness: String,
     pub(crate) guard_home: String,
-    pub(crate) home_dir: String,
+    /// The `home` query parameter; without one the daemon uses its own.
+    #[serde(default)]
+    pub(crate) home_dir: Option<String>,
     /// The `workspace` query parameter the daemon path would receive.
     #[serde(default)]
     pub(crate) workspace: Option<String>,
@@ -75,8 +98,11 @@ enum HookDirectDefer {
     LocalCliRules,
     RecordingOnly,
     ExecutionEnvironmentInvalid,
+    EvidenceUndrained,
+    EvidenceFull,
     EdgeFailed,
     NotAllow,
+    RuntimeSuperseded,
 }
 
 impl HookDirectDefer {
@@ -95,8 +121,11 @@ impl HookDirectDefer {
             Self::LocalCliRules => "direct_hook_local_cli_rules",
             Self::RecordingOnly => "direct_hook_recording_only",
             Self::ExecutionEnvironmentInvalid => "direct_hook_execution_environment_invalid",
+            Self::EvidenceUndrained => "direct_hook_evidence_undrained",
+            Self::EvidenceFull => "direct_hook_evidence_full",
             Self::EdgeFailed => "direct_hook_edge_failed",
             Self::NotAllow => "direct_hook_not_allow",
+            Self::RuntimeSuperseded => "direct_hook_runtime_superseded",
         }
     }
 }
@@ -120,19 +149,38 @@ pub(crate) fn evaluate(
     serde_json::to_vec(&body).map_err(|_| "direct_hook_result_encoding_failed".to_owned())
 }
 
+/// Whether this resident still runs the executable on disk. Bridges reach a
+/// resident by its executable path, so after an update replaces that file a
+/// resident still running the old image must leave hooks to the daemon. Once
+/// superseded it stays so, without hashing the new file on every hook.
+fn runtime_current() -> bool {
+    static SUPERSEDED: AtomicBool = AtomicBool::new(false);
+    if SUPERSEDED.load(Ordering::Relaxed) {
+        return false;
+    }
+    let current = crate::resident_state::runtime_digest()
+        .is_ok_and(|digest| !crate::resident_state::runtime_superseded(&digest));
+    if !current {
+        SUPERSEDED.store(true, Ordering::Relaxed);
+    }
+    current
+}
+
 fn answer(
     request: HookDirectRequestV1,
     policy_store: &PolicySnapshotStore,
 ) -> Result<Value, HookDirectDefer> {
-    if request.harness != DIRECT_HARNESS {
+    if !DIRECT_HARNESSES.contains(&request.harness.as_str()) {
         return Err(HookDirectDefer::HarnessUnsupported);
+    }
+    if !runtime_current() {
+        return Err(HookDirectDefer::RuntimeSuperseded);
     }
     let Value::Object(mut payload) = request.payload else {
         return Err(HookDirectDefer::PayloadUnsupported);
     };
-    if !is_pre_tool_event(&payload)? {
-        return Err(HookDirectDefer::EventUnsupported);
-    }
+    let event = direct_event(&payload)?.ok_or(HookDirectDefer::EventUnsupported)?;
+    let pre_tool = event == PRE_TOOL_USE;
     if payload.contains_key(TRANSITION_PROBE_FIELD) {
         // A probe carries a request identity only the daemon assigns.
         return Err(HookDirectDefer::TransitionProbe);
@@ -144,6 +192,12 @@ fn answer(
         return Err(HookDirectDefer::PayloadUnsupported);
     }
     payload.remove("hook_env");
+    // The daemon records the payload without `hook_env`, and with the
+    // execution environment present even when the caller sent none.
+    let mut evidence_payload = payload.clone();
+    evidence_payload
+        .entry(EXECUTION_ENVIRONMENT_FIELD)
+        .or_insert(Value::Null);
     let execution_environment = match payload.remove(EXECUTION_ENVIRONMENT_FIELD) {
         None | Some(Value::Null) => None,
         Some(value @ Value::Object(_)) => Some(
@@ -153,7 +207,13 @@ fn answer(
         Some(_) => return Err(HookDirectDefer::ExecutionEnvironmentInvalid),
     };
 
-    let candidate = workspace_candidate(&payload, request.workspace.as_deref(), &request.home_dir)?
+    let request_home = match request.home_dir {
+        Some(home_dir) => home_dir,
+        None => policy_store
+            .direct_lane_home_dir()
+            .ok_or(HookDirectDefer::BindingIncomplete)?,
+    };
+    let candidate = workspace_candidate(&payload, request.workspace.as_deref(), &request_home)?
         .ok_or(HookDirectDefer::WorkspaceMissing)?;
     let workspace = settled_directory(&candidate)?;
     let (snapshot, binding) = policy_store
@@ -164,14 +224,15 @@ fn answer(
         .home_dir
         .as_deref()
         .ok_or(HookDirectDefer::BindingIncomplete)?;
-    if home_dir != request.home_dir {
+    if home_dir != request_home {
         return Err(HookDirectDefer::HomeMismatch);
     }
     match binding.local_cli_block_rules {
         None => return Err(HookDirectDefer::BindingIncomplete),
-        // The daemon checks these rules before the edge; only it applies them.
-        Some(true) => return Err(HookDirectDefer::LocalCliRules),
-        Some(false) => {}
+        // The daemon checks these rules before a `PreToolUse` edge; only it
+        // applies them.
+        Some(true) if pre_tool => return Err(HookDirectDefer::LocalCliRules),
+        Some(_) => {}
     }
     // The binding is only as fresh as its last publish, while the daemon reads
     // the rules and the managed installs from the store before every hook.
@@ -179,14 +240,14 @@ fn answer(
     // too. An unreadable store counts as holding rules, as a failed daemon
     // probe does.
     let store =
-        crate::local_store_read::hook_store_probe(Path::new(&request.guard_home), DIRECT_HARNESS)
+        crate::local_store_read::hook_store_probe(Path::new(&request.guard_home), &request.harness)
             .map_err(|_| HookDirectDefer::LocalCliRules)?;
     if store.harness_unmanaged {
         // The daemon passes such a hook through and leaves the harness its
         // own permission flow; an allow answer would replace that flow.
         return Err(HookDirectDefer::HarnessUnmanaged);
     }
-    if store.local_cli_block_rules {
+    if pre_tool && store.local_cli_block_rules {
         return Err(HookDirectDefer::LocalCliRules);
     }
     let postures = binding
@@ -194,20 +255,24 @@ fn answer(
         .as_ref()
         .ok_or(HookDirectDefer::BindingIncomplete)?;
     // A per-harness override wins over the snapshot mode in both directions.
-    let recording_only = match postures.get(DIRECT_HARNESS) {
+    let recording_only = match postures.get(&request.harness) {
         Some(posture) => posture == "watch",
         None => snapshot.mode == "observe",
     };
-    if recording_only {
-        // Watch needs the daemon's would-have-stopped evidence.
+    if recording_only && pre_tool {
+        // Watch needs the daemon's would-have-stopped evidence. A
+        // `PostToolUse` records the same activity in either posture.
         return Err(HookDirectDefer::RecordingOnly);
+    }
+    if binding.evidence_drain != Some(true) {
+        return Err(HookDirectDefer::EvidenceUndrained);
     }
 
     let envelope = GuardHookEnvelopeV2 {
         schema: GUARD_HOOK_ENVELOPE_V2_SCHEMA.to_owned(),
         request_id: None,
-        harness: DIRECT_HARNESS.to_owned(),
-        event: "PreToolUse".to_owned(),
+        harness: request.harness.clone(),
+        event: event.to_owned(),
         raw_payload: Value::Object(payload),
         deadline_budget_ms: Some(
             request
@@ -222,28 +287,53 @@ fn answer(
             "runtime_identity": snapshot.runtime_identity,
         }),
         source: GuardHookSourceMetadataV2 {
-            cwd: Some(workspace),
-            home_dir: request.home_dir,
+            cwd: Some(workspace.clone()),
+            home_dir: request_home.clone(),
             guard_home: request.guard_home,
             source_ref_external_allowed: false,
             execution_environment,
         },
-        recording_only: false,
+        recording_only,
     };
     let edge = crate::edge::evaluate_envelope_with_store(envelope, policy_store)
         .map_err(|_| HookDirectDefer::EdgeFailed)?;
-    allow_answer(&edge)
+    let answered = if pre_tool {
+        allow_answer(&edge)?
+    } else {
+        post_tool_answer(&edge)?
+    };
+    let evidence = json!({
+        "event": event,
+        "harness": request.harness,
+        "workspace": workspace,
+        "home_dir": request_home,
+        "payload": Value::Object(evidence_payload),
+        "receipt": answered.get("receipt").cloned().unwrap_or(Value::Null),
+        "harness_response": answered["harness_response"].clone(),
+    });
+    if !policy_store.direct_evidence().offer(evidence) {
+        return Err(HookDirectDefer::EvidenceFull);
+    }
+    Ok(answered)
 }
 
-/// The edge result to return as is, when it is an allow the daemon would
-/// pass through unchanged.
-fn allow_answer(edge: &[u8]) -> Result<Value, HookDirectDefer> {
+/// The edge result for `event`, when it carries the result and harness
+/// response the daemon reads.
+fn reviewed_edge(edge: &[u8], event: &str) -> Result<Value, HookDirectDefer> {
     let parsed: Value = serde_json::from_slice(edge).map_err(|_| HookDirectDefer::EdgeFailed)?;
-    if parsed.get("event_name").and_then(Value::as_str) != Some("PreToolUse")
+    if parsed.get("event_name").and_then(Value::as_str) != Some(event)
+        || !parsed.get("result").is_some_and(Value::is_object)
         || !parsed.get("harness_response").is_some_and(Value::is_object)
     {
         return Err(HookDirectDefer::EdgeFailed);
     }
+    Ok(parsed)
+}
+
+/// The edge result to return as is, when it is an allow the daemon would
+/// pass through unchanged. A warn floor is not that allow.
+fn allow_answer(edge: &[u8]) -> Result<Value, HookDirectDefer> {
+    let parsed = reviewed_edge(edge, PRE_TOOL_USE)?;
     let result = parsed.get("result");
     let field = |name: &str| {
         result
@@ -256,9 +346,16 @@ fn allow_answer(edge: &[u8]) -> Result<Value, HookDirectDefer> {
     Ok(parsed)
 }
 
+/// The edge result to return as is: the daemon passes every reviewed
+/// `PostToolUse` of these harnesses through unchanged.
+fn post_tool_answer(edge: &[u8]) -> Result<Value, HookDirectDefer> {
+    reviewed_edge(edge, POST_TOOL_USE)
+}
+
 /// The daemon's event name rule: the first non-blank name field decides, and
-/// a payload without one is a `PreToolUse`.
-fn is_pre_tool_event(payload: &Map<String, Value>) -> Result<bool, HookDirectDefer> {
+/// a payload without one is a `PreToolUse`. Only the two tool events can be
+/// answered here.
+fn direct_event(payload: &Map<String, Value>) -> Result<Option<&'static str>, HookDirectDefer> {
     for field in EVENT_NAME_FIELDS {
         let Some(value) = payload.get(field).and_then(Value::as_str) else {
             continue;
@@ -271,181 +368,22 @@ fn is_pre_tool_event(payload: &Map<String, Value>) -> Result<bool, HookDirectDef
             .filter(|character| !matches!(character, '_' | '-'))
             .collect();
         if !compact.is_ascii() {
-            return Ok(false);
+            return Ok(None);
         }
-        return Ok(PRE_TOOL_EVENT_NAMES.contains(&compact.to_ascii_lowercase().as_str()));
+        let compact = compact.to_ascii_lowercase();
+        return Ok(if PRE_TOOL_EVENT_NAMES.contains(&compact.as_str()) {
+            Some(PRE_TOOL_USE)
+        } else if POST_TOOL_EVENT_NAMES.contains(&compact.as_str()) {
+            Some(POST_TOOL_USE)
+        } else {
+            None
+        });
     }
-    Ok(true)
+    Ok(Some(PRE_TOOL_USE))
 }
 
-/// The daemon's workspace choice: an `exec_command` workdir, then the payload
-/// `cwd`, then the `workspace` query parameter. Where the daemon would skip a
-/// temporary root and fall through, this defers instead.
-fn workspace_candidate(
-    payload: &Map<String, Value>,
-    workspace_query: Option<&str>,
-    home_dir: &str,
-) -> Result<Option<String>, HookDirectDefer> {
-    if let Some(workdir) = exec_command_workdir(payload, home_dir)? {
-        return Ok(Some(workdir));
-    }
-    if let Some(cwd) = normalized_workspace(payload.get("cwd").and_then(Value::as_str), home_dir)? {
-        return Ok(Some(cwd));
-    }
-    normalized_workspace(workspace_query, home_dir)
-}
-
-fn exec_command_workdir(
-    payload: &Map<String, Value>,
-    home_dir: &str,
-) -> Result<Option<String>, HookDirectDefer> {
-    let Some(tool_name) = payload.get("tool_name").and_then(Value::as_str) else {
-        return Ok(None);
-    };
-    if !python_strip(tool_name)?.is_some_and(|name| name.eq_ignore_ascii_case("exec_command")) {
-        return Ok(None);
-    }
-    let Some(workdir) = payload
-        .get("tool_input")
-        .and_then(Value::as_object)
-        .and_then(|tool_input| tool_input.get("workdir"))
-    else {
-        return Ok(None);
-    };
-    // A workdir that is present but unusable rejects the daemon's workspace.
-    let workdir = workdir.as_str().ok_or(HookDirectDefer::WorkspaceInvalid)?;
-    let stripped = python_strip(workdir)?.ok_or(HookDirectDefer::WorkspaceInvalid)?;
-    if is_null_sentinel(stripped) {
-        return Err(HookDirectDefer::WorkspaceInvalid);
-    }
-    let candidate = normpath(&expanduser(stripped, home_dir)?)?;
-    if is_temporary_root(&candidate) {
-        return Err(HookDirectDefer::WorkspaceInvalid);
-    }
-    Ok(Some(candidate))
-}
-
-fn normalized_workspace(
-    value: Option<&str>,
-    home_dir: &str,
-) -> Result<Option<String>, HookDirectDefer> {
-    let Some(value) = value else {
-        return Ok(None);
-    };
-    let Some(stripped) = python_strip(value)? else {
-        return Ok(None);
-    };
-    if is_null_sentinel(stripped) {
-        return Ok(None);
-    }
-    let mut candidate = expanduser(stripped, home_dir)?;
-    // Callers still send `<dir>/None` as the "no workspace" sentinel. This is
-    // `os.path.dirname`, which keeps a head made only of slashes.
-    if candidate == "None" {
-        return Ok(None);
-    }
-    if let Some(head) = candidate
-        .strip_suffix("None")
-        .filter(|head| head.ends_with('/'))
-    {
-        let trimmed = head.trim_end_matches('/');
-        candidate = if trimmed.is_empty() { head } else { trimmed }.to_owned();
-    }
-    let candidate = normpath(&candidate)?;
-    if is_temporary_root(&candidate) {
-        return Err(HookDirectDefer::WorkspaceInvalid);
-    }
-    Ok(Some(candidate))
-}
-
-/// Python's `str.strip()`, or a defer for the separators it strips and Rust
-/// does not. `None` when nothing is left.
-fn python_strip(value: &str) -> Result<Option<&str>, HookDirectDefer> {
-    if value
-        .chars()
-        .any(|character| ('\u{1c}'..='\u{1f}').contains(&character))
-    {
-        return Err(HookDirectDefer::WorkspaceInvalid);
-    }
-    let stripped = value.trim();
-    Ok((!stripped.is_empty()).then_some(stripped))
-}
-
-fn is_null_sentinel(value: &str) -> bool {
-    value.eq_ignore_ascii_case("none") || value.eq_ignore_ascii_case("null")
-}
-
-/// `os.path.expanduser` for the daemon's own home; another user's home defers.
-fn expanduser(value: &str, home_dir: &str) -> Result<String, HookDirectDefer> {
-    if value == "~" {
-        return Ok(home_dir.to_owned());
-    }
-    if let Some(rest) = value.strip_prefix("~/") {
-        return Ok(format!("{}/{rest}", home_dir.trim_end_matches('/')));
-    }
-    if value.starts_with('~') {
-        return Err(HookDirectDefer::WorkspaceInvalid);
-    }
-    Ok(value.to_owned())
-}
-
-/// Lexical `os.path.normpath` for absolute POSIX paths. Relative paths and the
-/// implementation-defined `//` prefix defer.
-fn normpath(value: &str) -> Result<String, HookDirectDefer> {
-    if !value.starts_with('/') || (value.starts_with("//") && !value.starts_with("///")) {
-        return Err(HookDirectDefer::WorkspaceInvalid);
-    }
-    let mut parts: Vec<&str> = Vec::new();
-    for part in value.split('/') {
-        match part {
-            "" | "." => {}
-            ".." => {
-                parts.pop();
-            }
-            part => parts.push(part),
-        }
-    }
-    Ok(format!("/{}", parts.join("/")))
-}
-
-/// Whether `candidate` resolves to a temporary directory root the daemon
-/// refuses as a workspace. This covers at least the daemon's roots.
-fn is_temporary_root(candidate: &str) -> bool {
-    let Ok(resolved) = std::fs::canonicalize(candidate) else {
-        return false;
-    };
-    let mut roots = vec![std::env::temp_dir()];
-    roots.extend(
-        ["/tmp", "/var/tmp", "/private/tmp", "/private/var/tmp"]
-            .iter()
-            .map(std::path::PathBuf::from),
-    );
-    if roots
-        .iter()
-        .filter_map(|root| std::fs::canonicalize(root).ok())
-        .any(|root| root == resolved)
-    {
-        return true;
-    }
-    // The per-user Darwin root, `/private/var/folders/<xx>/<id>/T`.
-    let components: Vec<_> = resolved.components().collect();
-    components.len() == 7
-        && resolved.starts_with("/private/var/folders")
-        && resolved.file_name().is_some_and(|name| name == "T")
-}
-
-/// The realpath the daemon validates, which is what the publisher settled.
-fn settled_directory(candidate: &str) -> Result<String, HookDirectDefer> {
-    let resolved = std::fs::canonicalize(Path::new(candidate))
-        .map_err(|_| HookDirectDefer::WorkspaceInvalid)?;
-    if !resolved.is_dir() {
-        return Err(HookDirectDefer::WorkspaceInvalid);
-    }
-    resolved
-        .into_os_string()
-        .into_string()
-        .map_err(|_| HookDirectDefer::WorkspaceInvalid)
-}
+#[path = "hook_direct_workspace.rs"]
+mod workspace;
 
 #[cfg(all(test, unix))]
 #[path = "hook_direct_tests.rs"]

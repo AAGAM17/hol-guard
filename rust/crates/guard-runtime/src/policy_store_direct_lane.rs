@@ -35,6 +35,7 @@ pub(crate) struct DirectLaneBinding {
     pub(crate) home_dir: Option<String>,
     pub(crate) harness_postures: Option<BTreeMap<String, String>>,
     pub(crate) local_cli_block_rules: Option<bool>,
+    pub(crate) evidence_drain: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,6 +92,7 @@ impl PolicySnapshotStore {
                 home_dir: binding.home_dir,
                 harness_postures: binding.harness_postures,
                 local_cli_block_rules: binding.local_cli_block_rules,
+                evidence_drain: binding.evidence_drain,
             })
         });
         match self.direct_lane.lock() {
@@ -110,6 +112,15 @@ impl PolicySnapshotStore {
     ) -> Result<Arc<AdmittedPolicySnapshot>, DirectLaneDefer> {
         self.admit_direct_hook(workspace)
             .map(|(snapshot, _binding)| snapshot)
+    }
+
+    /// The home the bound daemon gives a hook that names none.
+    pub(crate) fn direct_lane_home_dir(&self) -> Option<String> {
+        self.direct_lane.lock().ok().and_then(|binding| {
+            binding
+                .as_ref()
+                .and_then(|binding| binding.home_dir.clone())
+        })
     }
 
     /// Admission that also returns the binding, whose daemon state the

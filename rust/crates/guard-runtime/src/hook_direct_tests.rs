@@ -1,9 +1,9 @@
 use super::{
-    allow_answer, evaluate, expanduser, is_pre_tool_event, normalized_workspace, normpath,
-    workspace_candidate, HookDirectDefer, HookDirectRequestV1,
+    allow_answer, direct_event, evaluate, expanduser, normalized_workspace, normpath,
+    post_tool_answer, workspace_candidate, HookDirectDefer, HookDirectRequestV1,
 };
 use crate::policy_store::policy_store_direct_lane::tests::{
-    binding, fixture, push, write_current_ack, Fixture,
+    allowing_fixture, binding, fixture, push, write_current_ack, Fixture,
 };
 use crate::policy_store::policy_store_direct_lane::DirectLaneDefer;
 use serde_json::{json, Map, Value};
@@ -17,7 +17,7 @@ fn object(value: Value) -> Map<String, Value> {
 
 #[test]
 fn event_name_follows_the_daemon_rule() {
-    assert_eq!(is_pre_tool_event(&object(json!({}))), Ok(true));
+    assert_eq!(direct_event(&object(json!({}))), Ok(Some("PreToolUse")));
     for name in [
         "PreToolUse",
         " pre_tool_use ",
@@ -25,29 +25,36 @@ fn event_name_follows_the_daemon_rule() {
         "beforeShellExecution",
     ] {
         assert_eq!(
-            is_pre_tool_event(&object(json!({ "hook_event_name": name }))),
-            Ok(true),
+            direct_event(&object(json!({ "hook_event_name": name }))),
+            Ok(Some("PreToolUse")),
+            "{name}"
+        );
+    }
+    for name in ["PostToolUse", "post_tool_call", " afterShellExecution "] {
+        assert_eq!(
+            direct_event(&object(json!({ "hook_event_name": name }))),
+            Ok(Some("PostToolUse")),
             "{name}"
         );
     }
     assert_eq!(
-        is_pre_tool_event(&object(json!({ "hook_event_name": "PostToolUse" }))),
-        Ok(false)
+        direct_event(&object(json!({ "hook_event_name": "PostToolUseFailure" }))),
+        Ok(None)
     );
     // A blank or non-string field is skipped; the next named field decides.
     assert_eq!(
-        is_pre_tool_event(&object(
+        direct_event(&object(
             json!({ "event": "  ", "eventName": 3, "hookName": "Stop" })
         )),
-        Ok(false)
+        Ok(None)
     );
     assert_eq!(
-        is_pre_tool_event(&object(json!({ "event": "pretool", "hookName": "Stop" }))),
-        Ok(true)
+        direct_event(&object(json!({ "event": "pretool", "hookName": "Stop" }))),
+        Ok(Some("PreToolUse"))
     );
     assert_eq!(
-        is_pre_tool_event(&object(json!({ "event": "prétool" }))),
-        Ok(false)
+        direct_event(&object(json!({ "event": "prétool" }))),
+        Ok(None)
     );
 }
 
@@ -165,10 +172,19 @@ fn only_an_unconditional_allow_is_answered() {
         allow_answer(&edge("allow", "warn")),
         Err(HookDirectDefer::NotAllow)
     );
-    assert_eq!(
-        allow_answer(&edge("block", "block")),
-        Err(HookDirectDefer::NotAllow)
-    );
+    for (decision, minimum_action) in [
+        ("block", "block"),
+        ("deny", "review"),
+        ("allow", "review"),
+        ("allow", "require-reapproval"),
+        ("deny", "warn"),
+    ] {
+        assert_eq!(
+            allow_answer(&edge(decision, minimum_action)),
+            Err(HookDirectDefer::NotAllow),
+            "{decision} {minimum_action}"
+        );
+    }
     let mut missing_response: Value = serde_json::from_slice(&edge("allow", "allow")).unwrap();
     missing_response
         .as_object_mut()
@@ -181,13 +197,56 @@ fn only_an_unconditional_allow_is_answered() {
     assert_eq!(allow_answer(b"not json"), Err(HookDirectDefer::EdgeFailed));
 }
 
+fn post_edge(result: Value) -> Vec<u8> {
+    serde_json::to_vec(&json!({
+        "schema": "guard-hook-edge-result.v2",
+        "event_name": "PostToolUse",
+        "result": result,
+        "harness_response": {},
+    }))
+    .unwrap()
+}
+
+#[test]
+fn every_reviewed_post_tool_use_is_answered() {
+    let blocked = json!({ "decision": "block", "minimum_action": "block" });
+    let answered = post_tool_answer(&post_edge(blocked.clone())).unwrap();
+    assert_eq!(answered["result"], blocked);
+    assert_eq!(
+        post_tool_answer(&post_edge(json!("allow"))),
+        Err(HookDirectDefer::EdgeFailed)
+    );
+    assert_eq!(
+        post_tool_answer(&edge("allow", "allow")),
+        Err(HookDirectDefer::EdgeFailed)
+    );
+    assert_eq!(
+        allow_answer(&post_edge(
+            json!({ "decision": "allow", "minimum_action": "allow" })
+        )),
+        Err(HookDirectDefer::EdgeFailed)
+    );
+}
+
 struct Lane {
     fixture: Fixture,
     workspace: String,
 }
 
 fn lane(label: &str, extra: Value) -> Lane {
-    let fixture = fixture(&format!("hook-direct-{label}"));
+    open_lane(label, extra, false)
+}
+
+fn allowing_lane(label: &str, extra: Value) -> Lane {
+    open_lane(label, extra, true)
+}
+
+fn open_lane(label: &str, extra: Value, allow_policy: bool) -> Lane {
+    let fixture = if allow_policy {
+        allowing_fixture(&format!("hook-direct-{label}"))
+    } else {
+        fixture(&format!("hook-direct-{label}"))
+    };
     let directory = fixture.root.join("repo");
     fs::create_dir_all(&directory).unwrap();
     let workspace = fs::canonicalize(&directory)
@@ -199,6 +258,7 @@ fn lane(label: &str, extra: Value) -> Lane {
     bound["home_dir"] = json!(HOME);
     bound["harness_postures"] = json!({});
     bound["local_cli_block_rules"] = json!(false);
+    bound["evidence_drain"] = json!(true);
     for (key, value) in extra.as_object().unwrap() {
         bound[key] = value.clone();
     }
@@ -208,10 +268,14 @@ fn lane(label: &str, extra: Value) -> Lane {
 }
 
 fn run(lane: &Lane, payload: Value) -> Value {
+    run_as(lane, "codex", Some(HOME), payload)
+}
+
+fn run_as(lane: &Lane, harness: &str, home_dir: Option<&str>, payload: Value) -> Value {
     let request = HookDirectRequestV1 {
-        harness: "codex".to_owned(),
+        harness: harness.to_owned(),
         guard_home: lane.fixture.root.to_str().unwrap().to_owned(),
-        home_dir: HOME.to_owned(),
+        home_dir: home_dir.map(str::to_owned),
         workspace: None,
         deadline_budget_ms: None,
         payload,
@@ -219,11 +283,12 @@ fn run(lane: &Lane, payload: Value) -> Value {
     serde_json::from_slice(&evaluate(request, &lane.fixture.store).unwrap()).unwrap()
 }
 
-fn read_payload(lane: &Lane) -> Value {
+/// A shell command the edge allows outright.
+fn allowed_payload(lane: &Lane) -> Value {
     json!({
         "hook_event_name": "PreToolUse",
-        "tool_name": "read_file",
-        "tool_input": { "path": "README.md" },
+        "tool_name": "Bash",
+        "tool_input": { "command": "pwd" },
         "cwd": lane.workspace,
     })
 }
@@ -237,31 +302,31 @@ fn deferred(result: &Value) -> &str {
 #[test]
 fn request_shapes_the_daemon_must_handle_defer() {
     let lane = lane("shapes", json!({}));
-    let mut probe = read_payload(&lane);
+    let mut probe = allowed_payload(&lane);
     probe["guard_transition_probe"] = json!({});
     assert_eq!(deferred(&run(&lane, probe)), "direct_hook_transition_probe");
-    let mut reference = read_payload(&lane);
+    let mut reference = allowed_payload(&lane);
     reference["guard_payload_ref"] = json!("ref");
     assert_eq!(
         deferred(&run(&lane, reference)),
         "direct_hook_payload_unsupported"
     );
-    let mut post = read_payload(&lane);
-    post["hook_event_name"] = json!("PostToolUse");
-    assert_eq!(deferred(&run(&lane, post)), "direct_hook_event_unsupported");
-    let mut environment = read_payload(&lane);
+    let mut stop = allowed_payload(&lane);
+    stop["hook_event_name"] = json!("Stop");
+    assert_eq!(deferred(&run(&lane, stop)), "direct_hook_event_unsupported");
+    let mut environment = allowed_payload(&lane);
     environment["guard_execution_environment"] = json!("PATH=/bin");
     assert_eq!(
         deferred(&run(&lane, environment)),
         "direct_hook_execution_environment_invalid"
     );
-    let mut homeless = read_payload(&lane);
+    let mut homeless = allowed_payload(&lane);
     homeless.as_object_mut().unwrap().remove("cwd");
     assert_eq!(
         deferred(&run(&lane, homeless)),
         "direct_hook_workspace_missing"
     );
-    let mut elsewhere = read_payload(&lane);
+    let mut elsewhere = allowed_payload(&lane);
     elsewhere["cwd"] = json!(lane.fixture.root.to_str().unwrap());
     assert_eq!(
         deferred(&run(&lane, elsewhere)),
@@ -277,18 +342,18 @@ fn request_shapes_the_daemon_must_handle_defer() {
 fn other_harnesses_and_homes_defer() {
     let lane = lane("harness", json!({}));
     let mut request = HookDirectRequestV1 {
-        harness: "claude-code".to_owned(),
+        harness: "cursor".to_owned(),
         guard_home: lane.fixture.root.to_str().unwrap().to_owned(),
-        home_dir: HOME.to_owned(),
+        home_dir: Some(HOME.to_owned()),
         workspace: None,
         deadline_budget_ms: None,
-        payload: read_payload(&lane),
+        payload: allowed_payload(&lane),
     };
     let result: Value =
         serde_json::from_slice(&evaluate(request.clone(), &lane.fixture.store).unwrap()).unwrap();
     assert_eq!(deferred(&result), "direct_hook_harness_unsupported");
     request.harness = "codex".to_owned();
-    request.home_dir = "/home/other".to_owned();
+    request.home_dir = Some("/home/other".to_owned());
     let result: Value =
         serde_json::from_slice(&evaluate(request, &lane.fixture.store).unwrap()).unwrap();
     assert_eq!(deferred(&result), "direct_hook_home_mismatch");
@@ -298,12 +363,12 @@ fn other_harnesses_and_homes_defer() {
 fn daemon_only_state_in_the_binding_defers() {
     let rules = lane("rules", json!({ "local_cli_block_rules": true }));
     assert_eq!(
-        deferred(&run(&rules, read_payload(&rules))),
+        deferred(&run(&rules, allowed_payload(&rules))),
         "direct_hook_local_cli_rules"
     );
     let watch = lane("watch", json!({ "harness_postures": { "codex": "watch" } }));
     assert_eq!(
-        deferred(&run(&watch, read_payload(&watch))),
+        deferred(&run(&watch, allowed_payload(&watch))),
         "direct_hook_recording_only"
     );
     for (label, missing) in [
@@ -316,10 +381,11 @@ fn daemon_only_state_in_the_binding_defers() {
         bound["home_dir"] = json!(HOME);
         bound["harness_postures"] = json!({});
         bound["local_cli_block_rules"] = json!(false);
+        bound["evidence_drain"] = json!(true);
         bound.as_object_mut().unwrap().remove(missing);
         push(&lane.fixture, Some(bound)).unwrap();
         assert_eq!(
-            deferred(&run(&lane, read_payload(&lane))),
+            deferred(&run(&lane, allowed_payload(&lane))),
             "direct_hook_binding_incomplete",
             "{missing}"
         );
@@ -341,9 +407,11 @@ fn a_block_rule_saved_after_the_publish_defers() {
              insert into local_cli_command_grant values ('cli', 'run', 'allow');",
         )
         .unwrap();
-    assert_ne!(
-        deferred(&run(&lane, read_payload(&lane))),
-        "direct_hook_local_cli_rules"
+    // The fixture policy warns on commands, so an allow-only grant stays with
+    // the daemon. A block rule is still read before that edge decision.
+    assert_eq!(
+        deferred(&run(&lane, allowed_payload(&lane))),
+        "direct_hook_not_allow"
     );
     for statement in [
         "update local_cli_command_grant set state = 'block'",
@@ -352,7 +420,7 @@ fn a_block_rule_saved_after_the_publish_defers() {
     ] {
         connection.execute_batch(statement).unwrap();
         assert_eq!(
-            deferred(&run(&lane, read_payload(&lane))),
+            deferred(&run(&lane, allowed_payload(&lane))),
             "direct_hook_local_cli_rules",
             "{statement}"
         );
@@ -361,7 +429,7 @@ fn a_block_rule_saved_after_the_publish_defers() {
     // A store the resident cannot read counts as holding rules.
     fs::write(&store, b"not a database").unwrap();
     assert_eq!(
-        deferred(&run(&lane, read_payload(&lane))),
+        deferred(&run(&lane, allowed_payload(&lane))),
         "direct_hook_local_cli_rules"
     );
 }
@@ -380,7 +448,7 @@ fn a_hook_for_an_app_guard_does_not_protect_defers() {
         .unwrap();
     let unmanaged = "direct_hook_harness_unmanaged";
     // No install recorded anywhere: the daemon reviews the hook.
-    assert_ne!(run(&lane, read_payload(&lane))["reason"], unmanaged);
+    assert_ne!(run(&lane, allowed_payload(&lane))["reason"], unmanaged);
     for (statement, expected_unmanaged) in [
         // Only another app is protected, so Codex hooks are leftovers.
         (
@@ -402,7 +470,7 @@ fn a_hook_for_an_app_guard_does_not_protect_defers() {
         ),
     ] {
         connection.execute_batch(statement).unwrap();
-        let result = run(&lane, read_payload(&lane));
+        let result = run(&lane, allowed_payload(&lane));
         assert_eq!(
             result["reason"] == unmanaged,
             expected_unmanaged,
@@ -423,4 +491,186 @@ fn an_edge_verdict_other_than_allow_takes_the_daemon_path() {
         "cwd": lane.workspace,
     });
     assert_eq!(deferred(&run(&lane, payload)), "direct_hook_not_allow");
+}
+
+/// The next evidence page, after acknowledging `acked`, a page drained before.
+fn drain(lane: &Lane, acked: Option<&Value>) -> Value {
+    let request = crate::hook_direct_evidence::HookDirectEvidenceDrainRequestV1 {
+        guard_home: lane.fixture.root.to_str().unwrap().to_owned(),
+        max_records: None,
+        ack_through: acked.and_then(|page| page["through"].as_u64()),
+        ack_epoch: acked.and_then(|page| page["epoch"].as_str().map(str::to_owned)),
+    };
+    let page =
+        crate::hook_direct_evidence::drain(&request, lane.fixture.store.direct_evidence()).unwrap();
+    serde_json::from_slice(&page).unwrap()
+}
+
+#[test]
+fn a_daemon_that_does_not_drain_evidence_keeps_the_lane_closed() {
+    let lane = lane("undrained", json!({ "evidence_drain": false }));
+    assert_eq!(
+        deferred(&run(&lane, allowed_payload(&lane))),
+        "direct_hook_evidence_undrained"
+    );
+    assert_eq!(drain(&lane, None)["records"], json!([]));
+}
+
+#[test]
+fn an_answer_queues_the_evidence_the_daemon_records() {
+    let lane = allowing_lane("evidence", json!({}));
+    let mut payload = json!({
+        "hook_event_name": "PreToolUse",
+        "toolName": "read_file",
+        "toolInput": { "file_path": "README.md" },
+        "cwd": lane.workspace,
+    });
+    payload["hook_env"] = json!({ "HOME": HOME });
+    let result = run(&lane, payload);
+    assert_eq!(result["outcome"], "answer", "{result}");
+    let edge = &result["edge"];
+    let page = drain(&lane, None);
+    let records = page["records"].as_array().unwrap();
+    assert_eq!(records.len(), 1);
+    let record = &records[0];
+    assert_eq!(record["event"], "PreToolUse");
+    assert_eq!(record["harness"], "codex");
+    assert_eq!(record["workspace"], json!(lane.workspace));
+    assert_eq!(record["home_dir"], HOME);
+    assert_eq!(record["harness_response"], edge["harness_response"]);
+    assert_eq!(
+        record["receipt"],
+        edge.get("receipt").cloned().unwrap_or(Value::Null)
+    );
+    let mut expected = json!({
+        "hook_event_name": "PreToolUse",
+        "toolName": "read_file",
+        "toolInput": { "file_path": "README.md" },
+        "cwd": lane.workspace,
+    });
+    expected["guard_execution_environment"] = Value::Null;
+    assert_eq!(record["payload"], expected);
+    let again = drain(&lane, None);
+    assert_eq!(again["records"], page["records"]);
+    assert_eq!(drain(&lane, Some(&page))["records"], json!([]));
+}
+
+#[test]
+fn a_deferred_hook_queues_no_evidence() {
+    let lane = lane("deferred-evidence", json!({}));
+    let mut stop = allowed_payload(&lane);
+    stop["hook_event_name"] = json!("Stop");
+    deferred(&run(&lane, stop));
+    assert_eq!(drain(&lane, None)["records"], json!([]));
+}
+
+#[test]
+fn a_claude_code_hook_answers_with_the_daemon_home_it_left_out() {
+    let answered = allowing_lane("claude-code", json!({}));
+    let mut payload = json!({
+        "hook_event_name": "PreToolUse",
+        "toolName": "read_file",
+        "toolInput": { "file_path": "README.md" },
+        "cwd": answered.workspace,
+    });
+    payload["hook_env"] = json!({ "HOME": HOME });
+    let result = run_as(&answered, "claude-code", None, payload);
+    assert_eq!(result["outcome"], "answer", "{result}");
+    let page = drain(&answered, None);
+    let record = &page["records"][0];
+    assert_eq!(record["harness"], "claude-code");
+    assert_eq!(record["home_dir"], HOME);
+    assert_eq!(
+        deferred(&run_as(
+            &answered,
+            "claude-code",
+            Some("/home/other"),
+            allowed_payload(&answered)
+        )),
+        "direct_hook_home_mismatch"
+    );
+
+    // The posture of the harness that sent the hook decides.
+    let watch = allowing_lane(
+        "claude-code-watch",
+        json!({ "harness_postures": { "claude-code": "watch" } }),
+    );
+    assert_eq!(
+        deferred(&run_as(
+            &watch,
+            "claude-code",
+            None,
+            allowed_payload(&watch)
+        )),
+        "direct_hook_recording_only"
+    );
+    let codex_read = json!({
+        "hook_event_name": "PreToolUse",
+        "toolName": "read_file",
+        "toolInput": { "file_path": "README.md" },
+        "cwd": watch.workspace,
+    });
+    assert_eq!(run(&watch, codex_read)["outcome"], "answer");
+
+    // Without a bound home there is none to stand in for the daemon's.
+    let homeless = lane("claude-code-homeless", json!({}));
+    let mut bound = binding(&homeless.fixture, &homeless.workspace);
+    bound["harness_postures"] = json!({});
+    bound["local_cli_block_rules"] = json!(false);
+    bound["evidence_drain"] = json!(true);
+    push(&homeless.fixture, Some(bound)).unwrap();
+    assert_eq!(
+        deferred(&run_as(
+            &homeless,
+            "claude-code",
+            None,
+            allowed_payload(&homeless)
+        )),
+        "direct_hook_binding_incomplete"
+    );
+}
+
+/// A shell command that already ran.
+fn post_tool_payload(lane: &Lane) -> Value {
+    json!({
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Bash",
+        "tool_input": { "command": "pwd" },
+        "tool_response": { "stdout": "/repo", "exit_code": 0 },
+        "cwd": lane.workspace,
+    })
+}
+
+#[test]
+fn a_post_tool_use_is_answered_where_the_daemon_only_records_it() {
+    // Watch and local block rules change only how the daemon answers a
+    // `PreToolUse`; it returns every reviewed `PostToolUse` unchanged.
+    for (label, extra) in [
+        ("post", json!({})),
+        (
+            "post-watch",
+            json!({ "harness_postures": { "codex": "watch" } }),
+        ),
+        ("post-rules", json!({ "local_cli_block_rules": true })),
+    ] {
+        let lane = lane(label, extra);
+        let result = run(&lane, post_tool_payload(&lane));
+        assert_eq!(result["outcome"], "answer", "{label}: {result}");
+        assert_eq!(result["edge"]["event_name"], "PostToolUse", "{label}");
+        let page = drain(&lane, None);
+        let records = page["records"].as_array().unwrap();
+        assert_eq!(records.len(), 1, "{label}");
+        assert_eq!(records[0]["event"], "PostToolUse", "{label}");
+        assert_eq!(
+            records[0]["harness_response"], result["edge"]["harness_response"],
+            "{label}"
+        );
+    }
+    let watch = lane(
+        "post-claude-watch",
+        json!({ "harness_postures": { "claude-code": "watch" } }),
+    );
+    let result = run_as(&watch, "claude-code", None, post_tool_payload(&watch));
+    assert_eq!(result["outcome"], "answer", "{result}");
+    assert_eq!(drain(&watch, None)["records"][0]["harness"], "claude-code");
 }

@@ -121,6 +121,8 @@ mod codex_hook_artifacts;
 #[cfg(unix)]
 mod codex_hook_bridge;
 #[cfg(unix)]
+mod codex_hook_bridge_direct;
+#[cfg(unix)]
 mod codex_hook_bridge_transport;
 #[cfg(unix)]
 mod codex_hook_identity;
@@ -345,6 +347,7 @@ mod hook_decision_native_facts_tests;
 mod hook_decision_op;
 mod hook_decision_settle;
 mod hook_direct;
+mod hook_direct_evidence;
 #[cfg(unix)]
 mod hook_env_stamp;
 mod hook_policy_config;

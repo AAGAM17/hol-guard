@@ -4,12 +4,14 @@ import json
 import os
 import stat
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from codex_plugin_scanner.guard import native_policy_snapshot_direct_lane as direct_lane
 from codex_plugin_scanner.guard.native_policy_snapshot_contract import _policy_snapshot_push_bytes_v3
 from codex_plugin_scanner.guard.native_policy_snapshot_direct_lane import (
+    DIRECT_HOOK_EVIDENCE_FEATURE,
     DIRECT_LANE_ACK_LEASE_MS,
     DIRECT_LANE_ACK_SCHEMA,
     NativePolicySnapshotDirectLaneAck,
@@ -161,15 +163,22 @@ def test_direct_hook_state_binds_only_what_the_resident_accepts() -> None:
         home_dir="/home/guard",
         harness_postures={"cursor": "watch", "codex": "protected"},
         local_cli_block_rules=False,
+        evidence_drain=True,
     )
     assert bound == {
         **binding,
         "home_dir": "/home/guard",
         "harness_postures": {"codex": "protected", "cursor": "watch"},
         "local_cli_block_rules": False,
+        "evidence_drain": True,
     }
     assert list(bound["harness_postures"]) == ["codex", "cursor"]
-    assert with_direct_hook_state(None, home_dir="/h", harness_postures={}, local_cli_block_rules=False) is None
+    assert (
+        with_direct_hook_state(
+            None, home_dir="/h", harness_postures={}, local_cli_block_rules=False, evidence_drain=True
+        )
+        is None
+    )
 
     # Unacceptable fields are left out so the resident defers as incomplete.
     for home_dir, postures in (
@@ -181,9 +190,10 @@ def test_direct_hook_state_binds_only_what_the_resident_accepts() -> None:
         ("/home/guard", {f"h{index}": "watch" for index in range(33)}),
     ):
         bound = with_direct_hook_state(
-            binding, home_dir=home_dir, harness_postures=postures, local_cli_block_rules=True
+            binding, home_dir=home_dir, harness_postures=postures, local_cli_block_rules=True, evidence_drain=False
         )
         assert bound is not None and bound["local_cli_block_rules"] is True
+        assert bound["evidence_drain"] is False
         assert ("home_dir" in bound) == (home_dir == "/home/guard")
         assert ("harness_postures" in bound) == (home_dir != "/home/guard")
 
@@ -226,3 +236,76 @@ def test_local_cli_rule_change_closes_only_the_direct_lane(tmp_path: Path) -> No
     assert json.loads(ack.read_bytes())["generation"] == 4
     publisher._recheck_direct_lane_local_cli(-1)
     assert not ack.exists()
+
+
+def test_evidence_drain_binds_only_while_enabled_and_supported(tmp_path: Path) -> None:
+    publisher = _publisher(tmp_path)
+    ack = publisher._direct_lane_ack_path()
+    assert not publisher.direct_evidence_bound([DIRECT_HOOK_EVIDENCE_FEATURE])
+
+    publisher.enable_direct_evidence_drain(True)
+    assert publisher.direct_evidence_bound([DIRECT_HOOK_EVIDENCE_FEATURE])
+    assert not publisher.direct_evidence_bound(["hook-direct-v1"])
+
+    publisher._acked = True
+    publisher._publish_direct_lane_ack({"generation": 3, "policy_digest": DIGEST})
+    assert ack.exists()
+    publisher.enable_direct_evidence_drain(False)
+    assert not ack.exists()
+    assert not publisher.direct_evidence_bound([DIRECT_HOOK_EVIDENCE_FEATURE])
+
+
+def test_a_stopped_drain_rejects_an_in_flight_evidence_ack(tmp_path: Path) -> None:
+    publisher = _publisher(tmp_path)
+    ack = publisher._direct_lane_ack_path()
+    publisher.enable_direct_evidence_drain(True)
+    publisher._acked = True
+    publisher.enable_direct_evidence_drain(False)
+    publisher._publish_direct_lane_ack(
+        {"generation": 3, "policy_digest": DIGEST},
+        evidence_drain=True,
+    )
+    assert not ack.exists()
+    publisher._renew_direct_lane_ack()
+    assert not ack.exists()
+
+
+def test_evidence_transport_needs_a_resident_with_the_drain(tmp_path: Path) -> None:
+    publisher = _publisher(tmp_path)
+    assert publisher.direct_evidence_transport() is None
+
+    def client(**_kwargs: object) -> bytes:
+        return b""
+
+    status = SimpleNamespace(
+        identity=SimpleNamespace(path=str(tmp_path / "guard-runtime")),
+        capabilities=SimpleNamespace(features=("hook-direct-v1",)),
+    )
+    publisher._last_runtime_status = status  # pyright: ignore[reportAttributeAccessIssue]
+    publisher._client_request = client  # pyright: ignore[reportAttributeAccessIssue]
+    assert publisher.direct_evidence_transport() is None
+
+    status.capabilities.features = ("hook-direct-v1", DIRECT_HOOK_EVIDENCE_FEATURE)
+    assert publisher.direct_evidence_transport() == (tmp_path / "guard-runtime", client)
+
+
+def test_the_lane_binds_a_home_only_when_the_daemon_gives_hooks_its_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    publisher = _publisher(tmp_path)
+    publishes: list[None] = []
+    monkeypatch.setattr(publisher, "request_publish", lambda: publishes.append(None), raising=False)
+    resolved = str(home.resolve(strict=False))
+    assert publisher._direct_lane_home_dir() == resolved
+
+    publisher.bind_direct_lane_daemon_home(home / ".")
+    assert publisher._direct_lane_home_dir() == resolved
+    publisher.bind_direct_lane_daemon_home(home)
+    assert len(publishes) == 1
+
+    # Hooks without a home would get one `~` does not expand to.
+    publisher.bind_direct_lane_daemon_home(tmp_path / "other")
+    assert publisher._direct_lane_home_dir() == ""
+    assert len(publishes) == 2

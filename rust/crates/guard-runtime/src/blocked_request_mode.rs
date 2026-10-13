@@ -41,7 +41,6 @@ fn reason_code_hint(reason_code: &str) -> &'static str {
 }
 
 /// `safe_alternative_reason(reason, reason_code=..., approval_queued=...)`.
-#[allow(dead_code)] // Read once the direct lane answers a safe-alternative review itself.
 pub(crate) fn safe_alternative_reason(
     reason: &str,
     reason_code: Option<&str>,

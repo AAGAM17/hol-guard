@@ -249,6 +249,7 @@ mod guard_store_approval_request;
 mod guard_store_approval_row;
 mod guard_store_approval_write;
 mod guard_store_args;
+mod guard_store_claude_review;
 mod guard_store_clients;
 mod guard_store_cmd_activity;
 mod guard_store_cmd_api;
@@ -317,6 +318,7 @@ mod guard_store_receipts_vectors_tests;
 mod guard_store_sessions;
 #[cfg(test)]
 mod guard_store_sessions_vectors_tests;
+mod guard_store_silent_review;
 mod guard_store_state_ops;
 #[cfg(test)]
 mod guard_store_state_ops_vectors_tests;
@@ -424,7 +426,6 @@ mod mcp_tool_policy_revalidate;
 mod memory_pattern;
 mod native_exact_action_op;
 mod native_hook_receipt;
-#[allow(dead_code)] // Read once the direct lane queues a reviewed `PreToolUse` itself.
 mod native_review_link;
 mod native_runtime_admission;
 mod native_runtime_resilience;

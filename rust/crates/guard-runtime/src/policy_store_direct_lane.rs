@@ -50,7 +50,6 @@ pub(crate) struct DirectLaneBinding {
     /// The policy-integrity state the daemon refreshed when it published.
     pub(crate) policy_integrity_state: Option<DirectLanePolicyIntegrityStateV1>,
     /// What the daemon queues a reviewed `PreToolUse` for approval with.
-    #[allow(dead_code)]
     pub(crate) review: DirectLaneReviewFacts,
 }
 

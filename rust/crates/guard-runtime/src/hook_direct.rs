@@ -147,6 +147,7 @@ enum HookDirectDefer {
     EdgeFailed,
     NotAllow,
     SavedDecision,
+    ReviewQueue,
     RuntimeSuperseded,
 }
 
@@ -173,6 +174,7 @@ impl HookDirectDefer {
             Self::EdgeFailed => "direct_hook_edge_failed",
             Self::NotAllow => "direct_hook_not_allow",
             Self::SavedDecision => "direct_hook_saved_decision",
+            Self::ReviewQueue => "direct_hook_review_queue",
             Self::RuntimeSuperseded => "direct_hook_runtime_superseded",
         }
     }
@@ -378,6 +380,7 @@ fn answer(
                 let context = saved_decision::Context {
                     harness: &request.harness,
                     payload,
+                    recorded_payload: &evidence_payload,
                     workspace: &workspace,
                     home_dir: &request_home,
                     guard_home: &guard_home,

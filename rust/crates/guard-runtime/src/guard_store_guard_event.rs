@@ -38,7 +38,6 @@ const APPROVAL_CREATED_KEYS: [&str; 10] = [
 /// `GuardStore.add_event(event_name, payload, now)`. Returns the new
 /// `event_id`, or `None` (nothing written) for a payload whose Python
 /// encoding cannot be reproduced. The caller owns the transaction.
-#[allow(dead_code)] // Read once the direct lane answers a safe-alternative review itself.
 pub(crate) fn add_guard_event(
     connection: &Connection,
     event_name: &str,
@@ -72,7 +71,6 @@ fn dumps_dict(payload: &[(String, PyVal)]) -> Option<String> {
 /// time (`created_at` when it is non-empty text, else `now`). `None` when a
 /// field holds an object, whose Python key order a `serde_json` map no longer
 /// carries.
-#[allow(dead_code)] // Read once the direct lane answers a safe-alternative review itself.
 pub(crate) fn approval_created_event(
     queued: &Map<String, Value>,
     now: &str,

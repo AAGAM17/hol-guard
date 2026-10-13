@@ -22,6 +22,7 @@ use super::context_digest_json::write_canonical_json_with_limit;
 use crate::guard_store_advisory_cache as advisory_cache;
 use crate::guard_store_approval_write::add_native_review_approval_request;
 use crate::guard_store_args::Args;
+use crate::guard_store_claude_review::add_claude_native_review_approval_request;
 use crate::guard_store_clients as clients;
 use crate::guard_store_cmd_activity as activity;
 use crate::guard_store_cmd_api as api;
@@ -51,6 +52,7 @@ use crate::guard_store_receipt_reads as receipt_reads;
 use crate::guard_store_receipt_rollups as receipt_rollups;
 use crate::guard_store_receipt_writes as receipt_writes;
 use crate::guard_store_sessions as sessions;
+use crate::guard_store_silent_review::add_silent_native_review_approval_request;
 use crate::guard_store_state_ops as state_ops;
 use crate::guard_store_storage_maintenance as storage_maintenance;
 use crate::guard_store_tool_call_evidence as tool_call_evidence;
@@ -294,6 +296,8 @@ fn method_kind(method: &str) -> Option<Kind> {
         "workflow_capability_commit" => Kind::Write,
         "consume_native_review_approval"
         | "add_native_review_approval_request"
+        | "add_silent_native_review_approval_request"
+        | "add_claude_native_review_approval_request"
         | "refresh_review_event_outbox_binding_for_identity"
         | "refresh_review_event_outbox_binding"
         | "reassign_quarantined_review_events"
@@ -451,6 +455,12 @@ fn dispatch(
         "consume_native_review_approval" => native_review_consume::consume(connection, args),
         "add_native_review_approval_request" => {
             add_native_review_approval_request(connection, source, args)
+        }
+        "add_silent_native_review_approval_request" => {
+            add_silent_native_review_approval_request(connection, source, args)
+        }
+        "add_claude_native_review_approval_request" => {
+            add_claude_native_review_approval_request(connection, source, args)
         }
         "workflow_capability_plan" => wfcap::plan(connection, args),
         "workflow_capability_commit" => wfcap::commit(connection, args),

@@ -208,8 +208,15 @@ def test_client_never_gains_time_from_the_handoff(tmp_path: Path, monkeypatch: p
 
     namespace = _client(tmp_path)
 
-    budget = float(namespace["_HOOK_DEADLINE_MONOTONIC"]) - float(namespace["_HOOK_STARTED_MONOTONIC"])
-    assert 0 <= budget <= 8
+    # `deadline - started` is not a stable <= 8: adding the integer timeout to
+    # a monotonic float can round a few ulps high. The deadline itself is still
+    # the start plus that timeout, or earlier when a real elapsed value is
+    # removed. The 8 second cap stays the configured timeout.
+    timeout = namespace["GUARD_HOOK_TIMEOUT_SECONDS"]
+    assert timeout == 8
+    started = namespace["_HOOK_STARTED_MONOTONIC"]
+    deadline = namespace["_HOOK_DEADLINE_MONOTONIC"]
+    assert started <= deadline <= started + timeout
 
 
 def _run_after_client(tmp_path: Path, raw: str, body: str) -> tuple[dict[str, object], str, int]:

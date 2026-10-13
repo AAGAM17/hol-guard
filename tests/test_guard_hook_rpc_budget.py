@@ -13,6 +13,10 @@ from tests.guard_daemon_acceptance_fixtures import WorkloadSpec, _mark_resident_
 # it; an extra un-memoized round trip per request lands directly in hook p95.
 _RESIDENT_ROUND_TRIPS_PER_PI_HOOK = 3
 
+# The daemon's direct-hook evidence drain pages evidence on its own wake-ups,
+# off the hook path, so how often it runs depends on timing, not request count.
+_BACKGROUND_OPERATIONS = frozenset({"hook_direct_evidence_drain"})
+
 
 def _pi_workload(requests: int, event: str = "PostToolUse") -> WorkloadSpec:
     return {
@@ -37,7 +41,11 @@ def _round_trips(monkeypatch: pytest.MonkeyPatch, root: Path, requests: int) -> 
     monkeypatch.setenv("HOL_GUARD_RESIDENT_REQUEST_LOG", os.fspath(log_path))
     result = run_workload(_pi_workload(requests), root=root)
     assert result.requests == requests
-    return _measured_resident_requests(log_path), Counter(_measured_operations(log_path))
+    assert _measured_resident_requests(log_path) > 0
+    hook_operations = [
+        operation for operation in _measured_operations(log_path) if operation not in _BACKGROUND_OPERATIONS
+    ]
+    return len(hook_operations), Counter(hook_operations)
 
 
 def test_measured_resident_requests_ignore_warmup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

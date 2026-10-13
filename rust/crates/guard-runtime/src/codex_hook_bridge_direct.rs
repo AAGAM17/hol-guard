@@ -1,9 +1,9 @@
 //! Direct resident answers for Codex and Claude Code tool hooks.
 //!
-//! For an allowed `PreToolUse` hook, and for every reviewed `PostToolUse`
-//! and `UserPromptSubmit` hook the daemon does not restyle, of either
-//! harness the daemon forwards the payload to its resident and returns the
-//! edge's harness response unchanged. When a live resident
+//! For a `PreToolUse` hook the edge allows or blocks outright, and for every
+//! reviewed `PostToolUse` and `UserPromptSubmit` hook the daemon does not
+//! restyle, of either harness the daemon forwards the payload to its resident
+//! and returns the edge's harness response unchanged. When a live resident
 //! of this runtime holds a direct-lane binding, the bridge asks it first
 //! with `hook_direct` and skips the daemon round trip. The resident answers
 //! only those hooks and queues the evidence the daemon drains and records;
@@ -27,8 +27,8 @@ const STATE_DIRECTORY: &str = "native-runtime";
 const DIRECT_RESULT_SCHEMA: &str = "guard-hook-direct-result.v1";
 const USER_PROMPT_SUBMIT: &str = "UserPromptSubmit";
 
-/// A harness whose allowed `PreToolUse` hook the daemon answers with the
-/// edge's own response.
+/// A harness whose passed-through `PreToolUse` hook the daemon answers with
+/// the edge's own response.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DirectHarness {
     name: &'static str,

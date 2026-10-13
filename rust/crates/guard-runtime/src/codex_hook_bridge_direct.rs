@@ -264,8 +264,19 @@ fn direct_enabled(switch: &str) -> bool {
     std::env::var_os(switch).is_none_or(|value| value != "0")
 }
 
+/// Whether the resident may answer a hook the bridge names `event_name`: a
+/// tool or prompt hook it reviews, or a lifecycle hook it answers with the
+/// daemon's constant. Permission and notification hooks, and the `before*`
+/// hooks the daemon denies, go to the daemon without asking the resident.
 fn direct_event(event_name: &str) -> bool {
-    [PRE_TOOL_USE, POST_TOOL_USE, USER_PROMPT_SUBMIT].contains(&event_name)
+    if [PRE_TOOL_USE, POST_TOOL_USE, USER_PROMPT_SUBMIT].contains(&event_name) {
+        return true;
+    }
+    let compact = event_name.replace(['_', '-'], "").to_ascii_lowercase();
+    !(compact.is_empty()
+        || compact.contains("permission")
+        || compact.contains("notification")
+        || compact.starts_with("before"))
 }
 
 /// Send the request to a live resident that runs this very executable.

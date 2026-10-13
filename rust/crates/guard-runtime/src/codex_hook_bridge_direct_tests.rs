@@ -1,6 +1,6 @@
 use super::{
-    answered_response, bounded_direct_request, direct_request, parse_hook_query, HookQuery,
-    CLAUDE_CODE, CODEX,
+    answered_response, bounded_direct_request, direct_event, direct_request, parse_hook_query,
+    HookQuery, CLAUDE_CODE, CODEX,
 };
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -297,4 +297,28 @@ fn a_hook_without_a_home_leaves_the_resident_the_daemon_home() {
         built(&homes, &query, PAYLOAD).unwrap()["request"]["harness"],
         "codex"
     );
+}
+
+#[test]
+fn lifecycle_hooks_reach_the_resident_and_permission_hooks_do_not() {
+    for event in [
+        "PreToolUse",
+        "PostToolUse",
+        "UserPromptSubmit",
+        "Stop",
+        "SessionStart",
+        "TaskComplete",
+    ] {
+        assert!(direct_event(event), "{event}");
+    }
+    for event in [
+        "",
+        "PermissionRequest",
+        "permission_request_v2",
+        "copilotPermissionRequest",
+        "Notification",
+        "beforeSubmitPrompt",
+    ] {
+        assert!(!direct_event(event), "{event}");
+    }
 }

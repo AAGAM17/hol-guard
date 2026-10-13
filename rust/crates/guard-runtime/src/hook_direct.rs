@@ -212,7 +212,14 @@ fn answer(
     let Value::Object(mut payload) = request.payload else {
         return Err(HookDirectDefer::PayloadUnsupported);
     };
-    let event = direct_event(&payload)?.ok_or(HookDirectDefer::EventUnsupported)?;
+    let Some(event) = direct_event(&payload)? else {
+        return lifecycle::answer(
+            &request.harness,
+            &request.guard_home,
+            &payload,
+            policy_store,
+        );
+    };
     let pre_tool = event == PRE_TOOL_USE;
     let cursor_harness = request.harness == CURSOR;
     if cursor_harness && !pre_tool {
@@ -504,6 +511,8 @@ fn direct_event(payload: &Map<String, Value>) -> Result<Option<&'static str>, Ho
 mod contained;
 #[path = "hook_direct_cursor.rs"]
 mod cursor;
+#[path = "hook_direct_lifecycle.rs"]
+mod lifecycle;
 #[path = "hook_direct_local_cli.rs"]
 mod local_cli;
 #[path = "hook_direct_workspace.rs"]

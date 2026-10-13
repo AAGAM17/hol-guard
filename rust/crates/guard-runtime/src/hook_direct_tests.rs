@@ -363,9 +363,12 @@ fn request_shapes_the_daemon_must_handle_defer() {
         deferred(&run(&lane, reference)),
         "direct_hook_payload_unsupported"
     );
-    let mut stop = allowed_payload(&lane);
-    stop["hook_event_name"] = json!("Stop");
-    assert_eq!(deferred(&run(&lane, stop)), "direct_hook_event_unsupported");
+    let mut permission = allowed_payload(&lane);
+    permission["hook_event_name"] = json!("PermissionRequest");
+    assert_eq!(
+        deferred(&run(&lane, permission)),
+        "direct_hook_event_unsupported"
+    );
     let mut environment = allowed_payload(&lane);
     environment["guard_execution_environment"] = json!("PATH=/bin");
     assert_eq!(
@@ -775,9 +778,9 @@ fn an_answer_queues_the_evidence_the_daemon_records() {
 #[test]
 fn a_deferred_hook_queues_no_evidence() {
     let lane = lane("deferred-evidence", json!({}));
-    let mut stop = allowed_payload(&lane);
-    stop["hook_event_name"] = json!("Stop");
-    deferred(&run(&lane, stop));
+    let mut permission = allowed_payload(&lane);
+    permission["hook_event_name"] = json!("PermissionRequest");
+    deferred(&run(&lane, permission));
     assert_eq!(drain(&lane, None)["records"], json!([]));
 }
 
@@ -1001,3 +1004,6 @@ fn a_claude_code_prompt_without_a_notice_is_answered_in_either_posture() {
         assert_eq!(page["records"][0]["harness"], "claude-code", "{label}");
     }
 }
+
+#[path = "hook_direct_lifecycle_tests.rs"]
+mod lifecycle;

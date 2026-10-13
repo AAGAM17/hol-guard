@@ -149,8 +149,9 @@ fn test_client() -> Client {
 fn only_hooks_cursor_asks_before_running_a_tool_are_sent() {
     let client = test_client();
     let shell = br#"{"hook_event_name":"beforeShellExecution","command":"ls","cwd":"/nonexistent-cursor-cwd"}"#;
-    let (data, query) = prepared_request(&client, shell).unwrap();
+    let Request { data, query, event } = prepared_request(&client, shell).unwrap();
     assert_eq!(query, "guard-home=%2Fg&home=%2Fh");
+    assert_eq!(event, "beforeShellExecution");
     let sent: Value = serde_json::from_str(&data).unwrap();
     assert_eq!(sent["hook_event_name"], "PreToolUse");
     assert_eq!(sent["cursor_source_hook_event"], "beforeShellExecution");
@@ -181,25 +182,56 @@ fn only_hooks_cursor_asks_before_running_a_tool_are_sent() {
     oversized.resize(MAX_HOOK_INPUT_BYTES + 1, b' ');
     assert_eq!(prepared_request(&client, &oversized), None);
     let inferred = br#"{"file_path":"/tmp/a.txt"}"#;
-    assert!(prepared_request(&client, inferred).is_some());
+    let request = prepared_request(&client, inferred).unwrap();
+    assert_eq!(request.event, "beforeReadFile");
 }
 
 #[test]
-fn only_an_allow_or_warn_is_answered() {
-    assert!(allowed(r#"{"policy_action":"allow","continue":true}"#));
-    assert!(allowed(r#"{"policy_action":"warn"}"#));
-    for response in [
-        r#"{"policy_action":"review"}"#,
-        r#"{"policy_action":"block"}"#,
-        r#"{"policy_action":"sandbox-required"}"#,
-        r#"{"policy_action":"require-reapproval"}"#,
-        r#"{"policy_action":"Allow"}"#,
-        r#"{"policy_action":["allow"]}"#,
-        r#"{"continue":true}"#,
-        r#"[]"#,
-        "",
-    ] {
-        assert!(!allowed(response), "{response}");
+fn the_answer_is_named_for_the_event_the_client_infers() {
+    let client = test_client();
+    let event = |raw: &[u8]| prepared_request(&client, raw).map(|request| request.event);
+    // A name under another key keeps the client's default.
+    assert_eq!(
+        event(br#"{"event":"beforeReadFile","file_path":"/tmp/a"}"#).as_deref(),
+        Some("preToolUse")
+    );
+    assert_eq!(
+        event(br#"{"hookEventName":" BeforeReadFile ","file_path":"/tmp/a"}"#).as_deref(),
+        Some(" BeforeReadFile ")
+    );
+    assert_eq!(
+        event(br#"{"hook_event_name":"","hookEventName":"beforeReadFile","file_path":"/a"}"#)
+            .as_deref(),
+        Some("beforeReadFile")
+    );
+    // A name that is not text is inferred over when nothing else names the
+    // hook, and otherwise left to the client.
+    assert_eq!(
+        event(br#"{"hook_event_name":7,"file_path":"/tmp/a"}"#).as_deref(),
+        Some("beforeReadFile")
+    );
+    assert_eq!(
+        event(br#"{"hook_event_name":7,"event":"beforeShellExecution","command":"ls"}"#),
+        None
+    );
+}
+
+const ANSWER_VECTORS: &str =
+    include_str!("../../../../tests/fixtures/cursor_native_answers/vectors.json");
+
+#[test]
+fn answers_match_the_client_for_every_vector() {
+    let fixture: Value = serde_json::from_str(ANSWER_VECTORS).unwrap();
+    let vectors = fixture["vectors"].as_array().unwrap();
+    assert!(vectors.len() >= 20);
+    for vector in vectors {
+        let event = vector["event"].as_str().unwrap();
+        let response = vector["response"].as_str().unwrap();
+        let expected = vector["stdout"].as_str().map(|stdout| {
+            let code = vector["exit_code"].as_i64().unwrap();
+            (stdout.to_owned(), i32::try_from(code).unwrap())
+        });
+        assert_eq!(answer(event, response), expected, "{event:?} {response}");
     }
 }
 

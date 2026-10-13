@@ -1,6 +1,7 @@
 use super::{
-    direct_event, evaluate, expanduser, normalized_workspace, normpath, post_tool_answer,
+    cursor, direct_event, evaluate, expanduser, normalized_workspace, normpath, post_tool_answer,
     pre_tool_answer, prompt_answer, workspace_candidate, HookDirectDefer, HookDirectRequestV1,
+    REPAIRABLE_BLOCK_REASON,
 };
 use crate::policy_store::policy_store_direct_lane::tests::{
     allowing_fixture, binding, fixture, push, write_current_ack, Fixture,
@@ -648,6 +649,65 @@ fn a_cursor_pre_tool_use_is_answered_only_when_its_client_allows_it() {
     let result = run_as(&watch, "cursor", Some(HOME), sensitive_read(&watch));
     assert_eq!(result["outcome"], "answer", "{result}");
     assert_eq!(result["edge"]["harness_response"]["policy_action"], "warn");
+}
+
+#[test]
+fn a_cursor_verdict_is_answered_only_as_the_daemon_returns_it() {
+    let cursor_edge = |decision: &str, minimum_action: &str, code: Value, rendered: &str| {
+        serde_json::to_vec(&json!({
+            "schema": "guard-hook-edge-result.v2",
+            "event_name": "PreToolUse",
+            "result": {
+                "decision": decision,
+                "minimum_action": minimum_action,
+                "reason_code": code,
+            },
+            "harness_response": { "policy_action": rendered },
+        }))
+        .unwrap()
+    };
+    let answered = |decision, minimum_action, code, rendered, recording_only| {
+        cursor::answer(
+            &cursor_edge(decision, minimum_action, code, rendered),
+            recording_only,
+        )
+        .is_ok()
+    };
+    let repairable = json!(REPAIRABLE_BLOCK_REASON);
+    for (decision, minimum_action, rendered) in [
+        ("allow", "allow", "allow"),
+        ("allow", "warn", "warn"),
+        ("deny", "block", "block"),
+        ("block", "block", "block"),
+        ("deny", "sandbox-required", "block"),
+        ("deny", "sandbox-required", "sandbox-required"),
+    ] {
+        assert!(
+            answered(decision, minimum_action, json!(null), rendered, false),
+            "{decision} {minimum_action} {rendered}"
+        );
+    }
+    // The daemon repairs an authority block and pauses a review, and the
+    // client renders only what the edge rendered.
+    for (decision, minimum_action, code, rendered) in [
+        ("deny", "block", repairable.clone(), "block"),
+        ("deny", "review", json!(null), "block"),
+        ("deny", "require-reapproval", json!(null), "block"),
+        ("allow", "block", json!(null), "block"),
+        ("deny", "warn", json!(null), "block"),
+        ("deny", "block", json!(null), "review"),
+        ("deny", "block", json!(null), "allow"),
+        ("allow", "allow", json!(null), "block"),
+    ] {
+        assert!(
+            !answered(decision, minimum_action, code, rendered, false),
+            "{decision} {minimum_action} {rendered}"
+        );
+    }
+    // Watch answers whatever the edge let run, and nothing it stopped.
+    assert!(answered("deny", "block", json!(null), "warn", true));
+    assert!(answered("deny", "block", repairable, "allow", true));
+    assert!(!answered("deny", "block", json!(null), "block", true));
 }
 
 /// The next evidence page, after acknowledging `acked`, a page drained before.

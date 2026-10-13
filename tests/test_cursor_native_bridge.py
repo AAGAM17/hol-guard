@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import shlex
 import sys
@@ -25,6 +26,7 @@ from codex_plugin_scanner.guard.adapters.cursor_hooks import _HOOK_SCRIPT_TEMPLA
 _POSIX_ONLY = pytest.mark.skipif(sys.platform == "win32", reason="the native Cursor bridge is POSIX-only")
 _PYTHON = Path("/usr/bin/python3")
 _NATIVE_SCRIPT = Path(__file__).resolve().parents[1] / "rust/crates/guard-runtime/src/cursor_hook_bridge_script.rs"
+_ANSWERS = Path(__file__).resolve().parent / "fixtures" / "cursor_native_answers" / "vectors.json"
 _CONSTANTS = (
     "GUARD_HOME",
     "GUARD_CLI",
@@ -152,6 +154,25 @@ def _client(tmp_path: Path, timeout: str = "8") -> dict[str, object]:
     namespace: dict[str, object] = {"__name__": "cursor_native_fixture"}
     exec(compile(source, "generated-cursor-hook", "exec"), namespace)
     return namespace
+
+
+def test_native_answers_are_the_clients_own(tmp_path: Path) -> None:
+    # The bridge prints these answers without running the client, so each
+    # one must be what the client prints for the same daemon response.
+    namespace = _client(tmp_path)
+    emit = namespace["_emit_cursor_response"]
+    vectors = json.loads(_ANSWERS.read_text(encoding="utf-8"))["vectors"]
+    answered = [vector for vector in vectors if vector["stdout"] is not None]
+
+    for vector in answered:
+        payload = json.loads(vector["response"])
+        response, exit_code = emit(
+            hook_event_name=vector["event"],
+            policy_action=payload["policy_action"],
+            guard_payload=payload,
+        )
+        assert (json.dumps(response) + "\n", exit_code) == (vector["stdout"], vector["exit_code"])
+    assert len(answered) >= 10
 
 
 def test_client_takes_the_native_handoff_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

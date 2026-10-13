@@ -3,11 +3,11 @@
 //! Guard installs Cursor's hooks as `guard-runtime cursor-hook-bridge
 //! <python> -I <script> --cursor-hook-event <event>`. For a `PreToolUse`
 //! hook (Cursor's `preToolUse`, `beforeShellExecution`,
-//! `beforeMCPExecution` and `beforeReadFile`) that a live resident allows,
-//! the bridge prints the client's own allow without starting Python. The
-//! client's other hooks, every other verdict and anything the bridge cannot
-//! reproduce exactly run the Python client unchanged, with the hook it
-//! already read and the time it already spent.
+//! `beforeMCPExecution` and `beforeReadFile`) that a live resident allows
+//! or terminally denies, the bridge prints the client's own answer without
+//! starting Python. The client's other hooks, every other verdict and
+//! anything the bridge cannot reproduce exactly run the Python client
+//! unchanged, with the hook it already read and the time it already spent.
 //!
 //! The bridge reproduces the client's steps up to its daemon request:
 //! `_read_hook_input`, `json.loads`, `_prepare_cursor_hook_payload`,
@@ -18,9 +18,8 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use guard_command::hook_adapter_prepare::{first_truthy, prepare_payload};
+use guard_command::hook_adapter_prepare::{cursor_client_event, first_truthy, prepare_payload};
 use guard_command::hook_adapter_value::{parse_python_json, OMap, OValue};
-use serde_json::Value;
 
 use crate::bounded_hook_bridge::{
     read_hook_input, run_python, write_stdout, Input, MAX_HOOK_INPUT_BYTES,
@@ -28,6 +27,7 @@ use crate::bounded_hook_bridge::{
 use crate::claude_hook_bridge_render::py_strip;
 use crate::codex_hook_bridge_direct::{direct_answer, CURSOR};
 use crate::codex_hook_response::PRE_TOOL_USE;
+use crate::cursor_hook_bridge_response::rendered;
 use crate::cursor_hook_bridge_script::read_ported_script;
 use crate::hook_env_stamp::{current_environment, stamp_hook_input_text, Stamp};
 
@@ -36,8 +36,6 @@ pub(crate) const BRIDGE_FEATURE: &str = "cursor-hook-bridge-v1";
 const EVENT_FLAG: &str = "--cursor-hook-event";
 const PROJECT_DIR_ENV: &str = "CURSOR_PROJECT_DIR";
 const AFTER_EVENTS: [&str; 2] = ["aftershellexecution", "aftermcpexecution"];
-/// `print(json.dumps({"permission": "allow"}))`.
-const ALLOW_STDOUT: &str = "{\"permission\": \"allow\"}\n";
 const UNAVAILABLE_STDOUT: &str = "{\"permission\": \"deny\", \"user_message\": \"HOL Guard could not complete the native hook decision safely.\"}\n";
 
 /// `_cursor_unavailable_response` for a hook whose input could not be read
@@ -127,9 +125,19 @@ struct Client {
     deadline: Instant,
 }
 
-/// The stamped payload and query of a `PreToolUse` hook the bridge can send
-/// as the client would, or `None` to run the client.
-fn prepared_request(client: &Client, raw: &[u8]) -> Option<(String, String)> {
+/// A `PreToolUse` hook the bridge can send as the client would.
+#[derive(Debug, PartialEq)]
+struct Request {
+    /// The stamped payload.
+    data: String,
+    query: String,
+    /// The event the client names its answer for.
+    event: String,
+}
+
+/// The request the client would send for a `PreToolUse` hook, or `None` to
+/// run the client.
+fn prepared_request(client: &Client, raw: &[u8]) -> Option<Request> {
     if raw.len() > MAX_HOOK_INPUT_BYTES {
         return None;
     }
@@ -145,6 +153,7 @@ fn prepared_request(client: &Client, raw: &[u8]) -> Option<(String, String)> {
     };
     // Cursor's `after*` hooks prepare as themselves, so only the client's
     // `before*` and `preToolUse` hooks get past this.
+    let event = cursor_client_event(&payload)?;
     let prepared = prepare_payload("cursor", &payload, None).ok()?;
     if prepared.get_str("hook_event_name") != Some(PRE_TOOL_USE) {
         return None;
@@ -159,37 +168,33 @@ fn prepared_request(client: &Client, raw: &[u8]) -> Option<(String, String)> {
         workspace.as_deref(),
         client.home.as_deref(),
     );
-    Some((data, query))
+    Some(Request { data, query, event })
 }
 
-/// Whether `_emit_cursor_response` allows the hook for a resident's harness
-/// response: an `allow` or `warn` does for every `PreToolUse` hook.
-fn allowed(response: &str) -> bool {
-    serde_json::from_str::<Value>(response).is_ok_and(|response| {
-        response
-            .get("policy_action")
-            .and_then(Value::as_str)
-            .is_some_and(|action| matches!(action, "allow" | "warn"))
-    })
-}
-
-fn route(client: &Client, raw: &[u8]) -> bool {
-    let Some((data, query)) = prepared_request(client, raw) else {
-        return false;
+/// The client's answer for a resident's harness response: `json.loads` of
+/// the body the daemon would return, rendered by `_emit_cursor_response`.
+fn answer(event: &str, response: &str) -> Option<(String, i32)> {
+    let OValue::Map(response) = parse_python_json(response).ok()? else {
+        return None;
     };
+    rendered(event, &response)
+}
+
+/// The exit code once the bridge answered the hook, or `None` to run the
+/// client.
+fn route(client: &Client, raw: &[u8]) -> Option<i32> {
+    let request = prepared_request(client, raw)?;
     let answered = direct_answer(
         CURSOR,
         Path::new(&client.guard_home),
-        &query,
+        &request.query,
         PRE_TOOL_USE,
-        &data,
+        &request.data,
         client.deadline,
-    );
-    if !answered.as_deref().is_some_and(allowed) {
-        return false;
-    }
-    write_stdout(ALLOW_STDOUT);
-    true
+    )?;
+    let (stdout, code) = answer(&request.event, &answered)?;
+    write_stdout(&stdout);
+    Some(code)
 }
 
 /// The ported client the installer's argv runs, or `None` for any other
@@ -228,8 +233,8 @@ pub(crate) fn run(python_argv: &[String]) -> i32 {
         // The client reads an empty hook and answers its unparseable input.
         Input::Failed => Vec::new(),
     };
-    if route(&client, &raw) {
-        return 0;
+    if let Some(code) = route(&client, &raw) {
+        return code;
     }
     run_python(python_argv, Some(&raw), started.elapsed(), false)
         .unwrap_or_else(|| unavailable(event))

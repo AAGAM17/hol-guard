@@ -28,7 +28,7 @@ const STATE_DIRECTORY: &str = "native-runtime";
 const DIRECT_RESULT_SCHEMA: &str = "guard-hook-direct-result.v1";
 const USER_PROMPT_SUBMIT: &str = "UserPromptSubmit";
 /// Claude Code's permission dialog, which the resident answers from the
-/// session's permission notice.
+/// session's permission notice, and Codex's, which it leaves to Codex.
 const PERMISSION_REQUEST: &str = "PermissionRequest";
 const NOTIFICATION: &str = "Notification";
 
@@ -311,7 +311,7 @@ fn direct_enabled(switch: &str) -> bool {
 /// daemon's constant. Permission and notification hooks, and the `before*`
 /// hooks the daemon denies, go to the daemon without asking the resident;
 /// `direct_answer` asks it about Claude Code's `PermissionRequest` and
-/// `Notification`.
+/// `Notification`, and Codex's `PermissionRequest`.
 fn direct_event(event_name: &str) -> bool {
     if [PRE_TOOL_USE, POST_TOOL_USE, USER_PROMPT_SUBMIT].contains(&event_name) {
         return true;
@@ -323,11 +323,13 @@ fn direct_event(event_name: &str) -> bool {
         || compact.starts_with("before"))
 }
 
-/// `direct_event`, plus Claude Code's `PermissionRequest` and `Notification`.
+/// `direct_event`, plus Claude Code's `PermissionRequest` and
+/// `Notification`, and Codex's `PermissionRequest`.
 fn harness_event(harness: &DirectHarness, event_name: &str) -> bool {
     direct_event(event_name)
         || (harness.name == CLAUDE_CODE.name
             && [PERMISSION_REQUEST, NOTIFICATION].contains(&event_name))
+        || (harness.name == CODEX.name && event_name == PERMISSION_REQUEST)
 }
 
 /// Send the request to a live resident that runs this very executable.

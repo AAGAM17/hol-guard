@@ -350,10 +350,12 @@ fn request_shapes_the_daemon_must_handle_defer() {
         deferred(&run(&lane, reference)),
         "direct_hook_payload_unsupported"
     );
+    // Codex PermissionRequest is the no-decision passthrough. A harness
+    // without that passthrough still defers, and the command is not judged.
     let mut permission = allowed_payload(&lane);
     permission["hook_event_name"] = json!("PermissionRequest");
     assert_eq!(
-        deferred(&run(&lane, permission)),
+        deferred(&run_as(&lane, "copilot", Some(HOME), permission)),
         "direct_hook_event_unsupported"
     );
     let mut environment = allowed_payload(&lane);
@@ -762,7 +764,8 @@ fn a_deferred_hook_queues_no_evidence() {
     let lane = lane("deferred-evidence", json!({}));
     let mut permission = allowed_payload(&lane);
     permission["hook_event_name"] = json!("PermissionRequest");
-    deferred(&run(&lane, permission));
+    // Copilot has no passthrough, so this stays a defer and records nothing.
+    deferred(&run_as(&lane, "copilot", Some(HOME), permission));
     assert_eq!(drain(&lane, None)["records"], json!([]));
 }
 

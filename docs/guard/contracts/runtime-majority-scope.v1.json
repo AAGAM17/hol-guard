@@ -1894,6 +1894,109 @@
         "entry_points": [],
         "reason": "Resolving queued approval requests (approve, deny, bulk allow-once) and building the dashboard runtime snapshot. These run when a person acts in the approval center, the dashboard or the guard approvals command; no hook or MCP proxy call reaches them.",
         "evidence": "Every caller of apply_approval_resolution, build_runtime_snapshot, bulk_allow_read_only_once and is_bulk_allow_once_eligible is outside runtime scope: the daemon control-plane routes (server_control_routes_post.py, server_control_policy.py), the dashboard read routes (server_dashboard_runtime_read.py) and the guard approvals command (cli/approval_commands.py). The remaining symbols are reached only from apply_approval_resolution, build_runtime_snapshot, bulk_allow_read_only_once and is_bulk_allow_once_eligible. The retained in-scope part of approvals.py (request queueing, build_approval_request_url, primary_approval_request, silent_review_center_url) does not reference them, and the report validates this reference closure on every run."
+      },
+      {
+        "id": "extension-control-dashboard-resolution",
+        "category": "control_plane",
+        "path": "src/codex_plugin_scanner/guard/runtime/extension_control_resolver.py",
+        "symbols": [
+          "_FAILURE_REASON",
+          "_TRUSTED_LOCKDOWN_SURFACES",
+          "resolve_extension_controls",
+          "_has_explicit_enabled_permission",
+          "_validate_layer_targets",
+          "_extension_closure",
+          "_permission_closure",
+          "_resolution"
+        ],
+        "entry_points": [],
+        "reason": "resolve_extension_controls builds the effective extension-control view for the dashboard projection and the semantic preview. Hook evaluation reads extension controls through the native resident and never calls it.",
+        "evidence": "rg -l 'resolve_extension_controls' src -g '*.py' lists only daemon/extension_control_projection.py and daemon/extension_control_semantic_preview.py outside runtime/extension_control_resolver.py; neither is in the runtime import closure."
+      },
+      {
+        "id": "unlisted-cli-check-for-mcp-probe",
+        "category": "control_plane",
+        "path": "src/codex_plugin_scanner/guard/runtime/local_cli_identity.py",
+        "symbols": [
+          "_INTERPRETER_NAMES",
+          "_RESERVED_TOOL_NAMES",
+          "catalog_owned_executables",
+          "unlisted_cli_invocation_is_safe",
+          "is_reserved_tool_name",
+          "_safe_primary_segment",
+          "_is_interpreter_name",
+          "_normalize_tool_name"
+        ],
+        "entry_points": [],
+        "reason": "unlisted_cli_invocation_is_safe decides whether local MCP probing may start an unlisted CLI to list its tools. It runs only during discovery probing, never on a hook or proxy request. The operator CLI recognition helpers in this module are already excluded by operator-cli-recognition-api.",
+        "evidence": "rg -l 'unlisted_cli_invocation_is_safe' src -g '*.py' lists only runtime/local_mcp_probe.py outside runtime/local_cli_identity.py; it is not in the runtime import closure."
+      },
+      {
+        "id": "native-resident-update-teardown",
+        "category": "install_config",
+        "path": "src/codex_plugin_scanner/guard/native_resident_client.py",
+        "symbols": [
+          "stop_native_resident",
+          "retire_native_resident_for_update",
+          "close_native_residents"
+        ],
+        "entry_points": [],
+        "reason": "Retiring the native resident before an update and closing residents after desktop qualification are lifecycle steps run by hol-guard update and the qualification command. Request-time resident calls in this module stay counted.",
+        "evidence": "rg -l 'retire_native_resident_for_update|close_native_residents' src -g '*.py' lists only cli/update_commands.py and cli/desktop_qualification.py outside native_resident_client.py; neither is in the runtime import closure.",
+        "root_function": true
+      },
+      {
+        "id": "local-mcp-catalog-probe",
+        "category": "control_plane",
+        "path": "src/codex_plugin_scanner/guard/runtime/local_mcp_stdio.py",
+        "symbols": [
+          "MCP_PROBE_TIMEOUT_SECONDS",
+          "MAX_MCP_PROBE_TOOLS",
+          "NativeMcpAuthorityError",
+          "_native_catalog_result",
+          "_shlex_join_safe",
+          "run_mcp_catalog"
+        ],
+        "entry_points": [],
+        "reason": "run_mcp_catalog starts a local stdio MCP server to list its tools for discovery probing. The MCP proxy relays live traffic through other helpers in this module, which stay counted.",
+        "evidence": "rg -l 'run_mcp_catalog' src -g '*.py' lists only runtime/local_mcp_probe.py outside runtime/local_mcp_stdio.py; it is not in the runtime import closure."
+      },
+      {
+        "id": "policy-bundle-sync-messages",
+        "category": "async_control_plane",
+        "path": "src/codex_plugin_scanner/guard/policy_bundle_parser.py",
+        "symbols": [
+          "_POLICY_BUNDLE_TRUST_REMEDIATION_REASONS",
+          "_POLICY_BUNDLE_SIGNATURE_REMEDIATION_REASONS",
+          "_POLICY_BUNDLE_INTEGRITY_REMEDIATION_REASONS",
+          "_POLICY_BUNDLE_SCHEMA_REMEDIATION_REASONS",
+          "_POLICY_BUNDLE_WORKSPACE_REMEDIATION_REASONS",
+          "_POLICY_BUNDLE_FRESHNESS_REMEDIATION_REASONS",
+          "_POLICY_BUNDLE_VERSION_REMEDIATION_REASONS",
+          "policy_bundle_daemon_version_supported",
+          "policy_bundle_rejection_message"
+        ],
+        "entry_points": [],
+        "reason": "The daemon version gate and rejection messages are used when Cloud sync accepts or rejects a policy bundle. Bundle parsing used at request time stays counted.",
+        "evidence": "rg -l 'policy_bundle_daemon_version_supported|policy_bundle_rejection_message' src -g '*.py' lists only runtime/runner.py (cloud-sync-transport) and daemon/server_control_sync.py (daemon-control-plane-routes) outside policy_bundle_parser.py."
+      },
+      {
+        "id": "package-audit-report-projection",
+        "category": "offline_reporting",
+        "path": "src/codex_plugin_scanner/guard/native_package_audit_projection.py",
+        "symbols": [
+          "_RECEIPT_KEYS",
+          "_CI_KEYS",
+          "_ACTIONS",
+          "native_audit_receipt_metadata",
+          "native_advisory_aliases",
+          "native_ci_gate_result",
+          "native_empty_audit_outcome",
+          "native_normalize_cloud_audit_response"
+        ],
+        "entry_points": [],
+        "reason": "Audit receipt metadata, advisory aliases, CI gate results, empty outcomes and Cloud audit normalization shape the workspace supply-chain audit report. Install-time package decisions do not call them.",
+        "evidence": "rg -l 'native_audit_receipt_metadata|native_advisory_aliases|native_ci_gate_result|native_empty_audit_outcome|native_normalize_cloud_audit_response' src -g '*.py' lists only supply_chain_workspace_audit.py outside native_package_audit_projection.py; it is not in the runtime import closure."
       }
     ],
     "dynamic_imports": [

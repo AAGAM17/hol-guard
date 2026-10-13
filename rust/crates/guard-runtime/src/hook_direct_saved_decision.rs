@@ -67,8 +67,8 @@ pub(super) struct Context<'a> {
     pub(super) binding: &'a DirectLaneBinding,
 }
 
-/// The edge result with the daemon's saved-decision response, for a review
-/// the daemon answers from a saved exact-action decision.
+/// The edge result with the daemon's response, for a review the daemon
+/// answers from a saved exact-action decision or an approve-once retry.
 pub(super) fn answer(edge: &[u8], context: &Context<'_>) -> Result<Value, HookDirectDefer> {
     let mut parsed = reviewed_edge(edge, PRE_TOOL_USE)?;
     let result = parsed
@@ -85,13 +85,82 @@ pub(super) fn answer(edge: &[u8], context: &Context<'_>) -> Result<Value, HookDi
     }
     // A daemon that published no saved-decision state keeps every review.
     let binding = context.binding;
-    let (Some(environment), Some(control_digest), Some(integrity), Some(key)) = (
+    let (Some(environment), Some(control_digest)) = (
         binding.exact_action_environment.as_ref(),
         binding.exact_action_control_digest.as_ref(),
+    ) else {
+        return Err(HookDirectDefer::NotAllow);
+    };
+    let input = query::QueryInput {
+        harness: context.harness,
+        payload: context.payload,
+        workspace: context.workspace,
+        home_dir: context.home_dir,
+        environment: &environment.0,
+        control_digest,
+    };
+    let receipt = parsed.get("receipt");
+    let (artifact_id, exact) = query::exact_action(&input, &result, receipt)?;
+    let encoded = serde_json::to_vec(&exact).map_err(|_| HookDirectDefer::SavedDecision)?;
+    if encoded.len() * ESCAPE_FACTOR + ENVELOPE_BYTES > NATIVE_EXACT_ACTION_MAX_BYTES {
+        return Err(HookDirectDefer::SavedDecision);
+    }
+    let token = crate::native_exact_action_op::exact_action_token(&exact);
+
+    let store_path = Path::new(context.guard_home).join(STORE_FILE_NAME);
+    {
+        let connection = open_read_only(&store_path)
+            .ok()
+            .flatten()
+            .ok_or(HookDirectDefer::SavedDecision)?;
+        // One read snapshot for the shape checks and the lookup they gate, so
+        // a decision or state the daemon commits between them cannot slip
+        // past. It ends with this block, before the approve-once spend.
+        let _snapshot = connection
+            .unchecked_transaction()
+            .map_err(|_| HookDirectDefer::SavedDecision)?;
+        let store = StoreShape {
+            connection: &connection,
+            harness: context.harness,
+            artifact_id: &artifact_id,
+        };
+        // A custom grant answers before any saved decision or approval.
+        if !store.base()? {
+            return Err(HookDirectDefer::SavedDecision);
+        }
+        match &token {
+            Ok(token) if store.decided(Some(token))? => {
+                let saved = saved_response(context, &store, &result, token)?;
+                if let Some(response) = saved {
+                    parsed["harness_response"] = response;
+                    return Ok(parsed);
+                }
+            }
+            Ok(_) => {}
+            // A token the daemon may still derive could read a decision this
+            // artifact holds, so only an undecided artifact skips the read.
+            Err(_) if store.decided(None)? => return Err(HookDirectDefer::SavedDecision),
+            Err(_) => {}
+        }
+    }
+    parsed["harness_response"] = consume::answer(context, &result, &exact, receipt, &artifact_id)?;
+    Ok(parsed)
+}
+
+/// `native_saved_decision_response` for a token with an exact decision: the
+/// rendered verdict, or `None` when the decision leaves the review standing.
+fn saved_response(
+    context: &Context<'_>,
+    store: &StoreShape<'_>,
+    result: &Object,
+    token: &str,
+) -> Result<Option<Value>, HookDirectDefer> {
+    let binding = context.binding;
+    let (Some(integrity), Some(key)) = (
         binding.policy_integrity_state.as_ref(),
         binding.integrity_key.as_ref(),
     ) else {
-        return Err(HookDirectDefer::NotAllow);
+        return Err(HookDirectDefer::SavedDecision);
     };
     if integrity.enforcement != "enforce"
         || integrity.mode != "protected"
@@ -104,51 +173,19 @@ pub(super) fn answer(edge: &[u8], context: &Context<'_>) -> Result<Value, HookDi
     }
     let integrity_state =
         serde_json::to_value(integrity).map_err(|_| HookDirectDefer::SavedDecision)?;
-
-    let input = query::QueryInput {
-        harness: context.harness,
-        payload: context.payload,
-        workspace: context.workspace,
-        home_dir: context.home_dir,
-        environment: &environment.0,
-        control_digest,
-    };
-    let (artifact_id, exact) = query::exact_action(&input, &result, parsed.get("receipt"))?;
-    let encoded = serde_json::to_vec(&exact).map_err(|_| HookDirectDefer::SavedDecision)?;
-    if encoded.len() * ESCAPE_FACTOR + ENVELOPE_BYTES > NATIVE_EXACT_ACTION_MAX_BYTES {
-        return Err(HookDirectDefer::SavedDecision);
-    }
-    let token = crate::native_exact_action_op::exact_action_token(&exact)
-        .map_err(|_| HookDirectDefer::SavedDecision)?;
-
-    let store_path = Path::new(context.guard_home).join(STORE_FILE_NAME);
-    let connection = open_read_only(&store_path)
-        .ok()
-        .flatten()
-        .ok_or(HookDirectDefer::SavedDecision)?;
-    // One read snapshot for the shape checks and the lookup they gate, so a
-    // decision or state the daemon commits between them cannot slip past.
-    let _snapshot = connection
-        .unchecked_transaction()
-        .map_err(|_| HookDirectDefer::SavedDecision)?;
-    let store = StoreShape {
-        connection: &connection,
-        harness: context.harness,
-        artifact_id: &artifact_id,
-        token: &token,
-    };
     if !store.local_only(&integrity_state)? {
         return Err(HookDirectDefer::SavedDecision);
     }
     let key_b64 = Zeroizing::new(Base64UrlUnpadded::encode_string(&key.key));
+    let store_path = Path::new(context.guard_home).join(STORE_FILE_NAME);
     let request = PolicyDecisionLookupRequestV1 {
         schema: POLICY_DECISION_LOOKUP_REQUEST_SCHEMA.to_owned(),
         request_id: String::new(),
         store_path: store_path.to_string_lossy().into_owned(),
         guard_home: context.guard_home.to_owned(),
         harness: context.harness.to_owned(),
-        artifact_id: Some(artifact_id.clone()),
-        artifact_hash: Some(token.clone()),
+        artifact_id: Some(store.artifact_id.to_owned()),
+        artifact_hash: Some(token.to_owned()),
         workspace: Some(context.workspace.to_owned()),
         publisher: None,
         now: super::lifecycle::utc_now_isoformat().ok_or(HookDirectDefer::SavedDecision)?,
@@ -163,13 +200,15 @@ pub(super) fn answer(edge: &[u8], context: &Context<'_>) -> Result<Value, HookDi
         policy_bundle_decision_identities: None,
         probe_groups: None,
     };
-    let lookup = crate::policy_decision_lookup_op::evaluate_non_consuming(&request, &connection)
-        .map_err(|_| HookDirectDefer::SavedDecision)?;
-    let response = saved_verdict(&result, &lookup, &artifact_id, &token)
-        .and_then(|(verdict, status)| render(context.harness, &verdict, status))
-        .ok_or(HookDirectDefer::SavedDecision)?;
-    parsed["harness_response"] = response;
-    Ok(parsed)
+    let lookup =
+        crate::policy_decision_lookup_op::evaluate_non_consuming(&request, store.connection)
+            .map_err(|_| HookDirectDefer::SavedDecision)?;
+    match saved_verdict(result, &lookup, store.artifact_id, token) {
+        Some((verdict, status)) => render(context.harness, &verdict, status)
+            .map(Some)
+            .ok_or(HookDirectDefer::SavedDecision),
+        None => Ok(None),
+    }
 }
 
 /// `native_saved_decision_response` after its lookup: the verdict to render
@@ -270,15 +309,12 @@ struct StoreShape<'a> {
     connection: &'a Connection,
     harness: &'a str,
     artifact_id: &'a str,
-    token: &'a str,
 }
 
 impl StoreShape<'_> {
-    /// Whether the daemon's lookup for this token reads only local decisions
-    /// under the published integrity state: no custom grants, no remote,
-    /// bundle or portable workspace decisions, the published state still
-    /// stored, and an exact decision to read.
-    fn local_only(&self, integrity_state: &Value) -> Result<bool, HookDirectDefer> {
+    /// Whether the daemon reads this store's decisions as the resident does:
+    /// a schema it supports and no custom grants.
+    fn base(&self) -> Result<bool, HookDirectDefer> {
         let unavailable = |_| HookDirectDefer::SavedDecision;
         match schema_version(self.connection).map_err(unavailable)? {
             Some(version) if version <= SUPPORTED_SCHEMA_VERSION => {}
@@ -291,6 +327,30 @@ impl StoreShape<'_> {
                 return Ok(false);
             }
         }
+        Ok(true)
+    }
+
+    /// The daemon's decision probe for `token`, or for any token when the
+    /// resident could not derive one.
+    fn decided(&self, token: Option<&str>) -> Result<bool, HookDirectDefer> {
+        let artifact = "select 1 from policy_decisions where harness in (?1, '*') \
+                        and scope = 'artifact' and artifact_id = ?2";
+        match token {
+            Some(token) => self.any(
+                &format!("{artifact} and artifact_hash = ?3 limit 1"),
+                &[self.harness, self.artifact_id, token],
+            ),
+            None => self.any(
+                &format!("{artifact} limit 1"),
+                &[self.harness, self.artifact_id],
+            ),
+        }
+    }
+
+    /// Whether the daemon's lookup reads only local decisions under the
+    /// published integrity state: no remote, bundle or portable workspace
+    /// decisions, and the published state still stored.
+    fn local_only(&self, integrity_state: &Value) -> Result<bool, HookDirectDefer> {
         if self.any(
             &format!("select 1 from policy_decisions where source in {REMOTE_SOURCES_SQL} limit 1"),
             &[],
@@ -318,14 +378,7 @@ impl StoreShape<'_> {
             .optional()
             .map_err(|_| HookDirectDefer::SavedDecision)?;
         let stored = stored.and_then(|text| serde_json::from_str::<Value>(&text).ok());
-        if stored.as_ref() != Some(integrity_state) {
-            return Ok(false);
-        }
-        self.any(
-            "select 1 from policy_decisions where harness in (?1, '*') and scope = 'artifact' \
-             and artifact_id = ?2 and artifact_hash = ?3 limit 1",
-            &[self.harness, self.artifact_id, self.token],
-        )
+        Ok(stored.as_ref() == Some(integrity_state))
     }
 
     fn any(&self, query: &str, values: &[&str]) -> Result<bool, HookDirectDefer> {
@@ -339,6 +392,9 @@ impl StoreShape<'_> {
 
 #[path = "hook_direct_saved_query.rs"]
 mod query;
+
+#[path = "hook_direct_saved_consume.rs"]
+mod consume;
 
 #[cfg(test)]
 #[path = "hook_direct_saved_decision_tests.rs"]

@@ -6,7 +6,7 @@
 //!
 //! Process-local concerns (the storage-access lock, wake notification,
 //! permission repair, fatal-store recovery, wall-clock timestamps) stay with
-//! the Python caller, which passes every timestamp in the request.
+//! the caller, which passes every timestamp in the request.
 
 use std::time::Duration;
 
@@ -88,7 +88,7 @@ pub(crate) fn evaluate_guard_store_request(
     })
 }
 
-fn evaluate(request: &GuardStoreRequestV1) -> StoreResult<(Value, Option<i64>)> {
+pub(crate) fn evaluate(request: &GuardStoreRequestV1) -> StoreResult<(Value, Option<i64>)> {
     let invalid = |code| Err(StoreError::Invalid(code));
     if request.schema != GUARD_STORE_REQUEST_SCHEMA {
         return invalid("native_guard_store_schema_mismatch");

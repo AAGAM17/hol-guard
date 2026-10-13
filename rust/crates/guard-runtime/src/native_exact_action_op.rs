@@ -66,6 +66,33 @@ pub(crate) fn exact_action_token(query: &NativeExactActionQueryV1) -> Result<Str
     token::exact_action(query, Instant::now() + budget, &ResidentEngines)
 }
 
+/// The review identity the daemon binds an approve-once retry of `query` to
+/// (`native_review_binding`), for a resident caller that holds the query.
+pub(crate) fn review_binding_for(
+    query: &NativeExactActionQueryV1,
+    receipt: Option<&serde_json::Value>,
+) -> Option<String> {
+    let NativeExactActionQueryV1::ExactAction {
+        harness,
+        command,
+        workspace,
+        facts,
+        policy_binding,
+        ..
+    } = query
+    else {
+        return None;
+    };
+    binding::review_binding(
+        harness,
+        command.as_deref(),
+        workspace.is_some(),
+        facts,
+        receipt,
+        policy_binding,
+    )
+}
+
 fn decide(
     request: &NativeExactActionRequestV1,
     engines: &dyn Engines,

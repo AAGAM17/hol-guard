@@ -3,6 +3,7 @@ use crate::local_store_read::schema_checksum;
 use crate::policy_decision_lookup_op::tests::{seed_store, tmp_store};
 use crate::policy_decision_lookup_op::{policy_row_to_json, POLICY_LOOKUP_COLUMNS};
 use crate::policy_store::policy_store_direct_lane::DirectLaneIntegrityKey;
+use guard_contracts::NativeExactActionQueryV1;
 use guard_policy_snapshot::{DirectLaneEnvironmentV1, DirectLanePolicyIntegrityStateV1};
 use rusqlite::params;
 use std::collections::BTreeMap;
@@ -12,7 +13,7 @@ const KEY: [u8; 32] = [7u8; 32];
 const KEY_ID: &str = "test-policy-key";
 const SIGNED_AT: &str = "2026-01-01T00:00:00+00:00";
 
-fn vectors() -> Value {
+pub(super) fn vectors() -> Value {
     serde_json::from_str(VECTORS).expect("saved-decision vectors parse")
 }
 
@@ -108,7 +109,7 @@ fn integrity_state() -> DirectLanePolicyIntegrityStateV1 {
 
 /// A store with the schema marker, the published integrity state and no
 /// decisions.
-fn local_store(tag: &str) -> (std::path::PathBuf, Connection) {
+pub(super) fn local_store(tag: &str) -> (std::path::PathBuf, Connection) {
     let path = tmp_store(&format!("saved-{tag}"));
     let _ = std::fs::remove_file(&path);
     seed_store(&path);
@@ -195,7 +196,6 @@ fn shape(connection: &Connection) -> StoreShape<'_> {
         connection,
         harness: "claude-code",
         artifact_id: ARTIFACT,
-        token: TOKEN,
     }
 }
 
@@ -206,7 +206,9 @@ fn published() -> Value {
 #[test]
 fn a_local_store_with_the_decision_is_read() {
     let (_path, connection) = local_store("local");
+    assert!(shape(&connection).base().unwrap());
     assert!(!shape(&connection).local_only(&published()).unwrap());
+    assert!(!shape(&connection).decided(Some(TOKEN)).unwrap());
     insert_decision(
         &connection,
         "claude-code",
@@ -216,6 +218,7 @@ fn a_local_store_with_the_decision_is_read() {
         "approval-gate",
     );
     assert!(shape(&connection).local_only(&published()).unwrap());
+    assert!(shape(&connection).decided(Some(TOKEN)).unwrap());
 }
 
 #[test]
@@ -258,8 +261,9 @@ fn a_store_the_lookup_reads_differently_defers() {
             "approval-gate",
         );
         connection.execute_batch(change).unwrap();
+        let store = shape(&connection);
         assert!(
-            !shape(&connection).local_only(&published()).unwrap(),
+            !(store.base().unwrap() && store.local_only(&published()).unwrap()),
             "{tag}"
         );
     }
@@ -280,7 +284,7 @@ fn a_damaged_schema_marker_defers() {
         .execute("update local_cli_schema_migration set checksum = 'x'", [])
         .unwrap();
     assert!(matches!(
-        shape(&connection).local_only(&published()),
+        shape(&connection).base(),
         Err(HookDirectDefer::SavedDecision)
     ));
 }
@@ -296,12 +300,15 @@ fn a_decision_for_another_token_defers() {
         "allow",
         "approval-gate",
     );
-    assert!(!shape(&connection).local_only(&published()).unwrap());
+    let store = shape(&connection);
+    assert!(!store.decided(Some(TOKEN)).unwrap());
+    // A token the resident could not derive may be the other one.
+    assert!(store.decided(None).unwrap());
     insert_decision(&connection, "*", ARTIFACT, TOKEN, "block", "approval-gate");
-    assert!(shape(&connection).local_only(&published()).unwrap());
+    assert!(store.decided(Some(TOKEN)).unwrap());
 }
 
-fn binding() -> DirectLaneBinding {
+pub(super) fn binding() -> DirectLaneBinding {
     let vectors = vectors();
     let mut binding = DirectLaneBinding::empty_for_tests();
     binding.exact_action_environment = Some(DirectLaneEnvironmentV1(
@@ -318,7 +325,7 @@ fn binding() -> DirectLaneBinding {
 }
 
 /// A real workspace for the read vector, whose token resolves its target.
-fn workspace(tag: &str) -> String {
+pub(super) fn workspace(tag: &str) -> String {
     let root =
         std::env::temp_dir().join(format!("hg-saved-workspace-{tag}-{}", std::process::id()));
     std::fs::create_dir_all(root.join("src")).unwrap();
@@ -331,6 +338,22 @@ fn bound_request(
     binding: &DirectLaneBinding,
     workspace: &str,
 ) -> (Vec<u8>, Map<String, Value>, String, String) {
+    let (edge, payload, artifact_id, exact) = bound_query(binding, workspace);
+    let token = crate::native_exact_action_op::exact_action_token(&exact).unwrap();
+    (edge, payload, artifact_id, token)
+}
+
+/// The edge, payload, artifact id and exact-action query of the bound
+/// `Read` vector in `workspace`.
+pub(super) fn bound_query(
+    binding: &DirectLaneBinding,
+    workspace: &str,
+) -> (
+    Vec<u8>,
+    Map<String, Value>,
+    String,
+    NativeExactActionQueryV1,
+) {
     let vectors = vectors();
     let case = vectors["queries"]
         .as_array()
@@ -351,7 +374,6 @@ fn bound_request(
     };
     let (artifact_id, exact) = query::exact_action(&input, &result, case.get("receipt"))
         .unwrap_or_else(|_| panic!("bound vector deferred"));
-    let token = crate::native_exact_action_op::exact_action_token(&exact).unwrap();
     let edge = serde_json::to_vec(&json!({
         "event_name": PRE_TOOL_USE,
         "result": result,
@@ -359,7 +381,7 @@ fn bound_request(
         "harness_response": {"hookSpecificOutput": {"permissionDecision": "ask"}},
     }))
     .unwrap();
-    (edge, payload, artifact_id, token)
+    (edge, payload, artifact_id, exact)
 }
 
 fn answer_with(

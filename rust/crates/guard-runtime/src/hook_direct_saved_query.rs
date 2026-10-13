@@ -154,7 +154,7 @@ fn receipt_matches_edge(harness: &str, result: &Object, receipt: &Object) -> boo
 }
 
 /// `_native_review_tool_name`.
-fn tool_name(payload: &Map<String, Value>) -> Result<String, HookDirectDefer> {
+pub(super) fn tool_name(payload: &Map<String, Value>) -> Result<String, HookDirectDefer> {
     for key in TOOL_NAME_FIELDS {
         if let Some(value) = payload.get(key).and_then(Value::as_str) {
             if let Some(stripped) = strip(value)? {
@@ -165,14 +165,16 @@ fn tool_name(payload: &Map<String, Value>) -> Result<String, HookDirectDefer> {
     Ok("tool".to_owned())
 }
 
-fn pre_tool_input(payload: &Map<String, Value>) -> Option<&Map<String, Value>> {
+pub(super) fn pre_tool_input(payload: &Map<String, Value>) -> Option<&Map<String, Value>> {
     TOOL_INPUT_FIELDS
         .iter()
         .find_map(|key| payload.get(*key).and_then(Value::as_object))
 }
 
 /// `pre_tool_command`: the first non-blank command text, unstripped.
-fn pre_tool_command(payload: &Map<String, Value>) -> Result<Option<String>, HookDirectDefer> {
+pub(super) fn pre_tool_command(
+    payload: &Map<String, Value>,
+) -> Result<Option<String>, HookDirectDefer> {
     let arguments = payload.get("arguments").and_then(Value::as_object);
     for candidate in [pre_tool_input(payload), arguments, Some(payload)]
         .into_iter()
@@ -258,7 +260,7 @@ fn facts(result: &Object) -> Result<NativeReviewFactsV1, HookDirectDefer> {
 }
 
 /// Python's `str.strip`, deferring on the separators it treats as blank.
-fn strip(value: &str) -> Result<Option<&str>, HookDirectDefer> {
+pub(super) fn strip(value: &str) -> Result<Option<&str>, HookDirectDefer> {
     python_strip(value).map_err(|_| HookDirectDefer::SavedDecision)
 }
 

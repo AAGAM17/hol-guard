@@ -136,6 +136,8 @@ pub(in crate::pretool) fn cwd_read_executable(executable: Option<&str>) -> bool 
                 | "uptime"
                 | "pgrep"
                 | "ps"
+                | "lsof"
+                | "pg_isready"
                 | "ls"
                 | "cat"
                 | "base64"

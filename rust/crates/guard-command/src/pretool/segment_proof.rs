@@ -74,6 +74,8 @@ pub(crate) fn benign_command_segments(
                     | "uptime"
                     | "pgrep"
                     | "ps"
+                    | "lsof"
+                    | "pg_isready"
             ) || segment.arguments.is_empty()
                 || stdin_filter;
             // Context-free public wrappers cannot prove that a file operand or
@@ -237,6 +239,8 @@ pub(super) fn exact_safe_segment_with_context(
         "printenv" => super::safe_scalar::safe_printenv_arguments(&segment.arguments),
         "pgrep" => super::safe_scalar::safe_pgrep_arguments(&segment.arguments),
         "ps" => super::safe_scalar::safe_ps_arguments(&segment.arguments),
+        "lsof" => super::safe_scalar::safe_lsof_arguments(&segment.arguments),
+        "pg_isready" => super::safe_scalar::safe_pg_isready_arguments(&segment.arguments),
         "ls" => {
             super::listing_reads::safe_listing_segment(&segment.text, &segment.arguments, context)
         }

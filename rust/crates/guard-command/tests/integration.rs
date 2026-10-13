@@ -105,6 +105,7 @@ pub mod pretool_outside_workspace_files;
 pub mod pretool_package_directory_flags;
 pub mod pretool_pi_tools;
 pub mod pretool_private_temporary_workspace;
+pub mod pretool_process_probe_chains;
 pub mod pretool_prompt_negation_scope;
 pub mod pretool_prompt_secret_requests;
 pub mod pretool_pytest_contained_route;

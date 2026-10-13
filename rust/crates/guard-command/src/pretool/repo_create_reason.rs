@@ -11,6 +11,14 @@ use crate::CanonicalCommandV1;
 /// Options the private alternative drops; `--private` replaces the first two.
 const DROPPED: &[&str] = &["--public", "--internal", "--push"];
 
+/// Whether `gh` arguments create a private repository in the user's own
+/// account. That publishes nothing and pushes nothing: the workspace reaches
+/// the new repository only through a separate, separately proven `git push`.
+pub(super) fn private_create(arguments: &[String]) -> bool {
+    matches!(arguments, [repo, create, rest @ ..]
+        if repo == "repo" && create == "create" && private_repo_create(rest))
+}
+
 /// A review reason naming the private alternative, or `None` when it does not
 /// apply.
 pub(super) fn private_alternative_reason(model: &CanonicalCommandV1) -> Option<String> {

@@ -56,13 +56,43 @@ fn repo_creates_the_private_form_would_not_admit_keep_the_generic_reason() {
         "GH_HOST=example.com gh repo create todo-app --public",
         "gh repo delete todo-app --yes",
         "gh repo create todo-app --public && git status",
-        "gh repo create todo-app --private --source=.",
-        "gh repo create todo-app --private",
     ] {
         let (_, _, reason) = review(command);
         assert!(
             !reason.contains("Creating it private"),
             "{command}: {reason}"
         );
+    }
+}
+
+#[test]
+fn the_private_alternative_runs_without_review() {
+    for command in [
+        "gh repo create todo-app --private --source=.",
+        "gh repo create todo-app --private",
+        "gh repo create todo-app --source . --remote origin --private",
+        "gh repo create todo-app --private -d \"A small todo app\" --add-readme",
+        "gh repo create todo-app --private --gitignore Node --license mit",
+    ] {
+        let (action, code, _) = review(command);
+        assert_eq!(action, "allow", "{command}: {code}");
+    }
+    for command in [
+        "gh repo create todo-app --private --source=. --push",
+        "gh repo create todo-app --private --clone",
+        "gh repo create todo-app --private --source ../other",
+        "gh repo create todo-app --private --template example-org/base",
+        "gh repo create example-org/todo-app --private",
+        "gh repo create todo-app --private -d @notes.txt",
+        "gh repo create todo-app --private -d $NOTES",
+        "GH_HOST=example.com gh repo create todo-app --private",
+        "gh repo create todo-app",
+        "gh repo create todo-app --public",
+        "gh repo create todo-app --internal",
+        // A directory in the executable never reaches the basename allow.
+        "/usr/local/bin/gh repo create todo-app --private --gitignore Node --license mit",
+    ] {
+        let (action, _, _) = review(command);
+        assert_ne!(action, "allow", "{command}");
     }
 }

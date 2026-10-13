@@ -262,6 +262,7 @@ fn exfiltration_command(value: &str) -> bool {
 fn safe_gh_arguments(arguments: &[String], text: &str) -> bool {
     matches!(arguments, [auth, status, flag]
         if auth == "auth" && status == "status" && matches!(flag.as_str(), "--help" | "-h"))
+        || repo_create_reason::private_create(arguments)
         || crate::command_compatibility::github_arguments_are_read_only(arguments, text)
 }
 

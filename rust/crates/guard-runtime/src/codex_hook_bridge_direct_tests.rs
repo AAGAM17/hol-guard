@@ -174,7 +174,7 @@ fn a_bounded_hook_asks_under_the_daemons_own_homes() {
             .map(|bytes| serde_json::from_slice::<Value>(&bytes).unwrap())
     };
     for harness in [
-        "copilot", "kimi", "devin", "openclaw", "hermes", "cline", "opencode",
+        "copilot", "kimi", "devin", "zcode", "openclaw", "hermes", "cline", "opencode",
     ] {
         assert_eq!(
             built(harness, &homes.guard_home).unwrap(),
@@ -190,8 +190,8 @@ fn a_bounded_hook_asks_under_the_daemons_own_homes() {
             "{harness}"
         );
     }
-    // ZCode routes sandbox requirements and Grok runs its own client.
-    for harness in ["zcode", "grok", "codex", "cursor", "unknown"] {
+    // Grok runs its own client.
+    for harness in ["grok", "codex", "cursor", "unknown"] {
         assert_eq!(built(harness, &homes.guard_home), None, "{harness}");
     }
     // The daemon would name a guard home spelled another way as written.

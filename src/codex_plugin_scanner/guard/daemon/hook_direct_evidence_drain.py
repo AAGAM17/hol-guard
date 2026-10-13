@@ -30,7 +30,7 @@ _DRAIN_TIMEOUT_SECONDS = 2.0
 # Pages per wake-up, so a backlog drains without starving shutdown.
 _MAX_PAGES_PER_WAKE = 8
 _DIRECT_HARNESSES = frozenset(
-    {"codex", "claude-code", "cursor", "copilot", "kimi", "devin", "openclaw", "hermes", "cline", "opencode"}
+    {"codex", "claude-code", "cursor", "copilot", "kimi", "devin", "zcode", "openclaw", "hermes", "cline", "opencode"}
 )
 _PRE_TOOL_USE = "PreToolUse"
 _POST_TOOL_USE = "PostToolUse"

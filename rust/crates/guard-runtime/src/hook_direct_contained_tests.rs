@@ -222,6 +222,28 @@ fn a_launcher_removed_since_the_publish_defers_and_an_oversized_call_stays_denie
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn a_zcode_call_runs_the_sink_under_its_own_harness() {
+    let root = scratch("zcode");
+    let temp = root.join("tmp");
+    let workspace = root.join("work space").to_str().unwrap().to_owned();
+    let command = vec![launcher()];
+    let target = SinkTarget {
+        command: &command,
+        harness: "zcode",
+        guard_home: "/g",
+        home_dir: "/h",
+        workspace: &workspace,
+    };
+    let routed = route_shell(&target, &temp, "pytest").unwrap().unwrap();
+    let sink = routed["hookSpecificOutput"]["updatedInput"]["command"]
+        .as_str()
+        .unwrap();
+    assert!(sink.contains(" --harness zcode --guard-home /g "), "{sink}");
+    assert!(sink.ends_with(" --home /h"), "{sink}");
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn request_directory(temp: &Path, name: &str, file_mode: u32, age: Duration) -> PathBuf {
     let directory = temp.join(format!("{REQUEST_DIRECTORY_PREFIX}{name}"));
     fs::create_dir(&directory).unwrap();

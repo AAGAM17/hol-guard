@@ -10,11 +10,11 @@
 //! any reviewed `PostToolUse` of those harnesses, and a reviewed
 //! `UserPromptSubmit` with its receipt, for Codex always and for Claude Code
 //! in Watch, and a Cursor `PreToolUse` its hook client runs as an allow.
-//! The bounded bridge harnesses other than ZCode and Grok are answered as
-//! Codex is. The daemon never changes those responses. Every other request,
-//! and every `PreToolUse` verdict the daemon turns into an approval or a
-//! repair link, defers so the caller takes the daemon path, which is
-//! unchanged. A Claude Code sandbox requirement outside Watch is routed to
+//! The bounded bridge harnesses other than Grok are answered as Codex is.
+//! The daemon never changes those responses. Every other request, and every
+//! `PreToolUse` verdict the daemon turns into an approval or a repair link,
+//! defers so the caller takes the daemon path, which is unchanged. A Claude
+//! Code or ZCode sandbox requirement outside Watch is routed to
 //! contained execution as the daemon routes it, once the daemon has bound
 //! its sink command, and defers without one. While custom extension
 //! block rules exist, an allowed `PreToolUse` whose command launches a local
@@ -45,13 +45,14 @@ const HOOK_DIRECT_RESULT_SCHEMA: &str = "guard-hook-direct-result.v1";
 /// The harnesses whose allow the daemon returns as the edge rendered it.
 /// The bounded bridge harnesses after Cursor have no harness-specific step
 /// on the daemon path for the hooks answered here.
-const DIRECT_HARNESSES: [&str; 10] = [
+const DIRECT_HARNESSES: [&str; 11] = [
     "codex",
     CLAUDE_CODE,
     CURSOR,
     "copilot",
     "kimi",
     "devin",
+    ZCODE,
     "openclaw",
     "hermes",
     "cline",
@@ -76,6 +77,7 @@ const USER_PROMPT_SUBMIT: &str = "UserPromptSubmit";
 const USER_PROMPT_EVENT_NAMES: [&str; 3] = ["prompt", "userpromptsubmit", "userpromptsubmitted"];
 const CLAUDE_CODE: &str = "claude-code";
 const CURSOR: &str = "cursor";
+const ZCODE: &str = "zcode";
 const PRE_TOOL_EVENT_NAMES: [&str; 7] = [
     "pretool",
     "pretooluse",
@@ -308,9 +310,10 @@ fn answer(
 
     // Only a `PreToolUse` under custom rules reads its payload after the edge.
     let rule_payload = (pre_tool && custom_rules).then(|| payload.clone());
-    // Claude Code applies `updatedInput`, so the daemon routes its sandbox
-    // requirements to contained execution with the sink command it binds.
-    let contained = pre_tool && request.harness == CLAUDE_CODE;
+    // Claude Code and ZCode apply `updatedInput`, so the daemon routes their
+    // sandbox requirements to contained execution with the sink command it
+    // binds.
+    let contained = pre_tool && (request.harness == CLAUDE_CODE || request.harness == ZCODE);
     let sink_command = binding.contained_sink_command.clone().filter(|_| contained);
     let guard_home = request.guard_home.clone();
     let envelope = GuardHookEnvelopeV2 {

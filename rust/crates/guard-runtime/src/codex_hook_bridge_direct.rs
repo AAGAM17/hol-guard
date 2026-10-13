@@ -49,11 +49,11 @@ pub(crate) const CURSOR: DirectHarness = DirectHarness {
     name: "cursor",
     switch: "HOL_GUARD_CURSOR_DIRECT_HOOK",
 };
-/// The bounded bridge harnesses whose hooks the daemon reviews without any
-/// harness-specific step. ZCode routes sandbox requirements to contained
-/// execution and Grok runs its own client, so both keep the daemon path.
-const BOUNDED_DIRECT_HARNESSES: [&str; 7] = [
-    "copilot", "kimi", "devin", "openclaw", "hermes", "cline", "opencode",
+/// The bounded bridge harnesses the resident answers. The resident routes a
+/// ZCode sandbox requirement to contained execution as the daemon does.
+/// Grok runs its own client, so it keeps the daemon path.
+const BOUNDED_DIRECT_HARNESSES: [&str; 8] = [
+    "copilot", "kimi", "devin", "zcode", "openclaw", "hermes", "cline", "opencode",
 ];
 const BOUNDED_DIRECT_SWITCH: &str = "HOL_GUARD_BOUNDED_DIRECT_HOOK";
 /// A resident answers an allow well inside this. A slower resident leaves

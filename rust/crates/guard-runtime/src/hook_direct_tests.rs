@@ -397,7 +397,7 @@ fn request_shapes_the_daemon_must_handle_defer() {
 fn other_harnesses_and_homes_defer() {
     let lane = lane("harness", json!({}));
     let mut request = HookDirectRequestV1 {
-        harness: "zcode".to_owned(),
+        harness: "grok".to_owned(),
         guard_home: lane.fixture.root.to_str().unwrap().to_owned(),
         home_dir: Some(HOME.to_owned()),
         workspace: None,
@@ -796,15 +796,16 @@ fn a_bounded_harness_hook_is_answered_as_codex_is() {
         record["harness_response"],
         result["edge"]["harness_response"]
     );
-    // The daemon routes a ZCode hook through its containment step.
-    let contained = allowing_lane("bounded-zcode", json!({}));
-    deferred(&run_as(
-        &contained,
-        "zcode",
-        Some(HOME),
-        allowed_payload(&contained),
-    ));
-    assert_eq!(drain(&contained, None)["records"], json!([]));
+    // A ZCode allow passes the daemon's containment step unchanged.
+    let zcode = allowing_lane("bounded-zcode", json!({}));
+    let result = run_as(&zcode, "zcode", Some(HOME), allowed_payload(&zcode));
+    assert_eq!(result["outcome"], "answer", "{result}");
+    let page = drain(&zcode, None);
+    assert_eq!(page["records"][0]["harness"], "zcode");
+    assert_eq!(
+        page["records"][0]["harness_response"],
+        result["edge"]["harness_response"]
+    );
 }
 
 #[test]

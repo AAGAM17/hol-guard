@@ -1,5 +1,5 @@
-//! Route a Claude Code sandbox requirement to Guard's contained execution
-//! sink, as the daemon's containment router does.
+//! Route a Claude Code or ZCode sandbox requirement to Guard's contained
+//! execution sink, as the daemon's containment router does.
 //!
 //! The edge answers a contained test, eval, build or workspace run with a
 //! denial that names the execution profile the call needs. The daemon turns

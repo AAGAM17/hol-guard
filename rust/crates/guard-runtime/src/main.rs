@@ -417,6 +417,8 @@ mod mcp_tool_policy_revalidate;
 mod memory_pattern;
 mod native_exact_action_op;
 mod native_hook_receipt;
+#[allow(dead_code)] // Read once the direct lane queues a reviewed `PreToolUse` itself.
+mod native_review_link;
 mod native_runtime_admission;
 mod native_runtime_resilience;
 mod oauth_refresh;

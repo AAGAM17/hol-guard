@@ -93,6 +93,13 @@ pub(super) fn project(
         return None;
     }
     let command = out.trim().to_owned();
+    // Only kept descriptor copies (`2>&1`, `2>/dev/null`) were seen. The
+    // parser models those, and the command as written already gets the full
+    // evaluation with every control, so a join with an uncontrolled raw
+    // evaluation could only lose a proven allow or a configured denial.
+    if command.split_whitespace().eq(raw.split_whitespace()) {
+        return None;
+    }
     let model = crate::parse_command(&CommandModelRequestV1 {
         command: command.clone(),
         dialect: "posix".to_owned(),

@@ -674,6 +674,19 @@ fn evaluate_envelope(
         event,
         signals.command.as_deref(),
     );
+    if event == "PreToolUse" {
+        super::lockfile_install::settle(
+            &mut result,
+            command_model,
+            super::PathContext {
+                home_dir,
+                cwd,
+                ..context
+            },
+            deadline,
+            execution_environment,
+        );
+    }
     result
 }
 

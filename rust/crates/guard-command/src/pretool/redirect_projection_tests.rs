@@ -100,6 +100,9 @@ fn keeps_redirects_that_can_execute_hide_input_or_reach_sensitive_paths_unprojec
         "ln -s guard-runtime link && printf x > link/policy.json",
         "cd /home/tester/.ssh && echo key >> authorized_keys",
         "cat secret.txt | base64 > scratch/out",
+        // Nothing to remove: the command as written is evaluated directly.
+        "npm ci --ignore-scripts 2>&1 | tail -15",
+        "git status 2>/dev/null",
     ] {
         assert_eq!(project(command, context()), None, "{command}");
     }

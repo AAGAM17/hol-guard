@@ -133,7 +133,7 @@ fn field_path(field: &str) -> bool {
 /// `package.json` or `node_modules`, plus the user's `~/.npmrc`. Checking every
 /// ancestor of both the logical and physical cwd covers whichever one npm
 /// picks, without reproducing its search.
-fn configuration_inert(context: super::PathContext<'_>) -> bool {
+pub(in crate::pretool) fn configuration_inert(context: super::PathContext<'_>) -> bool {
     let (Some(cwd), Some(home)) = (context.cwd.map(Path::new), context.home_dir.map(Path::new))
     else {
         return false;
@@ -152,7 +152,7 @@ fn configuration_inert(context: super::PathContext<'_>) -> bool {
 
 /// A missing file is inert. Anything unreadable, oversized or not a regular
 /// file is not.
-fn npmrc_inert(path: &Path) -> bool {
+pub(in crate::pretool) fn npmrc_inert(path: &Path) -> bool {
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) => return error.kind() == ErrorKind::NotFound,
@@ -164,9 +164,9 @@ fn npmrc_inert(path: &Path) -> bool {
 }
 
 /// Settings that move where npm fetches from, how it trusts that transport,
-/// which other config it loads, where it writes, or that send credentials to
-/// any registry. Underscores and hyphens are compared alike.
-const UNSAFE_KEYS: [&str; 26] = [
+/// which other config it loads, where it writes, which pnpm hook file it
+/// loads, or that send credentials to any registry. Underscores and hyphens are compared alike.
+const UNSAFE_KEYS: [&str; 28] = [
     "registry",
     "replace-registry-host",
     "strict-ssl",
@@ -193,6 +193,8 @@ const UNSAFE_KEYS: [&str; 26] = [
     "-password",
     "username",
     "always-auth",
+    "pnpmfile",
+    "global-pnpmfile",
 ];
 
 fn inert_line(line: &str) -> bool {

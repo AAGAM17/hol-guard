@@ -62,6 +62,15 @@ paths = ['''(?:^|/)rust/crates/guard\-runtime/testdata/binding_capture/vectors\.
 regexes = [
   '''^[\t\r\n ]*"capture_key_b64": "(?:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=?|a2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tr|a2tra2tra2tra2tra2tra2tra2tra2tra2tra2traw==|\-_v7(?:\-_v7){9}\-_s=|\+/v7(?:\+/v7){9}\+/s=)",?[\t\r\n ]*$''',
 ]
+
+[[rules.allowlists]]
+description = "Synthetic byte-range policy-integrity key recorded in the policy-integrity row parity vectors, not a credential"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(?:^|/)rust/crates/guard\-runtime/testdata/policy_integrity_rows/vectors\.json$''']
+regexes = [
+  '''^[\t\r\n ]*"(?:integrity_key_b64|key_b64)": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",?[\t\r\n ]*$''',
+]
 [[rules.allowlists]]
 description = "Pinned command-token source SHA-256, not a credential"
 condition = "AND"

@@ -360,6 +360,7 @@
     "src/codex_plugin_scanner/guard/native_cursor_observer_proof.py",
     "src/codex_plugin_scanner/guard/native_hook_authority_state.py",
     "src/codex_plugin_scanner/guard/native_store_policy.py",
+    "src/codex_plugin_scanner/guard/native_policy_integrity_rows.py",
     "src/codex_plugin_scanner/guard/native_approval_resolution.py",
     "src/codex_plugin_scanner/guard/native_approval_queue_identity.py",
     "src/codex_plugin_scanner/guard/native_approval_bulk_eligibility.py",

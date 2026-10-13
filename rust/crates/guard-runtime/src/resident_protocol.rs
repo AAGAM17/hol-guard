@@ -24,11 +24,11 @@ use guard_contracts::{
     PackageAuditProjectionRequestV1, PackageAuthorityDecideRequestV1, PackageContextBuildRequestV1,
     PackageEvaluationComposeRequestV1, PackageIntentParseRequestV1, PackagePolicyResolveRequestV1,
     PackagePostureRequestV1, PolicyBundleAuthorityRequestV1, PolicyDecisionLookupRequestV1,
-    PromptAnalyzeRequestV1, ProtectRequestRequestV1, RequestContextRequestV1,
-    RunnerAuthorityRequestV1, RuntimeCapabilitiesV1, RuntimeDetectorRunRequestV1,
-    ShimAdminRequestV2, SkillDirectoryIdentityRequestV1, SupplyChainEvalRequestV1,
-    WorkspaceInventoryRequestV1, MAX_NATIVE_RESPONSE_BYTES, NATIVE_APPROVAL_ERROR_CODES,
-    NATIVE_PROTOCOL_VERSION, NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
+    PolicyIntegrityRowsRequestV1, PromptAnalyzeRequestV1, ProtectRequestRequestV1,
+    RequestContextRequestV1, RunnerAuthorityRequestV1, RuntimeCapabilitiesV1,
+    RuntimeDetectorRunRequestV1, ShimAdminRequestV2, SkillDirectoryIdentityRequestV1,
+    SupplyChainEvalRequestV1, WorkspaceInventoryRequestV1, MAX_NATIVE_RESPONSE_BYTES,
+    NATIVE_APPROVAL_ERROR_CODES, NATIVE_PROTOCOL_VERSION, NATIVE_RESIDENT_LIFECYCLE_ERROR_CODES,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -218,6 +218,7 @@ pub(crate) enum ResidentOperationV1 {
     ApprovalProofDecide(ApprovalProofRequestV1),
     CursorObserverProof(CursorObserverProofRequestV1),
     HookAuthorityState(HookAuthorityStateRequestV1),
+    PolicyIntegrityRows(PolicyIntegrityRowsRequestV1),
     HookDecide(HookDecisionRequestV1),
     DaemonRoute(DaemonRouteRequestV1),
     DaemonHandler(DaemonHandlerRequestV1),

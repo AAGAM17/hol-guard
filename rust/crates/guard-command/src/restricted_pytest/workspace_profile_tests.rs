@@ -68,6 +68,55 @@ fn protected_paths_are_denied_for_writes() {
 }
 
 #[test]
+fn harness_configuration_is_denied_for_writes_at_any_depth() {
+    let patterns = workspace_profile::protected_patterns(Path::new("/w/proj")).unwrap();
+    let denied = |path: &str| {
+        patterns
+            .iter()
+            .any(|p| Regex::new(p).unwrap().is_match(path))
+    };
+    for path in [
+        "/w/proj/.zcode",
+        "/w/proj/.zcode/x",
+        "/w/proj/.copilot/a",
+        "/w/proj/.clinerules",
+        "/w/proj/.clinerules/rules/a.md",
+        "/w/proj/.opencode/plugins/x.ts",
+        "/w/proj/.opencode/plugin/x.ts",
+        "/w/proj/pkg/.OpenCode/plugins/x.ts",
+        "/w/proj/.gemini/settings.json",
+        "/w/proj/.kiro/hooks/a.json",
+        "/w/proj/.roo/mcp.json",
+        "/w/proj/.windsurf/rules/a.md",
+        "/w/proj/.continue/config.yaml",
+        "/w/proj/.pi/extensions/a.ts",
+        "/w/proj/.omp/hooks/a.ts",
+        "/w/proj/.agents/skills/x/SKILL.md",
+        "/w/proj/.husky/pre-commit",
+        "/w/proj/GEMINI.md",
+        "/w/proj/opencode.json",
+        "/w/proj/.github/copilot-instructions.md",
+        "/w/proj/.github/instructions/a.md",
+        "/w/proj/.github/prompts/a.md",
+        "/w/proj/.github/hooks/a.json",
+    ] {
+        assert!(denied(path), "{path}");
+    }
+    for path in [
+        "/w/proj/src/.zcode-notes.ts",
+        "/w/proj/dist/index.js",
+        "/w/proj/node_modules/.cache/x",
+        "/w/proj/tests/hooks/a.test.ts",
+        "/w/proj/.github/dependabot.yml",
+        "/w/proj/.github/ISSUE_TEMPLATE/bug.md",
+        "/w/proj/.vscode-test/x",
+        "/w/other/.zcode/x",
+    ] {
+        assert!(!denied(path), "{path}");
+    }
+}
+
+#[test]
 fn composed_profile_orders_denials_last_and_covers_credentials() {
     let mut value = input("/w/proj");
     value.write_denials = vec![PathBuf::from("/w/proj/tools/hook")];

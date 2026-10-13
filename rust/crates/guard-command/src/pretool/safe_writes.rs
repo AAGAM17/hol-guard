@@ -88,6 +88,11 @@ fn bounded_write_target(
     let Some(canonical) = canonical else {
         return false;
     };
+    // Plugins, hooks, settings and instruction files that a harness loads on
+    // its next start are reviewed even inside the workspace.
+    if crate::harness_config_names::write_target_protected(supplied, &canonical, &workspace) {
+        return false;
+    }
     let inside_verified_home = allow_home
         && home_dir
             .and_then(|home| std::fs::canonicalize(home).ok())

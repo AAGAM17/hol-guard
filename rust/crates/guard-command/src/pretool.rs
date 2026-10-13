@@ -112,7 +112,8 @@ pub use generic::evaluate_pre_tool_envelope_with_context;
 pub use generic::evaluate_pre_tool_envelope_with_execution_context;
 pub use generic::evaluate_pre_tool_envelope_with_extensions;
 pub use git_push::{install_git_push_verdict, GitPushRequest, GitPushVerdict};
-pub(crate) use segment_proof::benign_command_segments;
+pub(crate) use segment_proof::{benign_command_segments, without_stderr_merge};
+pub(crate) use worktree_add::verified_leading_cd;
 
 /// Whether this evaluation already proved `segment` as a safe `origin`
 /// refresh or feature push.

@@ -3,6 +3,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
+#[path = "git_worktree_config.rs"]
+mod sources;
+
+use sources::{expand_config_path, safe_worktree_config, ConfigFacts};
+
 const CONFIG_LIMIT: u64 = 65_536;
 const WORKTREE_PROBE_LIMIT: u64 = 8 * 1024;
 
@@ -13,6 +18,7 @@ pub(super) fn worktree_add_execution_free(
     destination: &Path,
     branch: &str,
     reference: Option<&str>,
+    reference_may_move: bool,
     context: super::PathContext<'_>,
     deadline: Option<Instant>,
     execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
@@ -111,6 +117,13 @@ pub(super) fn worktree_add_execution_free(
     if !facts.filters {
         return Some(true);
     }
+    // A fetch earlier in the same command can move the reference, so the
+    // tree checked out is not the one read here. Only the filter the user's
+    // own `git lfs install` wrote may then be configured; the repository
+    // already may not name LFS programs or filters of its own.
+    if reference_may_move {
+        return Some(facts.only_standard_lfs);
+    }
     let commit = std::str::from_utf8(&output).ok()?.trim();
     if commit.len() < 40
         || commit.len() > 64
@@ -205,18 +218,12 @@ fn no_filter_attributes(
             None => git_home.join(".config/git/attributes"),
         },
     };
-    // Git also reads the system attributes file. A Git that cannot name it
-    // (before 2.42) leaves the proof in doubt.
-    let (status, system) = git_query(base, leading, ["var", "GIT_ATTR_SYSTEM"], deadline, 4096)?;
-    let system = std::str::from_utf8(&system).ok()?.trim();
-    if !status.success() || system.is_empty() || !Path::new(system).is_absolute() {
-        return None;
-    }
-    for file in [
-        common_dir.join("info/attributes"),
-        global,
-        PathBuf::from(system),
-    ] {
+    // Git also reads the system attributes file.
+    let system = sources::system_attribute_files(base, leading, deadline)?;
+    for file in [common_dir.join("info/attributes"), global]
+        .into_iter()
+        .chain(system)
+    {
         if attributes_file_mentions_filter(&file)? {
             return Some(false);
         }
@@ -241,26 +248,6 @@ fn attributes_file_mentions_filter(path: &Path) -> Option<bool> {
         .read_to_end(&mut bytes)
         .ok()?;
     (bytes.len() as u64 <= ATTRIBUTES_LIMIT).then(|| mentions_filter(&bytes))
-}
-
-/// An absolute path or `~/...` under the session home; anything else is doubt.
-fn expand_config_path(value: &str, home: &Path) -> Option<PathBuf> {
-    if value.is_empty() || value.contains(['\0', '\n', '\r']) {
-        return None;
-    }
-    if let Some(rest) = value.strip_prefix("~/") {
-        return (!rest.is_empty()).then(|| home.join(rest));
-    }
-    let path = Path::new(value);
-    path.is_absolute().then(|| path.to_path_buf())
-}
-
-#[derive(Default)]
-struct ConfigFacts {
-    hook_dirs: Vec<PathBuf>,
-    filters: bool,
-    attributes_file: Option<String>,
-    attribute_source_override: bool,
 }
 
 pub(super) fn trusted_pipeline_command(
@@ -392,91 +379,6 @@ fn git_path(
         cwd.join(path)
     })
     .ok()
-}
-
-fn safe_worktree_config(output: &[u8], home: &Path) -> Option<Option<ConfigFacts>> {
-    let output = std::str::from_utf8(output).ok()?;
-    let mut facts = ConfigFacts::default();
-    let mut records = output.split('\0');
-    while let Some(scope) = records.next() {
-        if scope.is_empty() {
-            continue;
-        }
-        let record = records.next()?;
-        let (key, value) = record.split_once('\n')?;
-        let key = key.to_ascii_lowercase();
-        if key == "core.bare" && super::git_config::enabled_boolean(value) {
-            return Some(None);
-        }
-        let global_scope = matches!(scope, "global" | "system");
-        if key == "core.hookspath" {
-            // Hook managers set this globally; the directory must exist and
-            // hold no hook Git would run for this operation.
-            if !global_scope {
-                return Some(None);
-            }
-            let Some(directory) = expand_config_path(value, home)
-                .and_then(|path| fs::canonicalize(path).ok())
-                .filter(|path| path.is_dir())
-            else {
-                return Some(None);
-            };
-            facts.hook_dirs.push(directory);
-            continue;
-        }
-        if key.starts_with("filter.") {
-            // Git LFS installs these globally; they only act where an
-            // attribute assigns a filter, which the caller then rules out.
-            if !global_scope {
-                return Some(None);
-            }
-            facts.filters = true;
-            continue;
-        }
-        if key == "core.attributesfile" {
-            facts.attributes_file = Some(value.to_owned());
-            continue;
-        }
-        if key.starts_with("attr.") {
-            facts.attribute_source_override = true;
-            continue;
-        }
-        // `worktree add` and each probe below use built-in commands, local
-        // refs, and no diff/editor operation. A global or system credential
-        // helper, such as the `osxkeychain` helper Git for macOS installs, is
-        // not consulted for this local-ref operation; retain the deny floor
-        // for repository-scoped helpers and execution-capable settings.
-        // The repository may not name further LFS programs for a filter
-        // the user's own `git lfs install` set up.
-        if !global_scope
-            && key.starts_with("lfs.")
-            && (key.starts_with("lfs.extension.")
-                || key.starts_with("lfs.customtransfer.")
-                || key.ends_with(".standalonetransferagent"))
-        {
-            return Some(None);
-        }
-        if key == "core.worktree"
-            || key == "core.fsmonitor"
-            || key == "core.sshcommand"
-            || key == "core.gitproxy"
-            || key == "core.askpass"
-            || key == "core.pager"
-            || key.starts_with("hook.")
-            || key.starts_with("pager.")
-            || (key.starts_with("credential.") && !matches!(scope, "global" | "system"))
-            || key.starts_with("include")
-            || key.starts_with("extensions.")
-            || key.starts_with("submodule.")
-            || key.ends_with(".promisor")
-            || key.ends_with(".partialclonefilter")
-            || key.ends_with(".uploadpack")
-            || key.ends_with(".receivepack")
-        {
-            return Some(None);
-        }
-    }
-    Some(Some(facts))
 }
 
 fn hooks_are_inert(path: &Path) -> bool {

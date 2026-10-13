@@ -8,8 +8,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 pub(crate) struct Session {
-    home: PathBuf,
-    org: PathBuf,
+    pub(crate) home: PathBuf,
+    pub(crate) org: PathBuf,
     pub(crate) primary: PathBuf,
     pub(crate) worktree: PathBuf,
     _cleanup: FixtureCleanup,

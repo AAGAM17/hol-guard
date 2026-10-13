@@ -284,11 +284,24 @@ fn routed<'a>(
     arguments.get(index..)
 }
 
+#[cfg(test)]
 pub(super) fn observe_with_context(
     segment: &CommandSegmentV1,
     index: usize,
     result: &mut CompatibilityObservations,
     context: crate::pretool::PathContext<'_>,
+) {
+    observe_with_contexts(segment, index, result, context, context);
+}
+
+/// `proof_context` is where native proofs ran this segment: the directory a
+/// verified leading `cd` entered, or `context` itself.
+pub(super) fn observe_with_contexts(
+    segment: &CommandSegmentV1,
+    index: usize,
+    result: &mut CompatibilityObservations,
+    context: crate::pretool::PathContext<'_>,
+    proof_context: crate::pretool::PathContext<'_>,
 ) {
     let arguments = &segment.arguments;
     if arguments
@@ -391,9 +404,12 @@ pub(super) fn observe_with_context(
         // option-prefixed, URL, or otherwise non-exact form stays uncertain.
         // The hook's native proof already checked the repository's origin,
         // transport, credential helpers and hooks for exactly this segment.
-        let plain = git_fetch::plain_origin_refresh(segment, command_index)
-            || (routed_remote && git_fetch::routed_origin_refresh(segment, command_index));
-        if !(plain && crate::pretool::verified_origin_operation(segment, context)) {
+        // A trailing `2>&1` only merges the fetch's progress into stdout.
+        let stripped = crate::pretool::without_stderr_merge(segment);
+        let refresh = stripped.as_ref().unwrap_or(segment);
+        let plain = git_fetch::plain_origin_refresh(refresh, command_index)
+            || (routed_remote && git_fetch::routed_origin_refresh(refresh, command_index));
+        if !(plain && crate::pretool::verified_origin_operation(refresh, proof_context)) {
             result.rule("command.git.unverified-fetch", index, !plain);
         }
     }

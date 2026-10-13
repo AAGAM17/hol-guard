@@ -45,6 +45,7 @@ pub(super) fn exact_safe_command(
             .or(context.cwd),
     };
     let mut worktree_seen = false;
+    let mut fetch_before = false;
     for (index, segment) in model.segments.iter().enumerate() {
         let is_cd = segment.executable.as_deref() == Some("cd");
         if is_cd {
@@ -65,8 +66,8 @@ pub(super) fn exact_safe_command(
             if worktree_seen
                 || segment.pipeline_index != 0
                 || !safe_segment(
-                    model,
                     segment,
+                    fetch_before,
                     proof_context,
                     deadline,
                     execution_environment,
@@ -75,6 +76,20 @@ pub(super) fn exact_safe_command(
                 return false;
             }
             worktree_seen = true;
+            continue;
+        }
+        // `git fetch origin main; git worktree add ... origin/main` refreshes
+        // the base first. A proven fetch writes only refs and objects, never
+        // the configuration or hooks the worktree proof reads.
+        if segment.pipeline_index == 0
+            && super::git_remote_ops::proven_fetch(
+                segment,
+                proof_context,
+                deadline,
+                execution_environment,
+            )
+        {
+            fetch_before |= !worktree_seen;
             continue;
         }
         if segment.pipeline_index > 0 {
@@ -151,6 +166,19 @@ pub(super) fn outside_home_reason(
     )
 }
 
+/// The index of a leading `cd` and the directory it provably enters, so the
+/// compatibility layer can look up proofs made where later segments run.
+pub(crate) fn verified_leading_cd(
+    model: &CanonicalCommandV1,
+    context: super::PathContext<'_>,
+) -> Option<(usize, String)> {
+    let cd_index = model
+        .segments
+        .iter()
+        .position(|segment| segment.executable.as_deref() == Some("cd"))?;
+    verified_worktree_cwd_context(model, cd_index, context).map(|proof| (proof.cd_index, proof.cwd))
+}
+
 pub(super) struct WorktreeCwdProof {
     pub(super) cd_index: usize,
     pub(super) cwd: String,
@@ -209,8 +237,8 @@ pub(super) fn separator_between(
 }
 
 fn safe_segment(
-    _model: &CanonicalCommandV1,
     segment: &CommandSegmentV1,
+    reference_may_move: bool,
     context: super::PathContext<'_>,
     deadline: Option<Instant>,
     execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
@@ -243,6 +271,7 @@ fn safe_segment(
         &destination,
         spec.branch,
         spec.reference,
+        reference_may_move,
         context,
         deadline,
         execution_environment,

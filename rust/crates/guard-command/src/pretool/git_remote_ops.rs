@@ -43,7 +43,13 @@ pub(super) fn exact_safe_command(
         ..context
     };
     let mut fetch_seen = false;
+    // Whether the current pipeline starts with the proven fetch, as in
+    // `git fetch origin main 2>&1 | tail -2`.
+    let mut fetch_pipeline = false;
     for (index, segment) in model.segments.iter().enumerate() {
+        if segment.pipeline_index == 0 {
+            fetch_pipeline = false;
+        }
         if segment.executable.as_deref() == Some("cd") {
             if cwd_proof
                 .as_ref()
@@ -53,10 +59,12 @@ pub(super) fn exact_safe_command(
             }
             continue;
         }
-        if let Some((leading, upstream)) = parse(segment, context) {
+        let stripped = super::segment_proof::without_stderr_merge(segment);
+        let candidate = stripped.as_ref().unwrap_or(segment);
+        if let Some((leading, upstream)) = parse(candidate, context) {
             if fetch_seen
                 || !proven(
-                    segment,
+                    candidate,
                     leading,
                     upstream,
                     context,
@@ -67,7 +75,23 @@ pub(super) fn exact_safe_command(
                 return None;
             }
             fetch_seen = true;
+            fetch_pipeline = true;
             continue;
+        }
+        // Only a bounded `head`/`tail` of stdin may read the fetch's output.
+        if fetch_pipeline
+            && !(segment
+                .executable
+                .as_deref()
+                .is_some_and(|value| matches!(super::executable_basename(value), "head" | "tail"))
+                && super::safe_reads::safe_head_tail_stdin_arguments(&segment.arguments)
+                && super::git_worktree::trusted_pipeline_command(
+                    segment.executable.as_deref().unwrap_or_default(),
+                    context,
+                    execution_environment,
+                ))
+        {
+            return None;
         }
         if !super::segment_proof::exact_safe_segment_with_context(model, segment, false, context)
             && !proven_read(model, index, context, deadline, execution_environment)
@@ -131,10 +155,29 @@ fn proven(
     proven == Some(true)
 }
 
+/// Whether `segment` is an `origin` fetch this proof establishes now. The
+/// worktree proof accepts one before the `worktree add` it refreshes.
+pub(super) fn proven_fetch(
+    segment: &CommandSegmentV1,
+    context: super::PathContext<'_>,
+    deadline: Option<Instant>,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> bool {
+    let stripped = super::segment_proof::without_stderr_merge(segment);
+    let segment = stripped.as_ref().unwrap_or(segment);
+    matches!(
+        parse(segment, context),
+        Some((leading, None))
+            if proven(segment, leading, None, context, deadline, execution_environment)
+    )
+}
+
 /// Whether this evaluation already proved `segment` as a safe `origin`
 /// operation; the compatibility layer uses it to drop the unverified-fetch
-/// review it would otherwise record.
+/// review it would otherwise record. A trailing `2>&1` is the same operation.
 pub(super) fn verified(segment: &CommandSegmentV1, context: super::PathContext<'_>) -> bool {
+    let stripped = super::segment_proof::without_stderr_merge(segment);
+    let segment = stripped.as_ref().unwrap_or(segment);
     parse(segment, context).is_some() && super::git_probe::proven(&memo_key(segment, context))
 }
 
@@ -142,6 +185,8 @@ pub(super) fn verified(segment: &CommandSegmentV1, context: super::PathContext<'
 /// A fetch writes only refs and objects, never the configuration a later Git
 /// read in the same command depends on; a pull also updates the work tree.
 pub(super) fn verified_fetch(segment: &CommandSegmentV1, context: super::PathContext<'_>) -> bool {
+    let stripped = super::segment_proof::without_stderr_merge(segment);
+    let segment = stripped.as_ref().unwrap_or(segment);
     parse(segment, context).is_some_and(|(_, upstream)| upstream.is_none())
         && super::git_probe::proven(&memo_key(segment, context))
 }

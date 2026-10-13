@@ -4782,6 +4782,91 @@
       "expect": "allow"
     },
     {
+      "id": "session-git-worktree-add-c-grandparent-sibling",
+      "fix_area": "git-sibling-worktree",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${ORG}/app-portal worktree add ${ORG_WT}-ga4 -b feat/ga4-goal origin/main"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "session-git-worktree-add-c-grandparent-tail",
+      "fix_area": "git-sibling-worktree",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${ORG}/app-portal worktree add ${ORG_WT}-ga4 -b feat/ga4-goal origin/main 2>&1 | tail -1"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "session-git-fetch-then-worktree-add",
+      "fix_area": "git-sibling-worktree",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${ORG}/app-portal fetch origin main --quiet; git -C ${ORG}/app-portal worktree add ${ORG_WT}-ga4 -b feat/ga4-goal origin/main 2>&1 | tail -1"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "session-git-worktree-add-origin-main",
+      "fix_area": "git-sibling-worktree",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git worktree add ../app-portal-ga4 -b feat/ga4-goal origin/main"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "session-sibling-worktree-fetch-log",
+      "fix_area": "git-sibling-worktree",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cd ${ORG_WT} && git fetch origin fix/report-lane 2>&1 | tail -2 && git log origin/main --oneline -4"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
       "id": "shell-redirect-echo-to-notes",
       "fix_area": "shell",
       "harnesses": [

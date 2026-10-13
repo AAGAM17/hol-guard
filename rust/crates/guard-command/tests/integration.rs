@@ -63,6 +63,7 @@ pub mod pretool_git_pager_config;
 pub mod pretool_git_read_sequences;
 pub mod pretool_git_ref_reads;
 pub mod pretool_git_session_ops;
+pub mod pretool_git_sibling_worktree_ops;
 pub mod pretool_git_submodules;
 pub mod pretool_git_textconv_config;
 pub mod pretool_git_worktree;

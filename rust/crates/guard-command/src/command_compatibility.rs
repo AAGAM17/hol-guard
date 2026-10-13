@@ -241,6 +241,9 @@ pub fn compatibility_observations_with_context(
     }
     let mut result = CompatibilityObservations::default();
     let mut steered = Vec::new();
+    // Native proofs run a segment after a verified leading `cd` in the
+    // directory it enters, so their results are looked up there too.
+    let leading_cd = crate::pretool::verified_leading_cd(command, context);
     for (index, segment) in command.segments.iter().enumerate() {
         deadline_check(deadline)?;
         if segment.executable.is_none()
@@ -273,7 +276,16 @@ pub fn compatibility_observations_with_context(
             steered.push(index);
         }
         match basename(segment).as_str() {
-            "git" => git::observe_with_context(segment, index, &mut result, context),
+            "git" => {
+                let proof_context = match &leading_cd {
+                    Some((cd_index, cwd)) if index > *cd_index => crate::pretool::PathContext {
+                        cwd: Some(cwd.as_str()),
+                        ..context
+                    },
+                    _ => context,
+                };
+                git::observe_with_contexts(segment, index, &mut result, context, proof_context)
+            }
             "gh" => github::observe(segment, index, &mut result),
             _ => {}
         }

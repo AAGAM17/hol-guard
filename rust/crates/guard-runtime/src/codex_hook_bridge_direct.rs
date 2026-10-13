@@ -27,6 +27,9 @@ use crate::codex_hook_response::{POST_TOOL_USE, PRE_TOOL_USE};
 const STATE_DIRECTORY: &str = "native-runtime";
 const DIRECT_RESULT_SCHEMA: &str = "guard-hook-direct-result.v1";
 const USER_PROMPT_SUBMIT: &str = "UserPromptSubmit";
+/// Claude Code's permission dialog, which the resident answers when the
+/// session has no permission notice.
+const PERMISSION_REQUEST: &str = "PermissionRequest";
 
 /// A harness whose passed-through `PreToolUse` hook the daemon answers with
 /// the edge's own response.
@@ -304,7 +307,8 @@ fn direct_enabled(switch: &str) -> bool {
 /// Whether the resident may answer a hook the bridge names `event_name`: a
 /// tool or prompt hook it reviews, or a lifecycle hook it answers with the
 /// daemon's constant. Permission and notification hooks, and the `before*`
-/// hooks the daemon denies, go to the daemon without asking the resident.
+/// hooks the daemon denies, go to the daemon without asking the resident;
+/// `direct_answer` asks it about Claude Code's `PermissionRequest`.
 fn direct_event(event_name: &str) -> bool {
     if [PRE_TOOL_USE, POST_TOOL_USE, USER_PROMPT_SUBMIT].contains(&event_name) {
         return true;
@@ -314,6 +318,12 @@ fn direct_event(event_name: &str) -> bool {
         || compact.contains("permission")
         || compact.contains("notification")
         || compact.starts_with("before"))
+}
+
+/// `direct_event`, plus Claude Code's `PermissionRequest`.
+fn harness_event(harness: &DirectHarness, event_name: &str) -> bool {
+    direct_event(event_name)
+        || (harness.name == CLAUDE_CODE.name && event_name == PERMISSION_REQUEST)
 }
 
 /// Send the request to a live resident that runs this very executable.
@@ -366,7 +376,7 @@ pub(crate) fn direct_answer(
     data: &str,
     rpc_deadline: Instant,
 ) -> Option<String> {
-    if !direct_event(event_name) || !direct_enabled(harness.switch) {
+    if !harness_event(&harness, event_name) || !direct_enabled(harness.switch) {
         return None;
     }
     let deadline = Instant::now() + remaining(rpc_deadline).min(DIRECT_TIMEOUT);

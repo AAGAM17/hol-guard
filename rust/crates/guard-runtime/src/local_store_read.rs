@@ -193,3 +193,37 @@ pub(crate) fn hook_store_probe(
     }
     Ok(probe)
 }
+
+/// Whether `sync_state` holds a Claude Code permission notice for
+/// `session_id`, under its session key or any of its tool keys. A row that
+/// fails verification counts too: only the daemon, which holds the key,
+/// can tell a valid notice from one it must invalidate.
+pub(crate) fn claude_permission_notice_present(
+    guard_home: &Path,
+    session_id: &str,
+) -> Result<bool, StoreReadError> {
+    let Some(connection) = open_read_only(&guard_home.join(STORE_FILE_NAME))? else {
+        return Ok(false);
+    };
+    connection
+        .busy_timeout(std::time::Duration::from_millis(HOOK_PROBE_BUSY_TIMEOUT_MS))
+        .map_err(|_| StoreReadError::StoreUnavailable)?;
+    if !table_exists(&connection, "sync_state")? {
+        return Ok(false);
+    }
+    // Under the binary collation every `<session key>:<tool>` key sorts at or
+    // after `<session key>:` and before `<session key>;`.
+    let session_key = format!("claude_permission_notice:{session_id}");
+    connection
+        .query_row(
+            "select exists(select 1 from sync_state \
+               where state_key = ?1 or (state_key >= ?2 and state_key < ?3))",
+            params![
+                session_key,
+                format!("{session_key}:"),
+                format!("{session_key};")
+            ],
+            |row| row.get(0),
+        )
+        .map_err(|_| StoreReadError::StoreUnavailable)
+}

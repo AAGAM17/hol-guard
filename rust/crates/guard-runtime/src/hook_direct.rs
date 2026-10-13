@@ -331,7 +331,10 @@ fn reviewed_edge(edge: &[u8], event: &str) -> Result<Value, HookDirectDefer> {
 }
 
 /// The edge result to return as is, when it is an allow the daemon would
-/// pass through unchanged. A warn floor is not that allow.
+/// pass through unchanged. A warn floor is that allow too: the daemon asks
+/// for approval only on review and require-reapproval floors, leaves an
+/// allowed command's policy unrepaired, and returns the edge's harness
+/// response as it is, so a warn is recorded and run like an allow.
 fn allow_answer(edge: &[u8]) -> Result<Value, HookDirectDefer> {
     let parsed = reviewed_edge(edge, PRE_TOOL_USE)?;
     let result = parsed.get("result");
@@ -340,7 +343,9 @@ fn allow_answer(edge: &[u8]) -> Result<Value, HookDirectDefer> {
             .and_then(|result| result.get(name))
             .and_then(Value::as_str)
     };
-    if field("decision") != Some("allow") || field("minimum_action") != Some("allow") {
+    if field("decision") != Some("allow")
+        || !matches!(field("minimum_action"), Some("allow" | "warn"))
+    {
         return Err(HookDirectDefer::NotAllow);
     }
     Ok(parsed)

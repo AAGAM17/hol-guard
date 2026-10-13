@@ -165,13 +165,11 @@ fn edge(decision: &str, minimum_action: &str) -> Vec<u8> {
 }
 
 #[test]
-fn only_an_unconditional_allow_is_answered() {
-    let answered = allow_answer(&edge("allow", "allow")).unwrap();
-    assert_eq!(answered["result"]["decision"], "allow");
-    assert_eq!(
-        allow_answer(&edge("allow", "warn")),
-        Err(HookDirectDefer::NotAllow)
-    );
+fn only_an_allow_or_a_warned_allow_is_answered() {
+    for minimum_action in ["allow", "warn"] {
+        let answered = allow_answer(&edge("allow", minimum_action)).unwrap();
+        assert_eq!(answered["result"]["minimum_action"], minimum_action);
+    }
     for (decision, minimum_action) in [
         ("block", "block"),
         ("deny", "review"),
@@ -407,12 +405,9 @@ fn a_block_rule_saved_after_the_publish_defers() {
              insert into local_cli_command_grant values ('cli', 'run', 'allow');",
         )
         .unwrap();
-    // The fixture policy warns on commands, so an allow-only grant stays with
-    // the daemon. A block rule is still read before that edge decision.
-    assert_eq!(
-        deferred(&run(&lane, allowed_payload(&lane))),
-        "direct_hook_not_allow"
-    );
+    // The fixture policy warns on commands, and a warned allow is answered.
+    // A block rule is still read before that edge decision.
+    assert_eq!(run(&lane, allowed_payload(&lane))["outcome"], "answer");
     for statement in [
         "update local_cli_command_grant set state = 'block'",
         "update local_cli_command_grant set state = 'allow'; \
@@ -491,6 +486,18 @@ fn an_edge_verdict_other_than_allow_takes_the_daemon_path() {
         "cwd": lane.workspace,
     });
     assert_eq!(deferred(&run(&lane, payload)), "direct_hook_not_allow");
+}
+
+#[test]
+fn a_command_the_policy_warns_on_is_answered() {
+    // The fixture policy warns on commands: the daemon would record the
+    // warning and let the command run, so the resident answers it.
+    let lane = lane("warned", json!({}));
+    let result = run(&lane, allowed_payload(&lane));
+    assert_eq!(result["outcome"], "answer", "{result}");
+    assert_eq!(result["edge"]["result"]["decision"], "allow");
+    assert_eq!(result["edge"]["result"]["minimum_action"], "warn");
+    assert_eq!(drain(&lane, None)["records"].as_array().unwrap().len(), 1);
 }
 
 /// The next evidence page, after acknowledging `acked`, a page drained before.

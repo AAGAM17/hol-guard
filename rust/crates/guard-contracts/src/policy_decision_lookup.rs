@@ -82,8 +82,9 @@ pub struct PolicyDecisionLookupRequestV1 {
     /// Non-consuming saved-decision read over several probe groups. Each group
     /// is one artifact hash and its candidate ids (direct, exact-command, then
     /// memory-pattern); the payload is the most restrictive group's decision.
-    /// `artifact_id`/`artifact_hash` name the action for the approval-reuse
-    /// miss diagnostic in this mode.
+    /// `artifact_id` names the action for the approval-reuse miss diagnostic
+    /// in this mode; with `reuse`, its hash is the current approval context
+    /// token the resident builds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub probe_groups: Option<PolicyLookupProbeGroupsV1>,
 }
@@ -104,14 +105,17 @@ pub struct PolicyLookupProbeGroupsV1 {
 #[serde(deny_unknown_fields)]
 pub struct PolicyLookupReuseV1 {
     pub current_action: Value,
-    /// The current approval context token.
-    pub current_token: String,
+    /// Generic-hook approval-context inputs; the resident builds the current
+    /// token from them and returns it as `current_token`.
+    pub approval_context_inputs: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct PolicyLookupProbeGroupV1 {
-    pub artifact_hash: String,
+    /// `None` means the current approval context token (requires `reuse`).
+    #[serde(default)]
+    pub artifact_hash: Option<String>,
     pub candidate_artifact_ids: Vec<String>,
 }
 

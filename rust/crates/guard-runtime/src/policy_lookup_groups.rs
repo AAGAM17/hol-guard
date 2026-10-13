@@ -12,11 +12,13 @@ use guard_contracts::{PolicyDecisionLookupRequestV1, PolicyLookupProbeGroupsV1};
 use serde_json::{json, Value};
 
 use crate::context_digest::python_strip;
+use crate::hook_approval_context::generic_hook_token;
 use crate::mcp_tool_policy_lookup::{most_restrictive, severity, without_permission_elevation};
 use crate::policy_decision_lookup_op::{evaluate_non_consuming, open_lookup_connection};
 use crate::policy_lookup_reuse::{compose_reuse, diagnose_miss};
 
 const ERR_INVALID: &str = "native_policy_decision_lookup_invalid";
+const ERR_APPROVAL_CONTEXT: &str = "native_policy_decision_lookup_approval_context_rejected";
 const MAX_GROUPS: usize = 4;
 const MAX_CANDIDATES: usize = 8;
 
@@ -31,6 +33,14 @@ pub(crate) fn evaluate(
     if request.consume_one_shot || request.local_once_only {
         return Err(ERR_INVALID.to_owned());
     }
+    let current_token = match &groups.reuse {
+        Some(reuse) => Some(
+            generic_hook_token(&reuse.approval_context_inputs)
+                .map_err(|_| ERR_APPROVAL_CONTEXT.to_owned())?,
+        ),
+        None => None,
+    };
+    let groups = &with_current_token(groups, current_token.as_deref())?;
     let connection = open_lookup_connection(&request.store_path)?;
     let saved = compose_groups(
         groups,
@@ -44,10 +54,41 @@ pub(crate) fn evaluate(
             evaluate_non_consuming(&probe, &connection)
         },
     )?;
-    Ok(match &groups.reuse {
-        Some(reuse) => compose_reuse(saved, reuse, || diagnose_miss(request, &connection)),
-        None => saved,
+    Ok(match (&groups.reuse, current_token) {
+        (Some(reuse), Some(token)) => {
+            let mut miss = request.clone();
+            miss.artifact_hash = Some(token.clone());
+            let mut composed = compose_reuse(saved, &reuse.current_action, &token, || {
+                diagnose_miss(&miss, &connection)
+            });
+            composed["current_token"] = Value::String(token);
+            composed
+        }
+        _ => saved,
     })
+}
+
+/// Fill groups that name the current token, then drop a group that repeats
+/// an earlier one (a legacy hash equal to the current token).
+pub(crate) fn with_current_token(
+    groups: &PolicyLookupProbeGroupsV1,
+    current_token: Option<&str>,
+) -> Result<PolicyLookupProbeGroupsV1, String> {
+    if groups.groups.len() > MAX_GROUPS {
+        return Err(ERR_INVALID.to_owned());
+    }
+    let mut resolved = groups.clone();
+    resolved.groups.clear();
+    for group in &groups.groups {
+        let mut group = group.clone();
+        if group.artifact_hash.is_none() {
+            group.artifact_hash = Some(current_token.ok_or(ERR_INVALID)?.to_owned());
+        }
+        if !resolved.groups.contains(&group) {
+            resolved.groups.push(group);
+        }
+    }
+    Ok(resolved)
 }
 
 /// Probe every group and return `{decision, ignored_local_integrity}`.
@@ -66,12 +107,13 @@ where
     let mut composed = Vec::with_capacity(groups.groups.len());
     for group in &groups.groups {
         let ids = &group.candidate_artifact_ids;
+        let hash = group.artifact_hash.as_deref().ok_or(ERR_INVALID)?;
         if ids.is_empty() || ids.len() > MAX_CANDIDATES {
             return Err(ERR_INVALID.to_owned());
         }
         let mut lookups = Vec::with_capacity(ids.len());
         for id in ids {
-            let mut probe_at = |at: Option<&str>| probe(id, &group.artifact_hash, at);
+            let mut probe_at = |at: Option<&str>| probe(id, hash, at);
             let lookup = candidate(portable, workspace, &mut probe_at)?;
             let disabled = lookups.is_empty() && remembered_rules_disabled(&lookup);
             lookups.push(lookup);

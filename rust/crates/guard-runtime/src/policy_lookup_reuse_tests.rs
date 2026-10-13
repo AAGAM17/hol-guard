@@ -33,16 +33,17 @@ fn recorded_generic_approval_reuse_replays() {
     assert!(vectors.len() >= 400);
     for case in vectors {
         let name = case["name"].as_str().unwrap();
-        let reuse: PolicyLookupReuseV1 = serde_json::from_value(json!({
-            "current_action": case["current_action"],
-            "current_token": case["current_token"],
-        }))
-        .unwrap();
         let diagnosed = Cell::new(false);
-        let actual = compose_reuse(case["saved"].clone(), &reuse, || {
-            diagnosed.set(true);
-            (text(&case["diagnosis"][0]), text(&case["diagnosis"][1]))
-        });
+        let token = case["current_token"].as_str().unwrap();
+        let actual = compose_reuse(
+            case["saved"].clone(),
+            &case["current_action"],
+            token,
+            || {
+                diagnosed.set(true);
+                (text(&case["diagnosis"][0]), text(&case["diagnosis"][1]))
+            },
+        );
         let expected = &case["expected"];
         let args = &expected["evaluate"];
         let saved_action = &args["saved_action"];
@@ -77,8 +78,8 @@ fn recorded_generic_approval_reuse_replays() {
 fn unknown_reuse_fields_are_rejected() {
     let parsed = serde_json::from_value::<PolicyLookupReuseV1>(json!({
         "current_action": "allow",
+        "approval_context_inputs": {},
         "current_token": "t",
-        "validation_reason": null,
     }));
     assert!(parsed.is_err());
 }

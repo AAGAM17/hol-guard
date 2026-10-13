@@ -8,7 +8,7 @@
 use guard_command::approval_reuse::evaluate_approval_reuse;
 use guard_contracts::{
     ApprovalReuseDiagnosticEvidenceV1, ApprovalReuseDiagnosticRequestV1,
-    PolicyDecisionLookupRequestV1, PolicyLookupReuseV1, APPROVAL_REUSE_DIAGNOSTIC_REQUEST_SCHEMA,
+    PolicyDecisionLookupRequestV1, APPROVAL_REUSE_DIAGNOSTIC_REQUEST_SCHEMA,
 };
 use rusqlite::{Connection, OptionalExtension};
 use serde_json::{json, Value};
@@ -31,7 +31,12 @@ fn field<'a>(value: &'a Value, key: &str) -> &'a Value {
 ///
 /// `diagnose_miss` runs only when no saved decision or integrity evidence
 /// was found.
-pub(crate) fn compose_reuse<F>(saved: Value, reuse: &PolicyLookupReuseV1, diagnose_miss: F) -> Value
+pub(crate) fn compose_reuse<F>(
+    saved: Value,
+    current_action: &Value,
+    current_token: &str,
+    diagnose_miss: F,
+) -> Value
 where
     F: FnOnce() -> MissDiagnosis,
 {
@@ -51,7 +56,7 @@ where
             .as_str()
             .is_some_and(|hash| hash.starts_with(RUNTIME_EXACT_PREFIX));
         if !runtime_exact {
-            reason = validate_context_tokens(saved_hash, &json!(reuse.current_token));
+            reason = validate_context_tokens(saved_hash, &json!(current_token));
         }
     }
     let mut saved_hash = field(&decision, "artifact_hash").clone();
@@ -66,7 +71,7 @@ where
     }
     let flag = |key: &str| field(&decision, key) == &json!(true);
     let verdict = evaluate_approval_reuse(
-        &reuse.current_action,
+        current_action,
         (!saved_action.is_null()).then_some(&saved_action),
         Some(present),
         reason.as_deref(),

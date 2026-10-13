@@ -210,7 +210,7 @@ def _generic_hook_memory_command(payload: Mapping[str, object]) -> str:
     return _coalesce_string(command, payload.get("command"), payload.get("tool_name"))
 
 
-def _generic_hook_approval_context_token(
+def _generic_hook_approval_context_inputs(
     *,
     action_envelope: GuardActionEnvelope | None,
     artifact_id: str,
@@ -225,13 +225,13 @@ def _generic_hook_approval_context_token(
     publisher: str | None,
     runtime_workspace: Path | None,
     token: Mapping[str, object],
-) -> str:
-    """Bind a generic fallback approval to its exact recomputed context.
+) -> dict[str, object]:
+    """Inputs that bind a generic fallback approval to its exact recomputed context.
 
     ``token`` carries the composition values the resident decided.
     """
 
-    inputs = generic_hook_approval_context_inputs(
+    return generic_hook_approval_context_inputs(
         action_envelope=action_envelope,
         artifact_id=artifact_id,
         artifact_name=artifact_name,
@@ -263,12 +263,11 @@ def _generic_hook_approval_context_token(
         },
         current_action=current_action,
     )
-    return native_hook_approval_context_token("generic_hook_approval_context", inputs)
 
 
 def _generic_hook_saved_decision(
     *,
-    artifact_hash: str,
+    approval_context_inputs: dict[str, object],
     artifact_id: str,
     artifact_name: str,
     current_action: GuardAction,
@@ -278,12 +277,13 @@ def _generic_hook_saved_decision(
     publisher: str | None,
     runtime_workspace: Path | None,
     store: GuardStore,
-) -> tuple[dict[str, object] | None, dict[str, object] | None, ApprovalReuseDecision, bool]:
-    """Peek saved evidence and compose its reuse verdict in one resident call.
+) -> tuple[str, dict[str, object] | None, dict[str, object] | None, ApprovalReuseDecision, bool]:
+    """Build the approval context token, peek saved evidence and compose its reuse verdict in one resident call.
 
     Legacy blocks are retained without trusting legacy allows. Returns the
-    saved decision, the ignored local-integrity evidence, the reuse verdict and
-    whether saved evidence was present.
+    current approval context token, the saved decision, the ignored
+    local-integrity evidence, the reuse verdict and whether saved evidence was
+    present.
     """
 
     workspace = str(runtime_workspace) if runtime_workspace is not None else None
@@ -297,11 +297,12 @@ def _generic_hook_saved_decision(
         permission_mode=_optional_string(payload.get("permission_mode"))
         or _optional_string(payload.get("permissionMode")),
     )
-    probes = [(artifact_id, artifact_hash)]
+    # ``None`` is the current token; a legacy hash equal to it is dropped by the resident.
+    probes: list[tuple[str, str | None]] = [(artifact_id, None)]
     policy_artifact_id = runtime_tool_action_policy_artifact_id(artifact_id)
     if policy_artifact_id is not None and policy_artifact_id != artifact_id:
-        probes.append((policy_artifact_id, artifact_hash))
-    if legacy_artifact_hash is not None and legacy_artifact_hash != artifact_hash:
+        probes.append((policy_artifact_id, None))
+    if legacy_artifact_hash is not None:
         probes.append((artifact_id, legacy_artifact_hash))
     saved = store.peek_saved_decision_groups(
         harness,
@@ -313,9 +314,11 @@ def _generic_hook_saved_decision(
         memory_artifact_type=_coalesce_string(payload.get("artifact_type"), payload.get("tool_type")),
         memory_artifact_name=artifact_name,
         current_action=current_action,
+        approval_context_inputs=approval_context_inputs,
     )
     if saved is None:
         # No saved authority to read: a near match can still explain the miss.
+        artifact_hash = native_hook_approval_context_token("generic_hook_approval_context", approval_context_inputs)
         diagnosed_reason, diagnosed_stored_hash = store.approval_reuse_diagnostic(
             harness, artifact_id, artifact_hash, workspace, publisher
         )
@@ -332,11 +335,20 @@ def _generic_hook_saved_decision(
             verdict if verdict is not None else approval_reuse_authority_unavailable(current_action),
             diagnosed_stored_hash,
         )
-        return None, None, reuse, saved_present
+        return artifact_hash, None, None, reuse, saved_present
+    current_token = saved.get("current_token")
+    if not isinstance(current_token, str):
+        raise ValueError("native_policy_decision_lookup_invalid")
     reuse = with_saved_artifact_hash_provenance(
         _decision_from_native_payload(saved.get("reuse")), saved.get("saved_artifact_hash")
     )
-    return saved.get("decision"), saved.get("ignored_local_integrity"), reuse, saved.get("saved_present") is True
+    return (
+        current_token,
+        saved.get("decision"),
+        saved.get("ignored_local_integrity"),
+        reuse,
+        saved.get("saved_present") is True,
+    )
 
 
 def _generic_hook_changed_capabilities(payload_map: Mapping[str, object]) -> list[str]:
@@ -670,7 +682,7 @@ def run_native_generic_payload(
                 home_dir=home_dir,
                 current_action=current_policy_action,
             )
-    runtime_artifact_hash = _generic_hook_approval_context_token(
+    approval_context_inputs = _generic_hook_approval_context_inputs(
         action_envelope=action_envelope,
         artifact_id=artifact_id,
         artifact_name=artifact_name,
@@ -685,8 +697,14 @@ def run_native_generic_payload(
         runtime_workspace=runtime_workspace,
         token=composition["token"],
     )
-    stored_policy_decision, ignored_integrity, approval_reuse, saved_decision_present = _generic_hook_saved_decision(
-        artifact_hash=runtime_artifact_hash,
+    (
+        runtime_artifact_hash,
+        stored_policy_decision,
+        ignored_integrity,
+        approval_reuse,
+        saved_decision_present,
+    ) = _generic_hook_saved_decision(
+        approval_context_inputs=approval_context_inputs,
         artifact_id=artifact_id,
         artifact_name=artifact_name,
         current_action=current_policy_action,

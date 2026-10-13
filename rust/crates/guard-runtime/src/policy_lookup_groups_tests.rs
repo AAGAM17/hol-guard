@@ -6,7 +6,7 @@ use flate2::read::GzDecoder;
 use guard_contracts::PolicyLookupProbeGroupsV1;
 use serde_json::{json, Value};
 
-use super::compose_groups;
+use super::{compose_groups, with_current_token};
 
 const VECTORS: &[u8] = include_bytes!("../tests/fixtures/generic_saved_decision_vectors.json.gz");
 
@@ -82,4 +82,33 @@ fn unknown_probe_group_fields_are_rejected() {
         "degraded_trust_status": {},
     }));
     assert!(parsed.is_err());
+}
+
+#[test]
+fn current_token_fills_groups_and_drops_a_repeated_legacy_group() {
+    let groups: PolicyLookupProbeGroupsV1 = serde_json::from_value(json!({
+        "groups": [
+            {"candidate_artifact_ids": ["a", "a#memory"]},
+            {"candidate_artifact_ids": ["policy:a"]},
+            {"artifact_hash": "token", "candidate_artifact_ids": ["a", "a#memory"]},
+            {"artifact_hash": "legacy", "candidate_artifact_ids": ["a", "a#memory"]},
+        ],
+    }))
+    .unwrap();
+    let resolved = with_current_token(&groups, Some("token")).unwrap();
+    let hashes: Vec<_> = resolved
+        .groups
+        .iter()
+        .map(|group| {
+            (
+                group.artifact_hash.as_deref(),
+                group.candidate_artifact_ids.len(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        hashes,
+        [(Some("token"), 2), (Some("token"), 1), (Some("legacy"), 2)]
+    );
+    assert!(with_current_token(&groups, None).is_err());
 }

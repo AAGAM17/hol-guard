@@ -110,7 +110,7 @@ class StorePortableProjectMemoryMixin:
     def peek_saved_decision_groups(
         self,
         harness: str,
-        probes: Sequence[tuple[str, str]],
+        probes: Sequence[tuple[str, str | None]],
         *,
         workspace: str | None,
         publisher: str | None,
@@ -119,6 +119,7 @@ class StorePortableProjectMemoryMixin:
         memory_artifact_type: str | None,
         memory_artifact_name: str | None,
         current_action: str,
+        approval_context_inputs: Mapping[str, object],
     ) -> dict[str, Any] | None:
         """Peek saved decisions for several ``(artifact_id, artifact_hash)`` probes in one resident call.
 
@@ -151,12 +152,11 @@ class StorePortableProjectMemoryMixin:
                     "candidate_artifact_ids": [artifact_id, *exact_ids, *([memory_id] if memory_id else [])],
                 }
             )
-        current_id, current_hash = probes[0]
         request = self.policy_decision_lookup_request(
             evidence,
             harness=harness,
-            artifact_id=current_id,
-            artifact_hash=current_hash,
+            artifact_id=probes[0][0],
+            artifact_hash=None,
             workspace=workspace,
             publisher=publisher,
             runtime_exact_match_context=runtime_exact_match_context,
@@ -165,7 +165,7 @@ class StorePortableProjectMemoryMixin:
         request["probe_groups"] = {
             "portable_workspace": self._portable_project_workspace(workspace),
             "groups": groups,
-            "reuse": {"current_action": current_action, "current_token": current_hash},
+            "reuse": {"current_action": current_action, "approval_context_inputs": dict(approval_context_inputs)},
         }
         return self.send_policy_decision_lookup(request)
 

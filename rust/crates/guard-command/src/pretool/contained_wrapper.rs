@@ -81,7 +81,10 @@ fn text(model: &CanonicalCommandV1, start: usize, end: usize) -> Option<String> 
 /// approved root to the same directory, so the run is contained to that
 /// repository exactly as it would be from a session started there.
 #[cfg(unix)]
-fn sibling_project_root(target: &std::path::Path, home: &str) -> Option<std::path::PathBuf> {
+pub(super) fn sibling_project_root(
+    target: &std::path::Path,
+    home: &str,
+) -> Option<std::path::PathBuf> {
     use std::os::unix::fs::MetadataExt;
     let uid = nix::unistd::getuid().as_raw();
     [std::path::Path::new(home), std::path::Path::new("/tmp")]
@@ -99,7 +102,10 @@ fn sibling_project_root(target: &std::path::Path, home: &str) -> Option<std::pat
 }
 
 #[cfg(not(unix))]
-fn sibling_project_root(_target: &std::path::Path, _home: &str) -> Option<std::path::PathBuf> {
+pub(super) fn sibling_project_root(
+    _target: &std::path::Path,
+    _home: &str,
+) -> Option<std::path::PathBuf> {
     None
 }
 

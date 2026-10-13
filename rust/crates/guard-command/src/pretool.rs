@@ -92,6 +92,9 @@ mod version_probes;
 #[path = "pretool/workspace_contained_runner_tests.rs"]
 mod workspace_contained_runner_tests;
 #[cfg(test)]
+#[path = "pretool/workspace_contained_sibling_tests.rs"]
+mod workspace_contained_sibling_tests;
+#[cfg(test)]
 #[path = "pretool/workspace_contained_tests.rs"]
 mod workspace_contained_tests;
 mod worktree_add;

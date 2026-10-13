@@ -23,7 +23,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from ..hook_execution_environment import HOOK_EXECUTION_ENVIRONMENT_KEY
+from ..hook_execution_environment import HOOK_EXECUTION_ENVIRONMENT_KEY, LIBRARY_SEARCH_PATH_NAMES
 from .hook_fail_closed import render_pre_tool
 from .hook_request_parsing import pre_tool_command
 
@@ -78,6 +78,10 @@ _FETCH_REDIRECTING_KEYS = frozenset(
 # TLS-inspecting proxy, and leaves the registry where it was.
 _ENVIRONMENT_OVERRIDES = ("npm_config_", "node_options", "node_path")
 _ENVIRONMENT_NAMES = frozenset({"prefix", "destdir", "node_tls_reject_unauthorized"})
+# npm settings that only say where npm keeps its own cache and how it reports.
+# They leave the registry, transport trust and what runs where they were.
+# Developer shells and `npx` launches export `npm_config_cache`.
+_INERT_NPM_SETTINGS = frozenset({"cache", "update-notifier", "fund", "audit", "loglevel", "progress", "color"})
 
 
 def native_package_review_response(
@@ -240,20 +244,15 @@ def verified_npm_version(environment: object, *, workspace: Path) -> str | None:
     if not isinstance(environment, Mapping):
         return None
     names = environment.get("environment_names")
-    if not isinstance(names, list) or any(
-        not isinstance(name, str)
-        or name.lower().startswith(_ENVIRONMENT_OVERRIDES)
-        or name.lower() in _ENVIRONMENT_NAMES
-        for name in names
-    ):
-        return None
-    if environment.get("library_search_paths"):
+    if not isinstance(names, list) or any(not isinstance(name, str) or _changes_npm(name) for name in names):
         return None
     search_path = environment.get("path")
     if not isinstance(search_path, str) or not search_path:
         return None
     try:
         root = workspace.resolve(strict=True)
+        if not _loader_paths_outside(names, environment.get("library_search_paths"), root):
+            return None
         npm = _resolve_executable("npm", search_path)
         node = _resolve_executable("node", search_path)
         if npm is None or node is None or any(path.is_relative_to(root) for path in (npm, node)):
@@ -278,6 +277,40 @@ def verified_npm_version(environment: object, *, workspace: Path) -> str | None:
         return None
     version = manifest.get("version")
     return version if isinstance(version, str) and version else None
+
+
+def _changes_npm(name: str) -> bool:
+    """Whether an environment variable may change what npm or node load or fetch."""
+
+    lowered = name.lower()
+    if lowered.startswith("npm_config_"):
+        # npm reads `npm_config_update_notifier` as `update-notifier`.
+        return lowered.removeprefix("npm_config_").replace("_", "-") not in _INERT_NPM_SETTINGS
+    return lowered.startswith(_ENVIRONMENT_OVERRIDES) or lowered in _ENVIRONMENT_NAMES
+
+
+def _loader_paths_outside(names: list[str], stamped: object, root: Path) -> bool:
+    """Whether every exported loader search path stays out of the workspace.
+
+    The same search path reaches `npm test` and every other process the agent
+    starts without review, so refusing it only for the install adds an
+    approval without keeping a planted library out. A relative or empty entry
+    searches the working directory, and an entry inside the workspace names a
+    directory the agent writes, so those still fail closed. A loader variable
+    exported without its stamped value cannot be checked and fails closed too.
+    """
+
+    paths = stamped if isinstance(stamped, Mapping) else {}
+    for name in LIBRARY_SEARCH_PATH_NAMES:
+        if name not in names and name not in paths:
+            continue
+        value = paths.get(name)
+        if not isinstance(value, str) or not value:
+            return False
+        for entry in value.split(":"):
+            if not os.path.isabs(entry) or Path(os.path.realpath(entry)).is_relative_to(root):
+                return False
+    return True
 
 
 def _npmrc_redirects_fetch(path: Path) -> bool:

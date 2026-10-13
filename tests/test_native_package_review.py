@@ -76,11 +76,51 @@ def test_an_added_ca_keeps_the_npm_proof(npm_layout: tuple[Path, Path, Path]) ->
 
 
 @pytestmark_posix
+@pytest.mark.parametrize("name", ["npm_config_cache", "NPM_CONFIG_UPDATE_NOTIFIER", "npm_config_fund"])
+def test_cache_and_reporting_settings_keep_the_npm_proof(npm_layout: tuple[Path, Path, Path], name: str) -> None:
+    prefix, home, workspace = npm_layout
+
+    assert package_review.verified_npm_version(_environment(prefix, home, name), workspace=workspace) == "11.9.0"
+
+
+@pytestmark_posix
+def test_a_loader_path_outside_the_workspace_keeps_the_npm_proof(npm_layout: tuple[Path, Path, Path]) -> None:
+    prefix, home, workspace = npm_layout
+    libraries = home / ".local" / "lib"
+    libraries.mkdir(parents=True)
+    environment = _environment(prefix, home, "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH")
+    environment["library_search_paths"] = {"LD_LIBRARY_PATH": str(libraries), "DYLD_LIBRARY_PATH": str(libraries)}
+
+    assert package_review.verified_npm_version(environment, workspace=workspace) == "11.9.0"
+
+
+@pytestmark_posix
+@pytest.mark.parametrize("entry", ["", "lib", ".", "{workspace}/lib", "{home}/lib:{workspace}", "{home}/link/lib"])
+def test_a_loader_path_reaching_the_workspace_fails_closed(npm_layout: tuple[Path, Path, Path], entry: str) -> None:
+    prefix, home, workspace = npm_layout
+    (home / "link").symlink_to(workspace)
+    environment = _environment(prefix, home, "LD_LIBRARY_PATH")
+    environment["library_search_paths"] = {"LD_LIBRARY_PATH": entry.format(home=home, workspace=workspace)}
+
+    assert package_review.verified_npm_version(environment, workspace=workspace) is None
+
+
+@pytestmark_posix
+def test_a_loader_path_without_its_stamped_value_fails_closed(npm_layout: tuple[Path, Path, Path]) -> None:
+    prefix, home, workspace = npm_layout
+
+    environment = _environment(prefix, home, "LD_LIBRARY_PATH")
+    assert package_review.verified_npm_version(environment, workspace=workspace) is None
+
+
+@pytestmark_posix
 @pytest.mark.parametrize(
     "name",
     [
         "npm_config_registry",
         "NPM_CONFIG_ALLOW_GIT",
+        "npm_config__cache",
+        "npm_config_cafile",
         "NODE_OPTIONS",
         "NODE_PATH",
         "PREFIX",

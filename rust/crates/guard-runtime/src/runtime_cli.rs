@@ -37,6 +37,11 @@ pub(super) fn run() -> Result<(), String> {
         {
             std::process::exit(cursor_hook_bridge::run(python_argv))
         }
+        [command, python_argv @ ..]
+            if command == mcp_relay::RELAY_COMMAND && python_argv.len() >= 2 =>
+        {
+            std::process::exit(mcp_relay::run(python_argv))
+        }
         [command, flag] if command == "hook" && flag == "--stdin" => {
             let bytes = read_stdin_bounded()?;
             let response = oneshot::evaluate_hook_bytes(&bytes)?;

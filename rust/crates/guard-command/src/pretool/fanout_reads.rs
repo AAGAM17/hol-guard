@@ -90,26 +90,50 @@ fn child_proven(
     child: &[String],
     context: PathContext<'_>,
 ) -> bool {
-    let Some((name, rest)) = child.split_first() else {
-        return false;
-    };
-    let mut arguments = rest.to_vec();
-    arguments.push(fanout::PLACEHOLDER.to_owned());
-    let mut tokens = vec![name.clone()];
-    tokens.extend(arguments.iter().cloned());
-    let proxy = CommandSegmentV1 {
+    child_proven_with(
+        model,
+        segment,
+        child,
+        Some(fanout::PLACEHOLDER),
+        false,
+        context,
+    )
+}
+
+fn child_proven_with(
+    model: &CanonicalCommandV1,
+    segment: &CommandSegmentV1,
+    child: &[String],
+    operand: Option<&str>,
+    allow_git_helper_context: bool,
+    context: PathContext<'_>,
+) -> bool {
+    child.first().is_some_and(|_| {
+        let proxy = child_segment(segment, child, operand);
+        exact_safe_segment_with_context(model, &proxy, allow_git_helper_context, context)
+    })
+}
+
+/// The command a launcher runs: its child with one operand appended.
+fn child_segment(
+    segment: &CommandSegmentV1,
+    child: &[String],
+    operand: Option<&str>,
+) -> CommandSegmentV1 {
+    let mut tokens = child.to_vec();
+    tokens.extend(operand.map(str::to_owned));
+    CommandSegmentV1 {
         text: tokens.join(" "),
+        executable: tokens.first().cloned(),
+        arguments: tokens[1..].to_vec(),
         tokens,
-        executable: Some(name.clone()),
-        arguments,
         environment_names: Vec::new(),
         wrapper_chain: Vec::new(),
         path_overridden: false,
         execution_context: segment.execution_context.clone(),
         pipeline_index: 0,
         span: segment.span.clone(),
-    };
-    exact_safe_segment_with_context(model, &proxy, false, context)
+    }
 }
 
 fn plain(segment: &CommandSegmentV1) -> bool {
@@ -170,6 +194,69 @@ pub(super) fn safe_xargs(
         && shape.print0
         && producer_allowed(&shape, xargs.child, context)
         && child_proven(model, segment, xargs.child, context)
+}
+
+/// `git merge-base REV... | xargs git ...` whose child passes the Git read
+/// proof with an object name appended. `merge-base` prints only object names,
+/// so that is all the child can receive; with no input and no `-r`, the child
+/// runs without the operand, which the same read proof also covers.
+///
+/// Like a direct Git read, the child defers its helper check to the Git
+/// configuration probe, which sees it through [`git_xargs_child`].
+pub(super) fn safe_git_xargs(
+    model: &CanonicalCommandV1,
+    segment: &CommandSegmentV1,
+    context: PathContext<'_>,
+) -> bool {
+    let Some(xargs) = fanout::xargs_git(&segment.arguments) else {
+        return false;
+    };
+    let follows = model
+        .segments
+        .iter()
+        .position(|candidate| candidate.span.start == segment.span.start)
+        .is_some_and(|index| follows_object_names(model, index));
+    follows
+        && plain(segment)
+        && child_proven_with(
+            model,
+            segment,
+            xargs.child,
+            Some(fanout::OBJECT_NAME_PLACEHOLDER),
+            true,
+            context,
+        )
+        && (xargs.no_run_if_empty
+            || child_proven_with(model, segment, xargs.child, None, true, context))
+}
+
+fn follows_object_names(model: &CanonicalCommandV1, index: usize) -> bool {
+    let segment = &model.segments[index];
+    index.checked_sub(1).is_some_and(|previous| {
+        fanout::xargs_follows_object_names(
+            &model.segments[previous],
+            segment.pipeline_index,
+            &segment.execution_context,
+            &segment.arguments,
+        )
+    })
+}
+
+/// The Git read the `xargs` stage at `index` runs for `git merge-base REV... |
+/// xargs git ...`, with an object name appended, so the configuration probe
+/// and the read floor judge it as they judge a direct Git read.
+pub(super) fn git_xargs_child(
+    model: &CanonicalCommandV1,
+    index: usize,
+) -> Option<CommandSegmentV1> {
+    let segment = model.segments.get(index)?;
+    let is_xargs = segment
+        .executable
+        .as_deref()
+        .is_some_and(|name| name == "xargs");
+    let xargs = fanout::xargs_git(&segment.arguments).filter(|_| is_xargs)?;
+    (plain(segment) && follows_object_names(model, index))
+        .then(|| child_segment(segment, xargs.child, Some(fanout::OBJECT_NAME_PLACEHOLDER)))
 }
 
 /// Guidance for a `find | xargs` that splits names on whitespace.

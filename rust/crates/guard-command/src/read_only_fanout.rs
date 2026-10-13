@@ -10,13 +10,21 @@
 //! roots, regular files only (`-type f`, so a workspace symlink is never
 //! followed), and the existing read-only proof of the child. Everything else,
 //! including `-I` substitution, `sh -c`, `-delete`, `-fprint`, `-ok` and
-//! every producer other than `find`, keeps the uncertain model.
+//! every other producer, keeps the uncertain model.
+//!
+//! One more producer is recognized: `git merge-base REV... | xargs git ...`,
+//! which agents use to inspect the commit two branches share. `merge-base`
+//! prints only object names, so the child receives hexadecimal words, and the
+//! pre-tool proof still requires the child's own Git read proof.
 
 use crate::parser_executables::executable_basename;
 use crate::CommandSegmentV1;
 
 /// Placeholder operand the child proof stands in for the unknown file names.
 pub(crate) const PLACEHOLDER: &str = "guard-fanout-result";
+
+/// Object name the Git child proof stands in for the `merge-base` result.
+pub(crate) const OBJECT_NAME_PLACEHOLDER: &str = "0123456789abcdef0123456789abcdef01234567";
 
 /// Children worth proving at all. Each still has to pass its own read-only
 /// proof with the file operand appended; this list adds no admission.
@@ -186,7 +194,7 @@ fn bounded_count(value: &str) -> bool {
 
 /// `xargs [-0] [-r] [-n N] [-P N] CHILD ARGS`: no replacement string, no
 /// prompt, no input file or delimiter options.
-pub(crate) fn xargs(arguments: &[String]) -> Option<Xargs<'_>> {
+fn xargs_options(arguments: &[String]) -> Option<Xargs<'_>> {
     let arguments = without_stderr_merge(arguments);
     let mut null_separated = false;
     let mut no_run_if_empty = false;
@@ -217,12 +225,56 @@ pub(crate) fn xargs(arguments: &[String]) -> Option<Xargs<'_>> {
             }
         }
     }
-    let child = &arguments[index..];
-    child_listed(child).then_some(Xargs {
+    Some(Xargs {
         null_separated,
         no_run_if_empty,
-        child,
+        child: &arguments[index..],
     })
+}
+
+/// `xargs [-0] [-r] [-n N] [-P N] CHILD ARGS` with a child from the read-only list.
+pub(crate) fn xargs(arguments: &[String]) -> Option<Xargs<'_>> {
+    xargs_options(arguments).filter(|xargs| child_listed(xargs.child))
+}
+
+/// `xargs [-r] [-n N] [-P N] git ARGS`: a plain `git` child that receives the
+/// object names `git merge-base` printed.
+pub(crate) fn xargs_git(arguments: &[String]) -> Option<Xargs<'_>> {
+    xargs_options(arguments).filter(|xargs| {
+        !xargs.null_separated && xargs.child.first().is_some_and(|name| name == "git")
+    })
+}
+
+/// `git merge-base REV...` with only literal revisions prints object names and
+/// nothing else, so the words `xargs` appends are hexadecimal.
+pub(crate) fn object_name_producer(segment: &CommandSegmentV1) -> bool {
+    segment.environment_names.is_empty()
+        && segment.wrapper_chain.is_empty()
+        && !segment.path_overridden
+        && segment.executable.as_deref() == Some("git")
+        && matches!(without_stderr_merge(&segment.arguments), [subcommand, revisions @ ..]
+        if subcommand == "merge-base"
+            && !revisions.is_empty()
+            && revisions.iter().all(|revision| {
+                !revision.starts_with('-')
+                    && !revision.is_empty()
+                    && revision.bytes().all(|byte| {
+                        byte.is_ascii_alphanumeric() || b"/._-~^@{}".contains(&byte)
+                    })
+            }))
+}
+
+/// A `git` child of `xargs` fed directly by `git merge-base` in the same pipeline.
+pub(crate) fn xargs_follows_object_names(
+    previous: &CommandSegmentV1,
+    pipeline_index: usize,
+    execution_context: &str,
+    arguments: &[String],
+) -> bool {
+    previous.pipeline_index + 1 == pipeline_index
+        && previous.execution_context == execution_context
+        && object_name_producer(previous)
+        && xargs_git(arguments).is_some()
 }
 
 /// A `xargs` segment fed directly by a `find` segment of the same pipeline.

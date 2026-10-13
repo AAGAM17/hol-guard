@@ -554,10 +554,16 @@ fn parse_posix_command(request: &CommandModelRequestV1) -> Result<CanonicalComma
             && environment_names.is_empty()
             && wrapper_chain.is_empty()
             && segments.last().is_some_and(|previous| {
+                let context = format!("top:{}", raw_segment.group_index);
                 read_only_fanout::xargs_follows_find(
                     previous,
                     raw_segment.pipeline_index,
-                    &format!("top:{}", raw_segment.group_index),
+                    &context,
+                    &arguments,
+                ) || read_only_fanout::xargs_follows_object_names(
+                    previous,
+                    raw_segment.pipeline_index,
+                    &context,
                     &arguments,
                 )
             });

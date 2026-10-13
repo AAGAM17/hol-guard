@@ -438,7 +438,10 @@ pub(super) fn exact_safe_segment_with_context(
             super::find_reads::safe_find_listing_arguments(&segment.arguments, context)
                 || super::fanout_reads::safe_find_exec(model, segment, context)
         }
-        "xargs" => super::fanout_reads::safe_xargs(model, segment, context),
+        "xargs" => {
+            super::fanout_reads::safe_xargs(model, segment, context)
+                || super::fanout_reads::safe_git_xargs(model, segment, context)
+        }
         // Operand-free `cat` after a pipe only copies the proven producer's output.
         "cat" => {
             (segment.pipeline_index > 0 && segment.arguments.is_empty())

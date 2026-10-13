@@ -99,3 +99,87 @@ fn read_only_segments_before_a_git_read_keep_its_proof() {
         );
     }
 }
+
+fn action(home: &std::path::Path, cwd: &std::path::Path, command: &str) -> String {
+    let controls = github_controls("enabled");
+    evaluate_pre_tool_envelope_with_context(
+        "omp",
+        "PreToolUse",
+        &json!({"tool_name":"bash", "tool_input":{"command":command}}),
+        Some(&controls),
+        None,
+        home.to_str(),
+        cwd.to_str(),
+    )
+    .minimum_action
+}
+
+// Agents read the commit two branches share with `git merge-base A B | xargs
+// git log`. merge-base prints only object names, so the child is a Git read
+// with an object name appended, and the configuration probe sees it as one.
+#[test]
+fn merge_base_object_names_feed_a_git_read() {
+    let root = std::env::temp_dir().join(format!("guard xargs read {}", std::process::id()));
+    let _cleanup = FixtureCleanup(root.clone());
+    let home = root.join("home");
+    let repository = root.join("repository");
+    for directory in [&home, &repository] {
+        std::fs::create_dir_all(directory).unwrap();
+    }
+    let home = home.canonicalize().unwrap();
+    let repository = repository.canonicalize().unwrap();
+    git(&repository, &home, &["init", "--quiet"]);
+    git(
+        &repository,
+        &home,
+        &["config", "user.email", "fixture@example.test"],
+    );
+    git(&repository, &home, &["config", "user.name", "fixture"]);
+    std::fs::write(repository.join("package.json"), "{}\n").unwrap();
+    git(&repository, &home, &["add", "-A"]);
+    git(&repository, &home, &["commit", "--quiet", "-m", "fixture"]);
+    git(&repository, &home, &["branch", "feature"]);
+
+    for command in [
+        "git merge-base feature HEAD | xargs git log --format='%H %ci %s' -1",
+        "git merge-base feature HEAD | xargs -r git show --stat",
+        "git merge-base --is-ancestor feature HEAD && echo merged || echo not; echo ---; \
+         git log --format=\"%H %ci %s\" -1 feature; echo ---base---; \
+         git merge-base feature HEAD | xargs git log --format=\"%H %ci %s\" -1",
+    ] {
+        assert_eq!(action(&home, &repository, command), "allow", "{command}");
+    }
+    for command in [
+        // Children that write, run helpers or reach the network.
+        "git merge-base feature HEAD | xargs git log --output=out.txt -1",
+        "git merge-base feature HEAD | xargs git diff --ext-diff",
+        "git merge-base feature HEAD | xargs git -c core.pager=x log -1",
+        "git merge-base feature HEAD | xargs git push origin",
+        "git merge-base feature HEAD | xargs git checkout",
+        "git merge-base feature HEAD | xargs git reset --hard",
+        "git merge-base feature HEAD | xargs git branch -D",
+        // Substitution and a child named by its input.
+        "git merge-base feature HEAD | xargs -I{} git log {}",
+        "git merge-base feature HEAD | xargs -I{} {} log",
+        "git merge-base feature HEAD | xargs sh -c 'git log \"$@\"' _",
+        // Producers that can print words other than object names.
+        "git rev-parse HEAD | xargs git log",
+        "echo --output=out.txt | xargs git log",
+        "git log --format=%s -1 | xargs git log",
+        "git merge-base \"$(cat ref)\" HEAD | xargs git log",
+        "git merge-base feature HEAD | tr a b | xargs git log",
+    ] {
+        assert_ne!(action(&home, &repository, command), "allow", "{command}");
+    }
+
+    // The probe still sees a pager or diff helper the child would launch.
+    let marker = root.join("helper-ran").to_string_lossy().replace('\\', "/");
+    git(
+        &repository,
+        &home,
+        &["config", "diff.external", &format!("touch '{marker}'")],
+    );
+    let command = "git merge-base feature HEAD | xargs git show";
+    assert_ne!(action(&home, &repository, command), "allow", "{command}");
+    assert!(!root.join("helper-ran").exists());
+}

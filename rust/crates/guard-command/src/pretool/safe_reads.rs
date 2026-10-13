@@ -97,6 +97,9 @@ pub(super) fn safe_sed_stdin_arguments(arguments: &[String]) -> bool {
         && safe_sed_arguments(arguments, true, super::PathContext::default())
 }
 
+/// Upper bound on `;`-separated range prints in one `sed -n` program.
+const MAX_PRINT_RANGES: usize = 16;
+
 pub(super) fn safe_sed_arguments(
     arguments: &[String],
     piped_input: bool,
@@ -105,23 +108,31 @@ pub(super) fn safe_sed_arguments(
     let Some((quiet, program, targets)) = sed_program_and_targets(arguments) else {
         return false;
     };
-    if program.len() > 256 || program.contains(['\n', '\r', '\\', ';']) {
+    if program.len() > 256 || program.contains(['\n', '\r', '\\']) {
         return false;
     }
+    // `1,12p;28,40p` prints several line ranges, as the Codex output proof
+    // already allows. Every statement must be a numeric or `$` range print,
+    // so no w/W/e/r command, label or regex address can join it.
     let bounded_print = quiet
-        && program.strip_suffix('p').is_some_and(|range| {
-            let counts: Vec<_> = range.split(',').collect();
-            (1..=2).contains(&counts.len())
-                && counts.iter().all(|count| {
-                    !count.is_empty()
-                        && count.len() <= 6
-                        && count.bytes().all(|byte| byte.is_ascii_digit())
-                        && count.parse::<u32>().is_ok_and(|count| count > 0)
-                })
+        && program.split(';').count() <= MAX_PRINT_RANGES
+        && program.split(';').all(|statement| {
+            statement.trim().strip_suffix('p').is_some_and(|range| {
+                let counts: Vec<_> = range.trim_end().split(',').collect();
+                (1..=2).contains(&counts.len())
+                    && counts.iter().all(|count| {
+                        *count == "$"
+                            || (!count.is_empty()
+                                && count.len() <= 6
+                                && count.bytes().all(|byte| byte.is_ascii_digit())
+                                && count.parse::<u32>().is_ok_and(|count| count > 0))
+                    })
+            })
         });
     // Exactly one substitution with inert flags. No e/w commands, program
     // files, in-place edits, or additional statements can enter this proof.
     let substitution = !quiet
+        && !program.contains(';')
         && program.strip_prefix("s/").is_some_and(|body| {
             let parts: Vec<_> = body.split('/').collect();
             parts.len() == 3 && matches!(parts[2], "" | "g")

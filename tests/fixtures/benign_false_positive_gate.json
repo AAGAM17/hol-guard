@@ -2673,6 +2673,66 @@
       "expect": "allow"
     },
     {
+      "id": "queue-sibling-grep-sed-print-ranges",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "grep -n \"^mod \\|^pub mod \" ${ORG}/service-api/src/index.ts | sed -n '1,12p;28,40p'"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-sibling-grep-glob-operand",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "grep -rln \"def.*settings\\|SETTINGS_\" ${ORG}/service-api/src/*.ts | head -8"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-sibling-rg-src-and-github",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "rg -n \"deadline\" ${ORG}/service-api/src ${ORG}/service-api/.github"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-sibling-rg-replace-dirs-head",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "rg -rn \"deadline\" ${ORG}/service-api/src ${ORG}/service-api/.github 2>/dev/null | head"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
       "id": "neg-home-fd-hidden",
       "fix_area": "negative",
       "harnesses": [

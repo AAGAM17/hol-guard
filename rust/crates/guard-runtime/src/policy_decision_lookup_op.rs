@@ -1328,6 +1328,9 @@ fn evaluate(request: &PolicyDecisionLookupRequestV1) -> Result<Value, String> {
     if request.schema != POLICY_DECISION_LOOKUP_REQUEST_SCHEMA {
         return Err("native_policy_decision_lookup_schema_mismatch".to_owned());
     }
+    if let Some(groups) = &request.probe_groups {
+        return crate::policy_lookup_groups::evaluate(request, groups);
+    }
     let current_time = canonical_utc_timestamp(&request.now)
         .ok_or_else(|| "native_policy_decision_lookup_invalid_now".to_owned())?;
     let mut conn = open_lookup_connection(&request.store_path)?;

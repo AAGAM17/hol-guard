@@ -455,6 +455,7 @@ mod policy_document_op;
 mod policy_effective;
 mod policy_enforcement;
 mod policy_integrity_resolver;
+mod policy_lookup_groups;
 mod policy_snapshot_build;
 mod policy_store;
 mod prompt_analyze_op;

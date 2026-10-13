@@ -79,6 +79,28 @@ pub struct PolicyDecisionLookupRequestV1 {
     /// bundle source is unset → identity compare short-circuits.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy_bundle_decision_identities: Option<Vec<Vec<Value>>>,
+    /// Non-consuming saved-decision read over several probe groups. Each group
+    /// is one artifact hash and its candidate ids (direct, exact-command, then
+    /// memory-pattern); the payload is the most restrictive group's decision.
+    /// `artifact_id`/`artifact_hash` are ignored in this mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probe_groups: Option<PolicyLookupProbeGroupsV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PolicyLookupProbeGroupsV1 {
+    /// Git-derived portable workspace, when the workspace has one.
+    #[serde(default)]
+    pub portable_workspace: Option<String>,
+    pub groups: Vec<PolicyLookupProbeGroupV1>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PolicyLookupProbeGroupV1 {
+    pub artifact_hash: String,
+    pub candidate_artifact_ids: Vec<String>,
 }
 
 fn default_true() -> bool {

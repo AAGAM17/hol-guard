@@ -100,7 +100,6 @@ if TYPE_CHECKING:
     from .commands_support_runtime_resolution import _canonical_harness_name
 
 
-from ..action_lattice import guard_action_severity
 from ..harness_posture import harness_is_recording_only
 from ..local_cli_hook import apply_local_cli_grant, observe_unlisted_cli
 from ..models import GuardAction, GuardArtifact, HarnessDetection
@@ -291,68 +290,22 @@ def _generic_hook_saved_decision(
         permission_mode=_optional_string(payload.get("permission_mode"))
         or _optional_string(payload.get("permissionMode")),
     )
-    lookup = store.resolve_policy_decision_lookup_with_memory_pattern(
+    probes = [(artifact_id, artifact_hash)]
+    policy_artifact_id = runtime_tool_action_policy_artifact_id(artifact_id)
+    if policy_artifact_id is not None and policy_artifact_id != artifact_id:
+        probes.append((policy_artifact_id, artifact_hash))
+    if legacy_artifact_hash is not None and legacy_artifact_hash != artifact_hash:
+        probes.append((artifact_id, legacy_artifact_hash))
+    return store.peek_saved_decision_groups(
         harness,
-        artifact_id,
-        artifact_hash=artifact_hash,
+        probes,
         workspace=workspace,
         publisher=publisher,
         runtime_exact_match_context=runtime_exact_match_context,
         memory_command=memory_command,
         memory_artifact_type=_coalesce_string(payload.get("artifact_type"), payload.get("tool_type")),
         memory_artifact_name=artifact_name,
-        consume_one_shot=False,
     )
-    selected_decision = lookup["decision"]
-    ignored_integrity = lookup.get("ignored_local_integrity")
-    policy_artifact_id = runtime_tool_action_policy_artifact_id(artifact_id)
-    if policy_artifact_id is not None and policy_artifact_id != artifact_id:
-        exact_lookup = store.resolve_policy_decision_lookup_with_memory_pattern(
-            harness,
-            policy_artifact_id,
-            artifact_hash=artifact_hash,
-            workspace=workspace,
-            publisher=publisher,
-            runtime_exact_match_context=runtime_exact_match_context,
-            memory_command=memory_command,
-            memory_artifact_type=_coalesce_string(payload.get("artifact_type"), payload.get("tool_type")),
-            memory_artifact_name=artifact_name,
-            consume_one_shot=False,
-        )
-        exact_decision = exact_lookup["decision"]
-        if ignored_integrity is None:
-            ignored_integrity = exact_lookup.get("ignored_local_integrity")
-        if exact_decision is not None and (
-            selected_decision is None
-            or guard_action_severity(exact_decision.get("action"), unknown_action="block")
-            > guard_action_severity(selected_decision.get("action"), unknown_action="block")
-        ):
-            selected_decision = exact_decision
-            ignored_integrity = exact_lookup.get("ignored_local_integrity")
-    if legacy_artifact_hash is not None and legacy_artifact_hash != artifact_hash:
-        legacy_lookup = store.resolve_policy_decision_lookup_with_memory_pattern(
-            harness,
-            artifact_id,
-            artifact_hash=legacy_artifact_hash,
-            workspace=workspace,
-            publisher=publisher,
-            runtime_exact_match_context=runtime_exact_match_context,
-            memory_command=memory_command,
-            memory_artifact_type=_coalesce_string(payload.get("artifact_type"), payload.get("tool_type")),
-            memory_artifact_name=artifact_name,
-            consume_one_shot=False,
-        )
-        legacy_decision = legacy_lookup["decision"]
-        if ignored_integrity is None:
-            ignored_integrity = legacy_lookup.get("ignored_local_integrity")
-        if legacy_decision is not None and (
-            selected_decision is None
-            or guard_action_severity(legacy_decision.get("action"), unknown_action="block")
-            > guard_action_severity(selected_decision.get("action"), unknown_action="block")
-        ):
-            selected_decision = legacy_decision
-            ignored_integrity = legacy_lookup.get("ignored_local_integrity")
-    return selected_decision, ignored_integrity
 
 
 def _generic_hook_approval_reuse(

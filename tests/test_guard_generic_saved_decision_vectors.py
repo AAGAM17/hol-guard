@@ -1,0 +1,88 @@
+"""The generic hook ships the recorded saved-decision probe groups in one resident call.
+
+The vectors were recorded from the former Python composition of the generic
+hook's saved-decision probes. The Rust resident replays the same vectors in
+``policy_lookup_groups_tests.rs``; here the request Python builds must carry the
+recorded groups and portable workspace, and the resident answer is returned
+unchanged.
+"""
+
+from __future__ import annotations
+
+import gzip
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from codex_plugin_scanner.guard import store_portable_project_memory
+from codex_plugin_scanner.guard.cli import commands_hook_native_generic
+from codex_plugin_scanner.guard.store import GuardStore
+from codex_plugin_scanner.guard.store_policy import PolicyLookupEvidence
+
+_FIXTURE = (
+    Path(__file__).parents[1]
+    / "rust"
+    / "crates"
+    / "guard-runtime"
+    / "tests"
+    / "fixtures"
+    / "generic_saved_decision_vectors.json.gz"
+)
+_VECTORS = json.loads(gzip.decompress(_FIXTURE.read_bytes()))["vectors"]
+_DEGRADED_TRUST = {"remembered_rules": "disabled_degraded", "trusted": False}
+
+
+@pytest.mark.parametrize("vector", _VECTORS[::8], ids=lambda vector: vector["name"])
+def test_generic_saved_decision_ships_recorded_groups(vector, monkeypatch, tmp_path):
+    candidates = {group["candidate_artifact_ids"][0]: group["candidate_artifact_ids"][1:] for group in vector["groups"]}
+
+    def memory_lookup_candidates(_harness: str, artifact_id: str, **_kwargs: Any) -> tuple[list[str], str | None]:
+        rest = candidates[artifact_id]
+        memory = rest[-1] if rest and rest[-1].endswith("#memory") else None
+        return [item for item in rest if item != memory], memory
+
+    evidence = PolicyLookupEvidence(
+        now="2026-01-01T00:00:00Z",
+        integrity_state={},
+        degraded_trust_status=_DEGRADED_TRUST if vector["degraded"] else None,
+    )
+    requests: list[dict[str, object]] = []
+
+    def send(_store: GuardStore, request: dict[str, object]) -> dict[str, Any]:
+        requests.append(request)
+        return vector["expected"]
+
+    monkeypatch.setattr(store_portable_project_memory, "memory_lookup_candidates", memory_lookup_candidates)
+    monkeypatch.setattr(GuardStore, "policy_lookup_evidence", lambda _store, **_kwargs: evidence)
+    monkeypatch.setattr(GuardStore, "send_policy_decision_lookup", send)
+    monkeypatch.setattr(
+        GuardStore, "_portable_project_workspace", staticmethod(lambda _ws: vector["portable_workspace"])
+    )
+    monkeypatch.setattr(commands_hook_native_generic, "_generic_hook_memory_command", lambda _payload: "echo")
+
+    result = commands_hook_native_generic._generic_hook_saved_decision(
+        artifact_hash=vector["artifact_hash"],
+        artifact_id=vector["artifact_id"],
+        artifact_name="Bash",
+        harness="claude-code",
+        legacy_artifact_hash=vector["legacy_artifact_hash"],
+        payload={"tool_name": "Bash", "tool_input": {"command": "echo"}},
+        publisher=None,
+        runtime_workspace=Path(vector["workspace"]),
+        store=GuardStore(tmp_path / "home"),
+    )
+
+    if vector["degraded"]:
+        assert requests == []
+        assert result == (None, None)
+        return
+    [request] = requests
+    assert request["consume_one_shot"] is False
+    assert request["workspace"] == vector["workspace"]
+    assert request["probe_groups"] == {
+        "portable_workspace": vector["portable_workspace"],
+        "groups": vector["groups"],
+    }
+    assert result == (vector["expected"]["decision"], vector["expected"]["ignored_local_integrity"])

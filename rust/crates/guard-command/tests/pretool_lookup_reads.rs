@@ -191,7 +191,6 @@ fn git_reads_after_unproven_segments_still_ask() {
             "git -c core.pager=less log && git status",
             "GIT_PAGER=less git log && git status",
             "git merge-base --octopus-evil HEAD main",
-            "git merge-base HEAD main > out.txt",
         ] {
             let result = classify(&home, harness, command);
             assert_ne!(result.decision, "allow", "{harness}: {command}");

@@ -25,7 +25,11 @@ pub(super) fn worktree_add_execution_free(
     let (base, _binary, cwd, git_home) =
         prepared_git_command(executable, context, execution_environment)?;
     let home = fs::canonicalize(Path::new(context.home_dir?)).ok()?;
-    if !destination.starts_with(&home) {
+    if !destination.starts_with(&home)
+        && !destination
+            .parent()
+            .is_some_and(|parent| super::git_routes::owned_temporary_directory(parent, context))
+    {
         return Some(false);
     }
     match fs::symlink_metadata(destination) {
@@ -442,6 +446,16 @@ fn safe_worktree_config(output: &[u8], home: &Path) -> Option<Option<ConfigFacts
         // helper, such as the `osxkeychain` helper Git for macOS installs, is
         // not consulted for this local-ref operation; retain the deny floor
         // for repository-scoped helpers and execution-capable settings.
+        // The repository may not name further LFS programs for a filter
+        // the user's own `git lfs install` set up.
+        if !global_scope
+            && key.starts_with("lfs.")
+            && (key.starts_with("lfs.extension.")
+                || key.starts_with("lfs.customtransfer.")
+                || key.ends_with(".standalonetransferagent"))
+        {
+            return Some(None);
+        }
         if key == "core.worktree"
             || key == "core.fsmonitor"
             || key == "core.sshcommand"

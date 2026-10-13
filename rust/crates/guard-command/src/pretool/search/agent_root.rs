@@ -1,5 +1,5 @@
 //! Names-only listings of the Oh My Pi agent-state root (`ls ~/.agent`,
-//! `ls -R ~/.agent`).
+//! `ls -R ~/.agent`, `find ${HOME}/.agent -name SKILL.md`).
 //!
 //! `ls` prints names and metadata, never file contents, and Oh My Pi's own
 //! glob tool already lists these trees. The operand must resolve exactly to
@@ -10,12 +10,34 @@
 //! that direct reads deny.
 use super::tree::{expanded_operand, walk, HAZARDS};
 use super::ReadContext;
+use std::path::Path;
 
 pub(in crate::pretool) fn agent_root_listing(
     value: &str,
     context: ReadContext<'_>,
     recursive: bool,
 ) -> bool {
+    // `$HOME` and `${HOME}` name the same directory a leading `~` does. The
+    // parser drops quotes, so `'$HOME/.agent'` reaches here too, where the
+    // shell leaves the name alone; that literal path must not exist.
+    let spelled;
+    let value = match ["${HOME}", "$HOME"]
+        .iter()
+        .find_map(|name| value.strip_prefix(name))
+        .filter(|rest| rest.is_empty() || rest.starts_with('/'))
+    {
+        Some(rest) => {
+            let literal = context
+                .cwd
+                .is_none_or(|cwd| std::fs::symlink_metadata(Path::new(cwd).join(value)).is_ok());
+            if literal {
+                return false;
+            }
+            spelled = format!("~{rest}");
+            spelled.as_str()
+        }
+        None => value,
+    };
     if value.is_empty()
         || value.len() > 4096
         || value.starts_with('-')

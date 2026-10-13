@@ -1,14 +1,20 @@
-//! A plain `origin` refresh. It runs only Git built-ins once the effective
-//! configuration proves `origin` is a GitHub HTTPS remote with no program,
-//! proxy or URL rewrite in the way, every credential helper resolves to a
-//! trusted executable, and no hook Git would start for the fetch can run.
+//! A plain `origin` refresh, or a fast-forward pull of one. It runs only Git
+//! built-ins once the effective configuration proves `origin` is a GitHub
+//! HTTPS remote with no program, proxy or URL rewrite in the way, every
+//! credential helper resolves to a trusted executable, and no hook Git would
+//! start for the fetch can run.
 
 use super::git_remote_config as config;
 use super::git_session_probe::Probe;
 use crate::{CanonicalCommandV1, CommandSegmentV1};
 use std::time::Instant;
 
-/// The allow reason for a proven refresh, or `None`.
+#[path = "git_remote_pull.rs"]
+pub(super) mod pull;
+
+/// The allow reason for a proven refresh, or `None`. The fetch may sit in a
+/// chain after a verified `cd` and beside segments that are benign on their
+/// own, such as `git fetch origin main && git log origin/main --oneline -2`.
 pub(super) fn exact_safe_command(
     model: &CanonicalCommandV1,
     context: super::PathContext<'_>,
@@ -18,25 +24,111 @@ pub(super) fn exact_safe_command(
     if model.confidence != "exact"
         || model.path_overridden
         || !model.wrapper_chain.is_empty()
-        || model.segments.len() != 1
+        || model.segments.is_empty()
     {
         return None;
     }
-    let segment = &model.segments[0];
-    let leading = parse(segment, context)?;
+    let cwd_proof = model
+        .segments
+        .iter()
+        .position(|segment| segment.executable.as_deref() == Some("cd"))
+        .and_then(|cd_index| {
+            super::worktree_add::verified_worktree_cwd_context(model, cd_index, context)
+        });
+    let context = super::PathContext {
+        cwd: cwd_proof
+            .as_ref()
+            .map(|proof| proof.cwd.as_str())
+            .or(context.cwd),
+        ..context
+    };
+    let mut fetch_seen = false;
+    for (index, segment) in model.segments.iter().enumerate() {
+        if segment.executable.as_deref() == Some("cd") {
+            if cwd_proof
+                .as_ref()
+                .is_none_or(|proof| proof.cd_index != index)
+            {
+                return None;
+            }
+            continue;
+        }
+        if let Some((leading, upstream)) = parse(segment, context) {
+            if fetch_seen
+                || !proven(
+                    segment,
+                    leading,
+                    upstream,
+                    context,
+                    deadline,
+                    execution_environment,
+                )
+            {
+                return None;
+            }
+            fetch_seen = true;
+            continue;
+        }
+        if !super::segment_proof::exact_safe_segment_with_context(model, segment, false, context)
+            && !proven_read(model, index, context, deadline, execution_environment)
+        {
+            return None;
+        }
+    }
+    fetch_seen.then_some((
+        "native_exact_safe_git_origin_refresh",
+        "The Rust command authority proved this fetch or fast-forward pull reaches only a GitHub HTTPS origin with trusted credential helpers, plain refspecs and no hooks, filters or transport programs.",
+    ))
+}
+
+/// A Git read the configuration probe proves starts no pager, diff driver or
+/// textconv helper. A fetch writes refs, never configuration, so the proof
+/// holds on either side of it.
+fn proven_read(
+    model: &CanonicalCommandV1,
+    index: usize,
+    context: super::PathContext<'_>,
+    deadline: Option<Instant>,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> bool {
+    let segment = &model.segments[index];
+    segment.executable.as_deref() == Some("git")
+        && segment.environment_names.is_empty()
+        && !segment.path_overridden
+        && segment.wrapper_chain.is_empty()
+        && !super::sensitive_command(&segment.text)
+        && super::git_reads::safe_git_arguments(&segment.arguments, true, context)
+        && super::directory_targets::drive_targets_quoted(segment)
+        && super::directory_targets::home_targets_unquoted(segment)
+        && super::git_config::execution_free(
+            "git",
+            &segment.arguments,
+            context,
+            deadline,
+            execution_environment,
+            super::git_helper_context::stdout_piped(model, index),
+        ) == Some(true)
+}
+
+fn proven(
+    segment: &CommandSegmentV1,
+    leading: &[String],
+    upstream: Option<bool>,
+    context: super::PathContext<'_>,
+    deadline: Option<Instant>,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> bool {
     let proven = super::git_probe::memoized(memo_key(segment, context), || {
         Some(prove(
             segment.executable.as_deref()?,
             leading,
+            upstream,
             context,
             deadline,
             execution_environment,
         ))
     });
-    (proven == Some(true)).then_some((
-        "native_exact_safe_git_origin_refresh",
-        "The Rust command authority proved this fetch reaches only a GitHub HTTPS origin with trusted credential helpers, plain refspecs and no hooks or transport programs.",
-    ))
+    proven == Some(true)
 }
 
 /// Whether this evaluation already proved `segment` as a safe `origin`
@@ -44,6 +136,14 @@ pub(super) fn exact_safe_command(
 /// review it would otherwise record.
 pub(super) fn verified(segment: &CommandSegmentV1, context: super::PathContext<'_>) -> bool {
     parse(segment, context).is_some() && super::git_probe::proven(&memo_key(segment, context))
+}
+
+/// Whether this evaluation already proved `segment` as a safe `origin` fetch.
+/// A fetch writes only refs and objects, never the configuration a later Git
+/// read in the same command depends on; a pull also updates the work tree.
+pub(super) fn verified_fetch(segment: &CommandSegmentV1, context: super::PathContext<'_>) -> bool {
+    parse(segment, context).is_some_and(|(_, upstream)| upstream.is_none())
+        && super::git_probe::proven(&memo_key(segment, context))
 }
 
 fn memo_key(
@@ -62,10 +162,12 @@ fn memo_key(
     )
 }
 
+/// The leading `-C` routes of a refresh, with `None` for a fetch or, for a
+/// fast-forward pull, whether Git picks the upstream.
 fn parse<'a>(
     segment: &'a CommandSegmentV1,
     context: super::PathContext<'_>,
-) -> Option<&'a [String]> {
+) -> Option<(&'a [String], Option<bool>)> {
     let executable = segment.executable.as_deref()?;
     if executable != "git"
         || segment.pipeline_index != 0
@@ -90,13 +192,19 @@ fn parse<'a>(
         return None;
     }
     let (command, rest) = remaining.split_first()?;
-    (command == "fetch" && crate::command_compatibility::git_fetch_origin_shaped(rest))
-        .then_some(leading)
+    match command.as_str() {
+        "fetch" => {
+            crate::command_compatibility::git_fetch_origin_shaped(rest).then_some((leading, None))
+        }
+        "pull" => Some((leading, Some(pull::shaped(rest)?))),
+        _ => None,
+    }
 }
 
 fn prove(
     executable: &str,
     leading: &[String],
+    upstream: Option<bool>,
     context: super::PathContext<'_>,
     deadline: Option<Instant>,
     execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
@@ -132,4 +240,7 @@ fn prove(
         && !config::repository_config_routes_transport(&repository)
         && !effective.keys().any(|key| key.starts_with("submodule."))
         && probe.hooks_inert(&["pre-auto-gc", "reference-transaction", "post-fetch"])
+        && upstream.is_none_or(|upstream| {
+            pull::fast_forward_inert(&effective, &repository, upstream, &probe)
+        })
 }

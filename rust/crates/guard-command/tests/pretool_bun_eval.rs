@@ -100,7 +100,6 @@ fn constant_prints_proceed_without_a_preload() {
         "bun -e \"console.log(Bun.file('.env'))\"",
         "bun -e \"console.log('a,b', Bun.spawnSync(['id']))\"",
         "bun --preload ./x.js -e \"console.log('ok')\"",
-        "bun -e \"console.log('ok')\" > out.txt",
         "bun -e \"console.log('ok')\" | sh",
         "BUN_OPTIONS=--preload=./x.js bun -e \"console.log('ok')\"",
         "./bun -e \"console.log('ok')\"",

@@ -257,6 +257,28 @@ pub(super) fn walk(
     excluded_directories: &[&str],
     git_metadata: bool,
 ) -> bool {
+    super::walk_memo::memoized(
+        &root,
+        excluded_files,
+        excluded_directories,
+        git_metadata,
+        || {
+            walk_uncached(
+                root.clone(),
+                excluded_files,
+                excluded_directories,
+                git_metadata,
+            )
+        },
+    )
+}
+
+fn walk_uncached(
+    root: PathBuf,
+    excluded_files: &[&str],
+    excluded_directories: &[&str],
+    git_metadata: bool,
+) -> bool {
     let mut pending = vec![(root.clone(), 0_usize)];
     let mut inspected = 0_usize;
     // Inspect metadata only. Never follow links or read a secret to classify it.

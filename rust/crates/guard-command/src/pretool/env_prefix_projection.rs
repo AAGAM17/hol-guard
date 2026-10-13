@@ -10,6 +10,9 @@ use crate::cloud_scrub_shell::{shell_tokens, ShellToken};
 use crate::pretool::PathContext;
 use guard_contracts::PreToolResultV1;
 
+#[path = "env_prefix_search_path.rs"]
+mod search_path;
+
 const MAX_PROJECTED_CHARS: usize = 32_768;
 
 /// Command separators after which a new simple command starts.
@@ -193,6 +196,7 @@ fn strip_prefixes(
     context: PathContext<'_>,
 ) -> Option<usize> {
     let mut stripped = false;
+    let mut required = Vec::new();
     while index < tokens.len() && !tokens[index].is_control {
         let token = &tokens[index];
         if let Some((name, value)) = shell_assignment(chars, token) {
@@ -200,10 +204,7 @@ fn strip_prefixes(
                 return None;
             }
             if !inert_assignment(name, value) {
-                let first = setting
-                    .as_deref_mut()
-                    .filter(|_| reviewable_assignment(name, value, context))?;
-                first.get_or_insert_with(|| name.to_owned());
+                search_path::review(setting.as_deref_mut(), &mut required, name, value, context)?;
             }
         } else if token.value == "env" || token.value == "/usr/bin/env" {
             removed[index] = true;
@@ -213,6 +214,7 @@ fn strip_prefixes(
                 index + 1,
                 removed,
                 setting.as_deref_mut(),
+                &mut required,
                 context,
             )?;
             stripped = true;
@@ -234,6 +236,9 @@ fn strip_prefixes(
     if stripped && guard_launcher(&tokens[index].value) {
         return None;
     }
+    if !required.is_empty() && !search_path::admits(&required, &tokens[index].value) {
+        return None;
+    }
     Some(index)
 }
 
@@ -253,6 +258,7 @@ fn strip_env_options(
     mut index: usize,
     removed: &mut [bool],
     mut setting: Option<&mut Option<String>>,
+    required: &mut Vec<&'static [&'static str]>,
     context: PathContext<'_>,
 ) -> Option<usize> {
     while index < tokens.len() && !tokens[index].is_control {
@@ -287,10 +293,7 @@ fn strip_env_options(
             return None;
         } else if let Some((name, assigned)) = assignment(token) {
             if !inert_assignment(name, assigned) {
-                let first = setting
-                    .as_deref_mut()
-                    .filter(|_| reviewable_assignment(name, assigned, context))?;
-                first.get_or_insert_with(|| name.to_owned());
+                search_path::review(setting.as_deref_mut(), required, name, assigned, context)?;
             }
         } else {
             break;
@@ -480,7 +483,9 @@ pub(super) fn code_loading_setting(command: &str) -> Option<String> {
         };
         if name.len() <= MAX_SETTING_CHARS
             && assignment_name_shape(name)
-            && code_loading_name(&name.to_ascii_uppercase())
+            && crate::command_compatibility::code_or_redirect_environment_name(
+                &name.to_ascii_uppercase(),
+            )
         {
             return Some(name.to_owned());
         }

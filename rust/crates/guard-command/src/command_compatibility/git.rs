@@ -311,7 +311,7 @@ pub(super) fn observe_with_context(
     // A remote operation behind proven `-C` routes names its subcommand
     // exactly, like the bare form; its own floors then apply.
     let routed_remote = command_index != 0
-        && matches!(command, "push" | "fetch")
+        && matches!(command, "push" | "fetch" | "pull")
         && routed_arguments(arguments, context)
             .filter(|_| crate::pretool::directory_targets::drive_targets_quoted(segment))
             .filter(|_| crate::pretool::directory_targets::home_targets_unquoted(segment))

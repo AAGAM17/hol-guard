@@ -164,13 +164,10 @@ fn reviewed_projection_refuses_program_loader_and_credential_settings() {
         "NODE_PATH=$HOME/x node x.mjs",
         "NODE_PATH=`id` node x.mjs",
         "HOL_GUARD_MODE=off git status",
-        "NODE_PATH=/ws/node_modules node x.mjs",
         "NODE_OPTIONS=--require=./x.js node x.mjs",
         "env OPENSSL_CONF=/ws/a.cnf git fetch origin",
         "RUSTFLAGS='-C linker=./x' cargo build",
         "RUSTC_WRAPPER=./x cargo build",
-        "PYTHONPATH=. python x.py",
-        "JAVA_HOME=/ws/jdk mvn test",
         "EDITOR=./x npm run release",
         "CC=./x npm run build",
         "PYTHONUSERBASE=/ws/site python x.py",
@@ -178,11 +175,52 @@ fn reviewed_projection_refuses_program_loader_and_credential_settings() {
         "LESSOPEN='|/ws/x %s' less README.md",
         "LESSCLOSE=/ws/x less README.md",
         "'REPORT_DIR=out' node x.mjs",
+        "PYTHONPATH=. aws s3 ls",
+        "NODE_PATH=/ws/node_modules gh api user",
+        "JAVA_HOME=/ws/jdk git status",
+        "PYTHONPATH=src JAVA_HOME=/opt/jdk pytest -q",
+        "PYTHONPATH=src NODE_OPTIONS=--require=./x.js python x.py",
+        "PYTHONPATH='src tests' pytest -q",
+        "PYTHONPATH=src::tests pytest -q",
+        "NODE_PATH=-r node x.mjs",
+        "PYTHONPATH=src hol-guard pytest-contained -- pytest -q",
     ] {
         assert!(
             project_reviewed(command, Default::default()).is_none(),
             "{command}"
         );
+    }
+}
+
+#[test]
+fn search_paths_are_reviewed_in_front_of_their_own_toolchain() {
+    for (command, projected, setting) in [
+        ("PYTHONPATH=src pytest -q", "pytest -q", "PYTHONPATH"),
+        (
+            "cd app && PYTHONPATH=src:tests python3.12 -m pytest",
+            "cd app && python3.12 -m pytest",
+            "PYTHONPATH",
+        ),
+        (
+            "JAVA_HOME=/opt/jdk-21 ./gradlew build",
+            "./gradlew build",
+            "JAVA_HOME",
+        ),
+        (
+            "env NODE_PATH=./node_modules node x.mjs",
+            "node x.mjs",
+            "NODE_PATH",
+        ),
+        (
+            "REPORT_DIR=out PYTHONPATH=. python x.py",
+            "python x.py",
+            "REPORT_DIR",
+        ),
+    ] {
+        let reviewed =
+            project_reviewed(command, Default::default()).unwrap_or_else(|| panic!("{command}"));
+        assert_eq!(reviewed.command, projected, "{command}");
+        assert_eq!(reviewed.setting, setting, "{command}");
     }
 }
 

@@ -11,9 +11,9 @@ use guard_contracts::PreToolResultV1;
 pub(super) struct RedirectProjection {
     pub(super) command: String,
     pub(super) writes_file: bool,
-    /// A redirect target is an absolute path outside the session workspace
-    /// (the bounded temp-file exception). No workspace profile bounds it.
-    pub(super) writes_outside_workspace: bool,
+    /// Every file the redirects write passes the check a file-edit tool's
+    /// write gets.
+    pub(super) bounded_writes: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -37,7 +37,7 @@ pub(super) fn project(
     let mut saw_heredoc = false;
     let mut removed = false;
     let mut writes_file = false;
-    let mut writes_outside_workspace = false;
+    let mut bounded_writes = true;
     let mut index = 0usize;
     while index < chars.len() {
         let current = chars[index];
@@ -84,7 +84,7 @@ pub(super) fn project(
                     &mut out,
                     context,
                     &mut writes_file,
-                    &mut writes_outside_workspace,
+                    &mut bounded_writes,
                 )?;
                 removed = true;
                 continue;
@@ -140,14 +140,15 @@ pub(super) fn project(
     Some(RedirectProjection {
         command,
         writes_file,
-        writes_outside_workspace,
+        bounded_writes,
     })
 }
 
 /// Keep the projected command's floors and raise them by any independent
 /// floor of the raw command. The raw text's generic "unparsed command"
 /// review is the only floor the projection discharges, except that a file
-/// write still requires review.
+/// write still requires review unless its target passes the same check as a
+/// file-edit tool's write and the command itself is allowed.
 fn redirect_disqualifies_containment(reason: &str) -> bool {
     // A file redirect is a shell effect. Pytest and inline-eval profiles are
     // only valid for the exact command, so the projection must not inherit them.
@@ -164,7 +165,7 @@ pub(super) fn join(
     mut projected: PreToolResultV1,
     raw: PreToolResultV1,
     writes_file: bool,
-    writes_outside_workspace: bool,
+    bounded_writes: bool,
 ) -> PreToolResultV1 {
     // Stripping a benign descriptor copy must not replace an allow the raw
     // command already earned. A file write still goes through the floors below.
@@ -174,12 +175,7 @@ pub(super) fn join(
     {
         return raw;
     }
-    // A sandbox profile binds the workspace, not a temp-directory file the
-    // shell opens, so a sandbox requirement must not cover that write.
-    if writes_file
-        && (redirect_disqualifies_containment(&projected.reason_code)
-            || (writes_outside_workspace && projected.minimum_action == "sandbox-required"))
-    {
+    if writes_file && redirect_disqualifies_containment(&projected.reason_code) {
         projected.minimum_action = "review".into();
         projected.policy_action = "review".into();
         projected.decision = "deny".into();
@@ -200,7 +196,12 @@ pub(super) fn join(
         projected.reason_code = raw.reason_code;
         projected.reason = raw.reason;
     }
-    if writes_file && rank(&projected.minimum_action) < rank("review") {
+    // `echo done > notes.txt` is the same edit an agent's own write tool makes.
+    let bounded = bounded_writes
+        && projected.minimum_action == "allow"
+        && projected.decision == "allow"
+        && !projected.action.sensitive_target;
+    if writes_file && !bounded && rank(&projected.minimum_action) < rank("review") {
         projected.minimum_action = "review".into();
         projected.policy_action = "review".into();
         projected.decision = "deny".into();
@@ -230,7 +231,7 @@ fn remove_output_redirect(
     out: &mut String,
     context: super::super::PathContext<'_>,
     writes_file: &mut bool,
-    writes_outside_workspace: &mut bool,
+    bounded_writes: &mut bool,
 ) -> Option<usize> {
     let mut index = start + 1;
     let descriptor = trailing_word(out).to_owned();
@@ -284,10 +285,7 @@ fn remove_output_redirect(
         return None;
     }
     *writes_file = true;
-    *writes_outside_workspace |= target.starts_with('/')
-        && !context
-            .cwd
-            .is_some_and(|cwd| std::path::Path::new(&target).starts_with(cwd));
+    *bounded_writes &= bounded_write(&target, context);
     out.push(' ');
     Some(index)
 }
@@ -449,6 +447,21 @@ fn safe_output_target(target: &str, context: super::super::PathContext<'_>) -> b
         });
     }
     cwd.is_some_and(|cwd| no_symlink_components(cwd, path))
+}
+
+fn bounded_write(target: &str, context: super::super::PathContext<'_>) -> bool {
+    use super::super::safe_writes::{
+        bounded_native_file_write_target, bounded_native_temporary_write_target,
+    };
+    // Home is outside the workspace even when it sits below a temporary
+    // directory, as it does for disposable and CI accounts.
+    let path = std::path::Path::new(target);
+    let under = |base: Option<&str>| base.is_some_and(|base| path.starts_with(base));
+    if path.is_absolute() && under(context.home_dir) && !under(context.cwd) {
+        return false;
+    }
+    bounded_native_file_write_target(target, context.home_dir, context.cwd)
+        || bounded_native_temporary_write_target(target, context.home_dir, context.cwd)
 }
 
 /// Writing through an existing symlink could reach any file the user owns.

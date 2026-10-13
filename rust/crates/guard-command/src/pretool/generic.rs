@@ -149,16 +149,18 @@ pub fn evaluate_pre_tool_envelope_with_execution_context(
     execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
 ) -> PreToolResultV1 {
     let mut result = super::git_probe::with_memo(|| {
-        evaluate_envelope(
-            harness,
-            event,
-            payload,
-            controls,
-            deadline,
-            context,
-            execution_environment,
-            true,
-        )
+        super::search::with_walk_memo(|| {
+            evaluate_envelope(
+                harness,
+                event,
+                payload,
+                controls,
+                deadline,
+                context,
+                execution_environment,
+                true,
+            )
+        })
     });
     // Name what kept the extension controls from evaluating the command, a
     // code-loading setting or an open quote, so the agent can fix it and retry
@@ -359,6 +361,22 @@ fn evaluate_envelope(
                 execution_environment,
                 false,
             );
+            // The workspace sandbox runs the exact text, settings included,
+            // so a contained verdict needs no review for them.
+            let mut projected = projected;
+            if matches!(raw.minimum_action.as_str(), "allow" | "warn" | "review")
+                && !raw.action.sensitive_target
+                && super::workspace_contained::carry_settings(
+                    &mut projected,
+                    signals.command.as_deref().unwrap_or_default(),
+                    context,
+                    execution_environment,
+                    harness,
+                    event,
+                )
+            {
+                return projected;
+            }
             return env_prefix_projection::join_reviewed(projected, raw, &reviewed.setting);
         }
     }
@@ -399,7 +417,7 @@ fn evaluate_envelope(
                 projected,
                 raw,
                 projection.writes_file,
-                projection.writes_outside_workspace,
+                projection.bounded_writes,
             );
         }
     }
@@ -678,6 +696,18 @@ fn evaluate_envelope(
         harness,
         event,
         signals.command.as_deref(),
+    );
+    super::git_local_writes::settle(
+        &mut result,
+        &pre_floor,
+        command_model,
+        super::PathContext {
+            home_dir,
+            cwd,
+            ..context
+        },
+        deadline,
+        execution_environment,
     );
     if event == "PreToolUse" {
         super::lockfile_install::settle(

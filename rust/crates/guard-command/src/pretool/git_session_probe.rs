@@ -9,7 +9,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 use std::time::Instant;
 
-const CONFIG_LIMIT: u64 = 4 * 1024 * 1024;
+/// Matches the runtime probe's output bound. Long-lived repositories collect
+/// large `branch.*` sections, and a smaller cap here turned an ordinary fetch
+/// into a review that the runtime itself would have verified.
+const CONFIG_LIMIT: u64 = 8 * 1024 * 1024;
 const TEXT_LIMIT: u64 = 4096;
 
 /// Session variables Git reads for its own behavior that cannot change where

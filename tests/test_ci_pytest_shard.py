@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from scripts.ci.build_pytest_shard_plan import SCHEDULING_ONLY_NODE_IDS
+from scripts.ci.build_pytest_shard_plan import SANDBOX_GATE_FILES, SCHEDULING_ONLY_NODE_IDS
 from tests.support.ci_workflow import expand_ci_job_actions
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -161,7 +161,7 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
     for node in SCHEDULING_ONLY_NODE_IDS:
         assert node in selected or node.split("[", 1)[0] in selected or node.split("::", 1)[0] in selected
     redundant_deselections = re.findall(r"--deselect '?([^'\s]+)'?", coverage_job)
-    assert set(redundant_deselections) <= SCHEDULING_ONLY_NODE_IDS
+    assert set(redundant_deselections) <= SCHEDULING_ONLY_NODE_IDS | SANDBOX_GATE_FILES
     assert coverage_job.count("--deselect ") == len(set(redundant_deselections))
     assert {STORAGE_LIVENESS_NODE} <= SCHEDULING_ONLY_NODE_IDS
     assert jobs["scheduling-sensitive"]["strategy"]["matrix"]["python-version"] == ["3.12.14", "3.14.7"]

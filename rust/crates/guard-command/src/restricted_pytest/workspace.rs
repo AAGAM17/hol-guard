@@ -4,7 +4,7 @@ use super::*;
 use crate::pretool::generic::workspace_redirects;
 use crate::pretool::workspace_git_config::{linked_git_dirs, workspace_write_denials};
 use crate::pretool::workspace_git_environment::GitVariables;
-use crate::pretool::{command_shape, WORKSPACE_PROFILE};
+use crate::pretool::{command_shape, Shape, WORKSPACE_PROFILE};
 use crate::{parse_command, CommandModelRequestV1};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -37,6 +37,25 @@ pub(crate) fn workspace_admissible(cwd: &Path, home: Option<&Path>) -> Option<Pa
         .then_some(resolved)
 }
 
+/// The sandbox shape for the exact `text` about to run, or `None` when the
+/// workspace sandbox cannot bound it. Literal-path redirects are classified
+/// without them; the raw text still runs.
+pub(crate) fn exact_shape(text: &str, workspace: &Path) -> Option<Shape> {
+    match workspace_redirects::project(text) {
+        Some(projected) => workspace_redirects::contained_shape(text, &projected, workspace),
+        None => {
+            let model = parse_command(&CommandModelRequestV1 {
+                command: text.to_owned(),
+                dialect: "posix".into(),
+                transport: "shell_string".into(),
+                extraction_provenance: "pre-tool-generic".into(),
+            })
+            .ok()?;
+            command_shape(&model, workspace, Some(text))
+        }
+    }
+}
+
 fn prepare(input: &Input) -> Result<Value, RestrictedPytestError> {
     let host = if cfg!(target_os = "macos") {
         input.platform == "darwin"
@@ -67,24 +86,9 @@ fn prepare(input: &Input) -> Result<Value, RestrictedPytestError> {
             "The workspace sandbox runs only from the workspace root.",
         ));
     }
-    // Re-derive the decision from the exact bytes about to run. Literal-path
-    // redirects are classified without them; the raw text still runs.
-    let shape = match workspace_redirects::project(&input.text) {
-        Some(projected) => {
-            workspace_redirects::contained_shape(&input.text, &projected, &workspace)
-        }
-        None => {
-            let model = parse_command(&CommandModelRequestV1 {
-                command: input.text.clone(),
-                dialect: "posix".into(),
-                transport: "shell_string".into(),
-                extraction_provenance: "pre-tool-generic".into(),
-            })
-            .map_err(|_| invalid("The command could not be parsed."))?;
-            command_shape(&model, &workspace, Some(&input.text))
-        }
-    }
-    .ok_or_else(|| invalid("The command is not eligible for the workspace sandbox."))?;
+    // Re-derive the decision from the exact bytes about to run.
+    let shape = exact_shape(&input.text, &workspace)
+        .ok_or_else(|| invalid("The command is not eligible for the workspace sandbox."))?;
     let variables: GitVariables = input
         .git_environment
         .iter()

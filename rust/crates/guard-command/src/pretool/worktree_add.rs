@@ -363,7 +363,8 @@ fn valid_ref_component(value: &str) -> bool {
 
 /// A relative destination may start by climbing out of the repository, as in
 /// `../report-worktree`, the usual sibling layout; `fresh_destination` then
-/// requires the canonical parent to stay under home.
+/// requires the canonical parent to stay under home or an owned temporary
+/// directory.
 fn valid_path_text(value: &str) -> bool {
     let absolute = value.strip_prefix('/');
     let mut parts = absolute.unwrap_or(value).split('/').peekable();
@@ -417,24 +418,29 @@ fn fresh_destination(value: &str, context: super::PathContext<'_>) -> Option<Pat
         _ => return None,
     }
     let parent_metadata = std::fs::symlink_metadata(parent).ok()?;
-    if parent_metadata.file_type().is_symlink() || !parent_metadata.is_dir() {
+    let canonical_parent = std::fs::canonicalize(parent).ok()?;
+    // A checkout below the shared temporary directory, where the user owns
+    // every directory on the way, is as private as one below home. Directly
+    // in it, another user could have made the empty directory Git fills.
+    let temporary = super::git_routes::owned_temporary_directory(&canonical_parent, context);
+    if parent_metadata.file_type().is_symlink() || !canonical_parent.is_dir() {
         return None;
     }
-    let canonical_parent = std::fs::canonicalize(parent).ok()?;
-    if !canonical_parent.starts_with(&home) {
+    if !canonical_parent.starts_with(&home) && !temporary {
         return None;
     }
     let leaf = target.file_name()?.to_str()?;
-    if leaf.starts_with('.') {
+    if leaf.starts_with('.') || leaf == ".." {
         return None;
     }
     let destination = canonical_parent.join(leaf);
     if protected_worktree_destination(&destination)
-        || !super::safe_writes::bounded_native_file_write_target(
-            destination.to_str()?,
-            context.home_dir,
-            context.cwd,
-        )
+        || !(temporary
+            || super::safe_writes::bounded_native_file_write_target(
+                destination.to_str()?,
+                context.home_dir,
+                context.cwd,
+            ))
     {
         return None;
     }

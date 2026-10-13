@@ -63,12 +63,14 @@ pub(super) fn requires_review(
                 read_context,
             )
     };
-    // A proven Git read writes no configuration, so it cannot change what a
-    // later read in the same command would run.
+    // A proven Git read or `origin` fetch writes no configuration, so it
+    // cannot change what a later read in the same command would run.
     let settled = |prior: usize| {
         let segment = &model.segments[prior];
         benign.contains(&prior)
             || write_free(segment)
+            || super::git_remote_ops::verified_fetch(segment, read_context)
+            || super::git_remote_ops::verified_fetch(segment, context)
             || (inspections[prior] == Some(true)
                 && segment.environment_names.is_empty()
                 && super::git_reads::safe_git_arguments(&segment.arguments, true, read_context))

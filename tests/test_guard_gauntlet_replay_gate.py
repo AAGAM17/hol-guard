@@ -25,7 +25,7 @@ from ci.gauntlet.input_evidence import redact_value
 from codex_plugin_scanner.guard.daemon.hook_worker import HookWorker
 from codex_plugin_scanner.guard.hook_execution_environment import collect_hook_execution_environment
 from codex_plugin_scanner.guard.store import GuardStore
-from tests.benign_fp_gate_fixture import BenignFixture, build_fixture
+from tests.benign_fp_gate_fixture import BenignFixture, build_fixture, route_codex
 from tests.gauntlet_replay import (
     ENVIRONMENTS,
     GATE_DOCUMENT,
@@ -126,6 +126,8 @@ def _replay(case: ReplayCase, fixture: BenignFixture, worker: HookWorker) -> tup
         guard_home=fixture.guard_home,
         workspace=fixture.cwd(case.cwd),
     )
+    if case.harness == "codex":
+        result = route_codex(result, payload, fixture)
     return result, approval_rows(worker.store, known)
 
 

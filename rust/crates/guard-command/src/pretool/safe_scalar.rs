@@ -73,6 +73,61 @@ pub(super) fn safe_pgrep_arguments(arguments: &[String]) -> bool {
             .is_some_and(|pattern| !pattern.starts_with('-') && pattern.len() <= 256)
 }
 
+/// `ps` lists processes and their arguments, the same view `pgrep -f`
+/// already exposes. Environment display (BSD `e`, and `-e`/`-E` on macOS)
+/// stays out because it prints other processes' variables.
+pub(super) fn safe_ps_arguments(arguments: &[String]) -> bool {
+    let mut expect_value: Option<char> = None;
+    for argument in arguments {
+        if let Some(option) = expect_value.take() {
+            if !ps_option_value(option, argument) {
+                return false;
+            }
+            continue;
+        }
+        let Some(flags) = argument.strip_prefix('-') else {
+            if argument.is_empty()
+                || !argument
+                    .bytes()
+                    .all(|flag| matches!(flag, b'a' | b'u' | b'x' | b'w' | b'j' | b'l' | b'c'))
+            {
+                return false;
+            }
+            continue;
+        };
+        if flags.is_empty() {
+            return false;
+        }
+        for (index, flag) in flags.char_indices() {
+            match flag {
+                'A' | 'a' | 'f' | 'x' | 'w' | 'j' | 'l' | 'c' | 'm' | 'r' | 'h' => {}
+                'e' if !cfg!(target_os = "macos") => {}
+                'o' | 'O' | 'p' | 'q' | 'u' | 'U' | 'g' | 'G' | 't' => {
+                    let rest = &flags[index + flag.len_utf8()..];
+                    if rest.is_empty() {
+                        expect_value = Some(flag);
+                    } else if !ps_option_value(flag, rest) {
+                        return false;
+                    }
+                    break;
+                }
+                _ => return false,
+            }
+        }
+    }
+    expect_value.is_none()
+}
+
+fn ps_option_value(option: char, value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 256
+        && value.bytes().all(|byte| match option {
+            'p' | 'q' => byte.is_ascii_digit() || byte == b',',
+            'o' | 'O' => byte.is_ascii_alphanumeric() || matches!(byte, b',' | b'_' | b'%' | b'='),
+            _ => byte.is_ascii_alphanumeric() || matches!(byte, b',' | b'_' | b'-' | b'.'),
+        })
+}
+
 /// A lone version flag prints the interpreter version and exits before any
 /// script, module or startup file runs.
 /// Python's `-v` is verbose startup, not a version flag, so only Node admits it.

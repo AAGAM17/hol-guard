@@ -258,8 +258,53 @@ fn push_requires_a_stable_account_and_a_checked_out_branch() {
     assert!(!crate::git_execution_safety_checks::decide(&request).allowed);
     request.branch = Some("-main".to_owned());
     assert!(!crate::git_execution_safety_checks::decide(&request).allowed);
+    // `HEAD` names the checked-out branch.
+    request.branch = Some("HEAD".to_owned());
+    assert!(crate::git_execution_safety_checks::decide(&request).allowed);
     fixture.config("remote.origin.pushurl", "https://example.invalid/x.git");
     assert!(!fixture.allowed(Check::PushOrigin));
+}
+
+#[test]
+fn push_from_a_repository_with_linked_worktrees_reads_the_worktree_scope_only_when_enabled() {
+    let fixture = Fixture::new("push-linked");
+    if !fixture.host_git_is_trusted() {
+        return;
+    }
+    let linked = fixture.root.join("linked");
+    git(
+        &fixture.repository,
+        &fixture.home,
+        &[
+            "worktree",
+            "add",
+            "--quiet",
+            "-b",
+            "feature/one",
+            linked.to_str().unwrap(),
+        ],
+    );
+    assert!(fixture.allowed(Check::PushOrigin));
+    let mut request = fixture.request(Check::PushOrigin);
+    request.cwd = linked.to_string_lossy().into_owned();
+    request.branch = Some("feature/one".to_owned());
+    assert!(crate::git_execution_safety_checks::decide(&request).allowed);
+    request.branch = Some("HEAD".to_owned());
+    assert!(crate::git_execution_safety_checks::decide(&request).allowed);
+    // Once enabled, a worktree-scoped push URL reroutes the push.
+    fixture.config("extensions.worktreeConfig", "true");
+    assert!(crate::git_execution_safety_checks::decide(&request).allowed);
+    git(
+        &linked,
+        &fixture.home,
+        &[
+            "config",
+            "--worktree",
+            "remote.origin.pushurl",
+            "https://example.invalid/x.git",
+        ],
+    );
+    assert!(!crate::git_execution_safety_checks::decide(&request).allowed);
 }
 
 #[test]

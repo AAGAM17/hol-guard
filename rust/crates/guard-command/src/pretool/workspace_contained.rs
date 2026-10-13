@@ -23,10 +23,29 @@ fn workspace_admissible(_cwd: &Path, _home: Option<&Path>) -> Option<std::path::
 pub(crate) const REASON: &str = "native_workspace_containment_required";
 pub(crate) const PROFILE: &str = "workspace-contained-v1";
 
+#[path = "workspace_contained_chmod.rs"]
+mod chmod;
 #[path = "workspace_contained_git.rs"]
 mod git_metadata;
+#[path = "workspace_git_keeps_work.rs"]
+mod keeps_work;
 #[path = "workspace_contained_package.rs"]
 mod package;
+#[path = "workspace_contained_reach.rs"]
+mod reach;
+#[path = "workspace_contained_removal.rs"]
+mod removal;
+#[path = "workspace_contained_settings.rs"]
+mod settings;
+
+pub(super) use keeps_work::keeping_arguments;
+pub(super) use settings::carry_settings;
+
+/// Clients whose only purpose is the network the sandbox withholds.
+const NETWORK_CLIENTS: &[&str] = &[
+    "curl", "wget", "nc", "ncat", "netcat", "socat", "ssh", "scp", "sftp", "ftp", "tftp", "telnet",
+    "rsync", "nmap", "aria2c", "http", "https", "xh",
+];
 
 // Privilege and permission changes. This is an exclusion, not an allowlist.
 const PRIVILEGE_DENY: &[&str] = &[
@@ -54,12 +73,6 @@ const PRIVILEGE_DENY: &[&str] = &[
     "killall",
     "pkill",
 ];
-// Network clients. The sandbox has no network, so containing them would turn
-// a consent prompt into a silent failure; they stay at review.
-const NETWORK_DENY: &[&str] = &[
-    "curl", "wget", "nc", "ncat", "netcat", "socat", "telnet", "ssh", "scp", "sftp", "rsync",
-    "ftp", "tftp", "nmap", "aria2c", "http", "https",
-];
 // The sandbox cannot undo losing uncommitted work, so these stay at review.
 const UNRECOVERABLE_RULES: &[&str] = &[
     "command.git.hard-reset",
@@ -76,7 +89,6 @@ const UNRECOVERABLE_RULES: &[&str] = &[
 // These change a remote. The sandbox has no network, so containing them would
 // only turn a consent prompt into a silent failure.
 const REMOTE_RULES: &[&str] = &["command.git.force-push", "command.git.remote-branch-delete"];
-const SHELL_DESTRUCTION: &str = "command.shell-mutations.destructive-shell";
 const CONTAINABLE_RISKS: &[&str] = &["local_secret_read", "destructive_shell"];
 const EXTENSION_REVIEW: &str = "native_command_extension_review";
 /// What the sandbox executes for one authorized command.
@@ -100,6 +112,18 @@ const SHELL_STATE: &[&str] = &[
     "declare", "typeset", "local", "readonly", "eval", "exec", "umask", "trap", "ulimit", "hash",
     "shift", "read", "getopts", "builtin", "enable", "exit", "return", "function",
 ];
+
+/// A literal directory at or below the workspace, with no parent step.
+fn below(target: &str, workspace: &Path) -> bool {
+    let path = Path::new(target);
+    !target.is_empty()
+        && !target.starts_with(['~', '-'])
+        && !target.contains('$')
+        && path
+            .components()
+            .all(|component| !matches!(component, std::path::Component::ParentDir))
+        && (path.is_relative() || path.starts_with(workspace))
+}
 
 fn branch_name(name: &str) -> bool {
     !name.is_empty()
@@ -154,6 +178,7 @@ pub(crate) fn command_shape(
         return None;
     }
     let mut bootstrap = None;
+    let linked = super::worktree_writes::linked_worktree_common_dir(workspace).is_some();
     for (index, segment) in model.segments.iter().enumerate() {
         let executable = segment.executable.as_deref()?;
         if executable.contains('$')
@@ -169,21 +194,31 @@ pub(crate) fn command_shape(
             return None;
         }
         let name = super::executable_basename(executable);
-        if PRIVILEGE_DENY.contains(&name) || NETWORK_DENY.contains(&name) {
+        // The sandbox has no network, so a network client would only fail,
+        // and it reaches no directory outside the workspace.
+        if NETWORK_CLIENTS.contains(&name)
+            || reach::reaches_outside(segment, name, workspace)
+            || (matches!(name, "cd" | "pushd")
+                && !matches!(segment.arguments.as_slice(), [target] if below(target, workspace)))
+        {
+            return None;
+        }
+        if PRIVILEGE_DENY.contains(&name)
+            && !(name == "chmod" && chmod::plain_mode(&segment.arguments))
+        {
+            return None;
+        }
+        // A linked worktree keeps its index, refs and objects in the shared
+        // Git directory outside the workspace, which the sandbox cannot
+        // reach, so Git there would only fail. It keeps its review unless
+        // `git_local_writes` proves the write starts no program.
+        if name == "git" && linked {
             return None;
         }
         if name == "git" && git_metadata::writes_denied_metadata(&segment.arguments) {
             return None;
         }
-        // `init` as a later operand of another subcommand (`git commit -m init`)
-        // is data. Only a leading option could still hide the subcommand.
-        let init_candidate = name == "git"
-            && segment.arguments.iter().any(|argument| argument == "init")
-            && segment
-                .arguments
-                .first()
-                .is_none_or(|first| first == "init" || first.starts_with('-'));
-        if init_candidate {
+        if name == "git" && git_metadata::initializes(&segment.arguments) {
             if bootstrap.is_some() || segment.arguments.first().map(String::as_str) != Some("init")
             {
                 return None;
@@ -257,34 +292,10 @@ pub(crate) fn split_at_init(
     Some((prefix, rest.trim().to_owned()))
 }
 
-/// The destructive-shell rule always carries `matcher-failure` for a plain
-/// `rm`/`rmdir`, because the rule cannot prove what a delete removes. The
-/// sandbox bounds that effect (workspace-only writes, no home) and
-/// `destroys_workspace` refuses workspace-wide targets, so that uncertainty
-/// alone does not keep a delete at review. Any other uncertainty, other
-/// executable, or an environment prefix on the segment still does.
-fn bounded_delete_uncertainty(
-    observation: &guard_contracts::NativeCommandObservationV1,
-    model: &CanonicalCommandV1,
-) -> bool {
-    observation.rule_id == SHELL_DESTRUCTION
-        && observation.uncertainty_reasons == ["matcher-failure"]
-        && !observation.effective_segment_indexes.is_empty()
-        && observation.effective_segment_indexes.iter().all(|index| {
-            model.segments.get(*index).is_some_and(|segment| {
-                segment.environment_names.is_empty()
-                    && segment.wrapper_chain.is_empty()
-                    && segment.executable.as_deref().is_some_and(|value| {
-                        matches!(super::executable_basename(value), "rm" | "rmdir")
-                    })
-            })
-        })
-}
-
 fn extensions_contain(
     result: &PreToolResultV1,
-    model: &CanonicalCommandV1,
     controls: &CompiledNativeCommandControls,
+    model: &CanonicalCommandV1,
     package: bool,
 ) -> bool {
     // Without the loaded extension program there is no network or risk
@@ -292,12 +303,7 @@ fn extensions_contain(
     let Some(extensions) = result.command_extensions.as_ref() else {
         return false;
     };
-    let bounded_deletes = extensions
-        .observations
-        .iter()
-        .filter(|observation| bounded_delete_uncertainty(observation, model))
-        .count();
-    extensions.binding.uncertainty_count == bounded_deletes
+    extensions.binding.uncertainty_count == removal::accepted_uncertainty(extensions, model)
         && extensions.evaluation_error.is_none()
         // The Node package-firewall permission marks package-manager use, not
         // a proven risk. A disabled one already blocked before this point.
@@ -308,9 +314,9 @@ fn extensions_contain(
                 && observation.uncertainty_reasons.is_empty()
         })
         && extensions.observations.iter().all(|observation| {
-            (observation.uncertainty_reasons.is_empty()
-                || bounded_delete_uncertainty(observation, model))
-                && !UNRECOVERABLE_RULES.contains(&observation.rule_id.as_str())
+            (observation.uncertainty_reasons.is_empty() || removal::accepted(observation, model))
+                && (!UNRECOVERABLE_RULES.contains(&observation.rule_id.as_str())
+                    || keeps_work::keeps_work(observation, model))
                 && !REMOTE_RULES.contains(&observation.rule_id.as_str())
                 && controls
                     .rule_risk_classes(&observation.rule_id)
@@ -319,77 +325,6 @@ fn extensions_contain(
                             .iter()
                             .all(|class| CONTAINABLE_RISKS.contains(&class.as_str()))
                     })
-        })
-}
-
-/// Whether a destructive argument names the whole workspace, an ancestor of
-/// it, or every entry at its root. Deleting build output stays contained;
-/// wiping the workspace loses uncommitted work like `git reset --hard`.
-fn broad_target(argument: &str, workspace: &Path) -> bool {
-    use std::path::Component;
-    if argument.starts_with('-') {
-        return false;
-    }
-    if argument.starts_with('~') || argument.contains('$') {
-        return true;
-    }
-    let path = Path::new(argument);
-    let joined = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        workspace.join(path)
-    };
-    let mut normal = std::path::PathBuf::new();
-    for component in joined.components() {
-        match component {
-            Component::ParentDir => {
-                normal.pop();
-            }
-            Component::CurDir => {}
-            other => normal.push(other),
-        }
-    }
-    let root_glob = normal
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| {
-            // Brackets and braces can spell any name, so only a literal
-            // stem or suffix such as `*.pyc` keeps a root glob narrow.
-            name.chars().all(|c| matches!(c, '*' | '.' | '?')) || name.contains(['[', '{', '\\'])
-        });
-    // The volume may be case-insensitive, so `/Users/me/Proj` can name the
-    // workspace `/Users/me/proj`.
-    let fold = |path: &Path| std::path::PathBuf::from(path.to_string_lossy().to_ascii_lowercase());
-    let (normal, workspace) = (fold(&normal), fold(workspace));
-    workspace.starts_with(&normal) || (root_glob && normal.parent() == Some(workspace.as_path()))
-}
-
-fn destroys_workspace(
-    result: &PreToolResultV1,
-    model: &CanonicalCommandV1,
-    workspace: &Path,
-) -> bool {
-    let Some(extensions) = result.command_extensions.as_ref() else {
-        return true;
-    };
-    extensions
-        .observations
-        .iter()
-        .filter(|observation| observation.rule_id == SHELL_DESTRUCTION)
-        .flat_map(|observation| {
-            observation
-                .matcher_evidence
-                .iter()
-                .map(|evidence| evidence.segment_index)
-                .chain(observation.effective_segment_indexes.iter().copied())
-        })
-        .any(|index| {
-            model.segments.get(index).is_none_or(|segment| {
-                segment
-                    .arguments
-                    .iter()
-                    .any(|argument| broad_target(argument, workspace))
-            })
         })
 }
 
@@ -412,6 +347,11 @@ fn sandbox_available() -> bool {
 #[cfg(not(unix))]
 fn sandbox_available() -> bool {
     false
+}
+
+/// Whether a redirect in `command` names a path outside `workspace`.
+pub(super) fn redirect_leaves(command: &str, workspace: &Path) -> bool {
+    reach::redirect_targets(command).any(|target| reach::outside(target, "", workspace))
 }
 
 /// The workspace the sandbox would confine for this session, if any.
@@ -466,7 +406,7 @@ pub(super) fn convert(
     let (Some(model), Some(controls), Some(cwd)) = (model, controls, context.cwd) else {
         return;
     };
-    if !extensions_contain(result, model, controls, package)
+    if !extensions_contain(result, controls, model, package)
         || (package && !package::local_package_work(model))
     {
         return;
@@ -501,10 +441,15 @@ pub(super) fn convert(
         })
         .is_none()
         || command_shape(model, &workspace, command_text).is_none()
-        || destroys_workspace(result, model, &workspace)
+        || removal::destroys_workspace(result, model, &workspace)
+        || removal::loses_work(result, model, context, execution_environment)
     {
         return;
     }
+    mark_contained(result);
+}
+
+pub(crate) fn mark_contained(result: &mut PreToolResultV1) {
     result.minimum_action = "sandbox-required".into();
     result.policy_action = "sandbox-required".into();
     result.decision = "deny".into();

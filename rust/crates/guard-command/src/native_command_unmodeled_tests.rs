@@ -316,7 +316,7 @@ fn build_commands_behind_command_time_or_plain_env_are_not_evaluation_failures()
         "env LD_PRELOAD=./x.so vite build",
         "GIT_SSH_COMMAND=./x git fetch",
         "env GIT_SSH_COMMAND=./x git fetch",
-        "NODE_PATH=./evil node build.js",
+        "NODE_PATH=./evil gh api user",
         "RUSTFLAGS='-C linker=./x' cargo build",
         "GOFLAGS=-toolexec=./x go build",
         "CC=./x npm run build",
@@ -333,6 +333,16 @@ fn build_commands_behind_command_time_or_plain_env_are_not_evaluation_failures()
         "BASH_ENV=./x.sh npm run build",
     ] {
         assert_eq!(decision(&controls, command).0, "block", "{command}");
+    }
+    // A search path in front of its own toolchain only picks which workspace
+    // code runs, so a human reviews it instead of the agent dropping it.
+    for command in [
+        "PYTHONPATH=src pytest -q",
+        "PYTHONPATH=src python -m pytest",
+        "JAVA_HOME=/opt/jdk-21 ./gradlew build",
+        "NODE_PATH=./lib node build.js",
+    ] {
+        assert_eq!(decision(&controls, command).0, "review", "{command}");
     }
     // An ordinary application variable cannot load code, so the command keeps
     // the decision of its unprefixed form.

@@ -1130,6 +1130,7 @@ const API_OPTIONS_WITH_VALUES: &[&str] = &[
     "-p",
 ];
 const API_BOOLEAN_OPTIONS: &[&str] = &[
+    "--allow-escape-sequences",
     "--include",
     "--paginate",
     "--silent",

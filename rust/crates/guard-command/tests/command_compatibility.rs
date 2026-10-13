@@ -243,3 +243,19 @@ fn graphql_queries_are_remote_reads_and_mutations_are_owned_rules() {
     );
     assert!(unread_input.rule_matches[0].uncertainty);
 }
+
+#[test]
+fn printing_a_credential_variable_reads_the_secret() {
+    let reads_secret = |command: &str| {
+        compatibility_observations(&model(command), None)
+            .unwrap()
+            .rule_matches
+            .iter()
+            .any(|item| item.rule_id == "command.shell-mutations.process-environment-secret-read")
+    };
+    // The redirect projection hands this layer the command without `> file`.
+    assert!(reads_secret("echo \"$GITHUB_TOKEN\""));
+    assert!(reads_secret("printf '%s' \"${NPM_TOKEN}\""));
+    assert!(!reads_secret("echo \"$PATH\""));
+    assert!(!reads_secret("echo hello"));
+}

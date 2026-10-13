@@ -96,7 +96,6 @@ fn recursive_copies_create_new_workspace_trees_only() {
         "cp -R -L src followed",
         "cp -R src one two",
         "cp -R src copy && echo done",
-        "cp -R src copy > output.txt",
     ] {
         assert!(!permitted(command, &home, &project), "{command}");
     }

@@ -70,6 +70,17 @@ fn pager_checks_follow_the_actual_subcommand_and_global_override() {
             "git diff --no-ext-diff --no-textconv",
             "deny",
         ),
+        // A read that starts no helper does not need the probe in a chain.
+        (
+            "[core]\npager = ./synthetic-never-execute\n[pager]\nlog = false\n",
+            "git log --oneline -1 && git rev-parse HEAD",
+            "allow",
+        ),
+        (
+            "[core]\npager = ./synthetic-never-execute\n",
+            "git rev-parse HEAD; git log --oneline -1",
+            "deny",
+        ),
     ] {
         std::fs::write(&config, settings).unwrap();
         for harness in ["omp", "zcode"] {

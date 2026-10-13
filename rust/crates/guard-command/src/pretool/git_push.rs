@@ -1,4 +1,4 @@
-//! `git push [-u] origin <current-branch>` proven without review.
+//! `git push [-u] origin <current-branch|HEAD>` proven without review.
 //!
 //! The command shape is proven here; whether the repository may push is a
 //! question about the machine: which Git runs, which remote it names, which
@@ -312,6 +312,7 @@ mod tests {
             ("git push -u origin feature/one", None, "feature/one"),
             ("git push --set-upstream origin fix-two", None, "fix-two"),
             ("git push origin main", None, "main"),
+            ("git push -u origin HEAD", None, "HEAD"),
             ("git push -q -u origin topic 2>&1", None, "topic"),
             (
                 "git -C ../sibling push -u origin topic",

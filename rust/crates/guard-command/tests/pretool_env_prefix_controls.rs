@@ -43,9 +43,13 @@ fn a_reviewable_setting_before_an_unmodeled_script_reaches_ordinary_review() {
         ),
     ] {
         let result = evaluate(&root, &command);
-        assert_eq!(
-            (result.minimum_action.as_str(), result.reason_code.as_str()),
-            ("review", "native_command_review_required"),
+        // Hosts with the workspace sandbox run the script there instead.
+        assert!(
+            matches!(
+                (result.minimum_action.as_str(), result.reason_code.as_str()),
+                ("review", "native_command_review_required")
+                    | ("sandbox-required", "native_workspace_containment_required")
+            ),
             "{command}: {}",
             result.reason
         );
@@ -65,6 +69,21 @@ fn a_reviewable_setting_before_an_unmodeled_script_reaches_ordinary_review() {
         &root,
         &format!("NODE_PATH={} node scripts/report.mjs", modules.display()),
     );
+    // The modules sit inside the workspace, so the sandbox bounds them too.
+    assert!(
+        matches!(
+            (result.minimum_action.as_str(), result.reason_code.as_str()),
+            ("review", "native_command_review_required")
+                | ("sandbox-required", "native_workspace_containment_required")
+        ),
+        "{}",
+        result.reason
+    );
+
+    let result = evaluate(
+        &root,
+        &format!("NODE_PATH={} gh api user", modules.display()),
+    );
     assert_eq!(result.minimum_action, "block", "{}", result.reason);
     assert!(
         result
@@ -77,7 +96,8 @@ fn a_reviewable_setting_before_an_unmodeled_script_reaches_ordinary_review() {
 
     // A canonical, existing `node_modules` directory inside the working tree
     // is a dependency tree the project already trusts: the setting is named in
-    // an ordinary review instead of the hard block, and never settles lower.
+    // an ordinary review (or the workspace sandbox) instead of the hard block,
+    // and never settles lower.
     std::fs::create_dir_all(&modules).unwrap();
     let modules = modules.canonicalize().unwrap();
     for command in [
@@ -88,8 +108,11 @@ fn a_reviewable_setting_before_an_unmodeled_script_reaches_ordinary_review() {
         ),
     ] {
         let result = evaluate(&root, &command);
-        assert_eq!(
-            result.minimum_action, "review",
+        assert!(
+            matches!(
+                result.minimum_action.as_str(),
+                "review" | "sandbox-required"
+            ),
             "{command}: {}",
             result.reason
         );
@@ -98,7 +121,8 @@ fn a_reviewable_setting_before_an_unmodeled_script_reaches_ordinary_review() {
             "{command}"
         );
     }
-    // Other paths and other loader settings keep the block.
+    // Any other plain module path in front of `node` only picks which code
+    // the script loads, so it reaches review or the sandbox, never allow.
     std::fs::create_dir_all(root.join("project/vendor")).unwrap();
     for command in [
         format!(
@@ -114,15 +138,24 @@ fn a_reviewable_setting_before_an_unmodeled_script_reaches_ordinary_review() {
             "NODE_PATH={}/../project/node_modules node scripts/report.mjs",
             modules.display()
         ),
-        "NODE_OPTIONS=--require=./hook.js node scripts/report.mjs".to_owned(),
     ] {
         let result = evaluate(&root, &command);
-        assert_eq!(
-            result.minimum_action, "block",
-            "{command}: {}",
+        assert!(
+            matches!(
+                result.minimum_action.as_str(),
+                "review" | "sandbox-required"
+            ),
+            "{command}: {} {}",
+            result.minimum_action,
             result.reason
         );
     }
+    // Loader hooks keep the block.
+    let result = evaluate(
+        &root,
+        "NODE_OPTIONS=--require=./hook.js node scripts/report.mjs",
+    );
+    assert_eq!(result.minimum_action, "block", "{}", result.reason);
 
     for command in [
         "NODE_OPTIONS=--require=./hook.js node scripts/report.mjs",

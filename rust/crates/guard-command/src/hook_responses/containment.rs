@@ -34,12 +34,33 @@ fn is_empty_list(value: Option<&Value>) -> bool {
     matches!(value, Some(Value::Array(items)) if items.is_empty())
 }
 
-fn zero_uncertainty(binding: Option<&Value>) -> bool {
+/// Whether the binding counts exactly `expected` uncertain matches.
+fn binding_uncertainty(binding: Option<&Value>, expected: usize) -> bool {
     let Some(Value::Object(binding)) = binding else {
         return false;
     };
     matches!(binding.get("uncertainty_count"), Some(Value::Number(count))
-        if (count.is_i64() || count.is_u64()) && count.as_i64() == Some(0))
+        if count.as_u64() == u64::try_from(expected).ok())
+}
+
+/// The destructive-shell match on a plain `rm`, `rmdir` or `sed -i`. The rule
+/// marks every match uncertain; the Rust classifier admitted it to the
+/// workspace sandbox only after proving a removal cannot take uncommitted work.
+fn workspace_removal(item: &Value) -> bool {
+    matches!(item, Value::Object(item)
+        if item.get("rule_id").and_then(Value::as_str)
+            == Some("command.shell-mutations.destructive-shell")
+            && item.get("uncertainty_reasons") == Some(&json!(["matcher-failure"])))
+}
+
+/// Uncertain matches a verdict may carry: workspace removals only.
+fn accepted_uncertainty(reason_code: &str, observations: Option<&Value>) -> usize {
+    match observations {
+        Some(Value::Array(items)) if reason_code == "native_workspace_containment_required" => {
+            items.iter().filter(|item| workspace_removal(item)).count()
+        }
+        _ => 0,
+    }
 }
 
 fn git_observation(item: &Value) -> bool {
@@ -66,7 +87,8 @@ fn node_permission(item: &Value) -> bool {
 /// The workspace sandbox admits matched command rules; the classifier already
 /// vetted their risk classes, and the binding digest pins them at launch.
 fn certain_observation(item: &Value) -> bool {
-    matches!(item, Value::Object(item) if is_empty_list(item.get("uncertainty_reasons")))
+    matches!(item, Value::Object(map) if is_empty_list(map.get("uncertainty_reasons")))
+        || workspace_removal(item)
 }
 
 fn observations_ok(reason_code: &str, observations: Option<&Value>) -> bool {
@@ -110,9 +132,12 @@ pub(super) fn receipt(
     let Some(Value::Object(extensions)) = response.get("command_extensions") else {
         return None;
     };
-    let clean = zero_uncertainty(extensions.get("binding"))
-        && matches!(extensions.get("evaluation_error"), None | Some(Value::Null))
-        && observations_ok(reason_code, extensions.get("observations"))
+    let observations = extensions.get("observations");
+    let clean = binding_uncertainty(
+        extensions.get("binding"),
+        accepted_uncertainty(reason_code, observations),
+    ) && matches!(extensions.get("evaluation_error"), None | Some(Value::Null))
+        && observations_ok(reason_code, observations)
         && permissions_ok(reason_code, extensions.get("permission_observations"));
     if !clean {
         return None;

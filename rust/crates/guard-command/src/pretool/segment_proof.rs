@@ -115,6 +115,7 @@ fn cwd_read_executable(executable: Option<&str>) -> bool {
                 | "sleep"
                 | "uptime"
                 | "pgrep"
+                | "ps"
                 | "ls"
                 | "cat"
                 | "base64"
@@ -283,6 +284,7 @@ pub(crate) fn benign_command_segments(
                     | "sleep"
                     | "uptime"
                     | "pgrep"
+                    | "ps"
             ) || segment.arguments.is_empty()
                 || stdin_filter;
             // Context-free public wrappers cannot prove that a file operand or
@@ -427,6 +429,7 @@ pub(super) fn exact_safe_segment_with_context(
         "sleep" => safe_reads::safe_sleep_arguments(&segment.arguments),
         "uptime" => segment.arguments.is_empty(),
         "pgrep" => super::safe_scalar::safe_pgrep_arguments(&segment.arguments),
+        "ps" => super::safe_scalar::safe_ps_arguments(&segment.arguments),
         "ls" => {
             super::listing_reads::safe_listing_segment(&segment.text, &segment.arguments, context)
         }

@@ -6,7 +6,8 @@
 //! predicates. Actions (`-exec*`, `-ok*`, `-delete`, `-fprint*`, `-fls`,
 //! `-printf`), link-following options (`-L`, `-H`, `-follow`) and anything
 //! unrecognised keep review. Skill directories and `~/.agents` may be roots
-//! because the expression prints names, never contents.
+//! because the expression prints names, never contents. The Oh My Pi
+//! `~/.agent` root may be one when its tree clears the walk `ls -R` needs.
 
 use super::safe_reads::{bounded_read_target, verified_path_context};
 
@@ -33,7 +34,8 @@ pub(super) fn safe_find_listing_arguments(
         && roots.iter().all(|root| {
             !super::search::skill_link_resolves_over_home(root, context)
                 && (bounded_read_target(root, context.home_dir, context.cwd, true)
-                    || super::search::skill_listing_root(root, context))
+                    || super::search::skill_listing_root(root, context)
+                    || super::search::agent_root_listing(root, context, true))
         })
         && safe_expression(expression)
 }

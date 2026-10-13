@@ -272,6 +272,13 @@ pub(super) fn observe(
             );
         }
     }
+    if literal_printer && crate::environment_secret_dump::printer_expands_secret(&segment.text) {
+        output.rule(
+            "command.shell-mutations.process-environment-secret-read",
+            index,
+            false,
+        );
+    }
     if matches!(executable.as_str(), "printenv" | "env") {
         if arguments.is_empty() || arguments.iter().any(|value| sensitive(value)) {
             output.rule(
@@ -280,11 +287,10 @@ pub(super) fn observe(
                 false,
             );
         } else if executable == "env"
-            || arguments.len() != 1
-            || !matches!(
-                arguments[0].as_str(),
-                "PATH" | "HOME" | "PWD" | "SHELL" | "LANG" | "TERM" | "--help" | "--version"
-            )
+            || !(matches!(arguments.as_slice(), [only] if only == "--help" || only == "--version")
+                || arguments
+                    .iter()
+                    .all(|name| super::environment::plain_printed_name(name)))
         {
             output.rule(
                 "command.shell-mutations.process-environment-secret-read",

@@ -106,7 +106,6 @@ fn registry_and_tree_reads_continue_unless_configuration_moves_npm() {
         (&plain, "npm install zod"),
         (&plain, "npm config get cache"),
         (&plain, "touch notes.txt && npm view zod version"),
-        (&plain, "npm view zod version > out.txt"),
     ] {
         assert_ne!(
             decide(&[], Some(&home), command, &home, cwd),

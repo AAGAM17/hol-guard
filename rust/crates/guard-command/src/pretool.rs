@@ -24,7 +24,7 @@ mod contained_wrapper;
 mod workspace_contained;
 #[cfg(unix)]
 pub(crate) use workspace_contained::PROFILE as WORKSPACE_PROFILE;
-pub(crate) use workspace_contained::{command_shape, init_arguments};
+pub(crate) use workspace_contained::{command_shape, init_arguments, Shape};
 pub(crate) mod directory_targets;
 pub(crate) mod workspace_git_config;
 pub(crate) mod workspace_git_environment;
@@ -44,6 +44,7 @@ mod git_reads;
 mod repo_create_reason;
 use git_reads::safe_git_arguments;
 mod git_helper_context;
+mod git_local_writes;
 mod git_probe;
 mod git_push;
 mod git_remote_config;
@@ -196,7 +197,7 @@ pub(super) fn sensitive_command(value: &str) -> bool {
         ".env",
     ];
     needles.iter().any(|needle| lowered.contains(needle))
-        || lowered.contains("printenv")
+        || crate::environment_secret_dump::printenv_may_print_secret(&lowered)
         || lowered.contains("os.environ")
         || lowered.contains("process.env")
 }

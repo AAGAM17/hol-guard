@@ -232,7 +232,7 @@ pub fn evaluate_with_deadline(
     mapping::evaluate(operation, input, deadline).unwrap_or_else(|| evaluate(operation, input))
 }
 pub use authority::evaluate;
-pub(crate) use workspace::workspace_admissible;
+pub(crate) use workspace::{exact_shape as workspace_exact_shape, workspace_admissible};
 pub(crate) use workspace_linux::available as linux_workspace_sandbox_available;
 #[cfg(test)]
 mod parity_tests;

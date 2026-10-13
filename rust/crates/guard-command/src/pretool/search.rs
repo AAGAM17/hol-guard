@@ -11,6 +11,7 @@ mod options;
 mod roots;
 mod sibling;
 mod tree;
+mod walk_memo;
 pub(super) use agent_root::{
     agent_root_listing, skill_link_resolves_over_home, skill_listing_root,
 };
@@ -19,6 +20,7 @@ pub(super) use tree::{
     safe_glob_operand, safe_literal_bracket_tree, safe_recursive_search_target,
     safe_recursive_target, safe_unmatched_bracket_operand, SECRET_EXTENSIONS,
 };
+pub(super) use walk_memo::with_walk_memo;
 fn glob_matches(pattern: &[u8], value: &[u8]) -> bool {
     let mut previous = vec![false; value.len() + 1];
     previous[0] = true;
@@ -285,6 +287,9 @@ pub(super) fn glob_can_select_sensitive_path(value: &str) -> bool {
 enum SearchValueRole {
     Pattern,
     Glob,
+    /// ripgrep `-g`/`--glob`: a leading `!` turns the glob into an exclusion,
+    /// which only removes files from the walk and never selects new ones.
+    RgGlob,
     Path,
     TypeGlob,
     DirectoryAction,
@@ -428,7 +433,7 @@ fn safe_rg_arguments_inner(
                 &[
                     ('e', SearchValueRole::Pattern),
                     ('f', SearchValueRole::Path),
-                    ('g', SearchValueRole::Glob),
+                    ('g', SearchValueRole::RgGlob),
                     ('A', SearchValueRole::Other),
                     ('B', SearchValueRole::Other),
                     ('C', SearchValueRole::Other),

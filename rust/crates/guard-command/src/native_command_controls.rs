@@ -450,16 +450,21 @@ impl CompiledNativeCommandControls {
         }
         // An enabled GitHub permission-only owner (a proven read or routine
         // review-thread resolution) runs last so it never hides an ungranted rule.
-        // A segment is covered only when every GitHub permission it needs is
-        // enabled, so `gh auth status` needs both its local and remote reads.
-        let enabled = &self.explicitly_enabled_permissions;
+        // A permission the user has not set keeps its packaged baseline, so an
+        // `allow` baseline counts until the user disables it. A segment is
+        // covered only when every GitHub permission it needs is enabled, so
+        // `gh auth status` needs both its local and remote reads.
+        let enabled = |id: &str| {
+            self.explicitly_enabled_permissions.contains(id)
+                || (!self.blocked_permissions.contains(id) && baseline_allows(&self.program, id))
+        };
         let (mut granted, mut withheld) = (BTreeSet::new(), BTreeSet::new());
         for item in &batch.permission_observations {
             let id = &item.permission_id;
             if item.mcp_tool.is_some() || !id.starts_with("command.github.permission.") {
                 continue;
             }
-            let target = if item.uncertainty_reasons.is_empty() && enabled.contains(id) {
+            let target = if item.uncertainty_reasons.is_empty() && enabled(id.as_str()) {
                 &mut granted
             } else {
                 &mut withheld
@@ -482,7 +487,7 @@ pub(crate) use delegated::normalized_tool;
 mod floor;
 #[path = "native_command_unmodeled.rs"]
 mod unmodeled;
-use floor::{add_authority_repair_hint, rank, rule_floor, strengthen};
+use floor::{add_authority_repair_hint, baseline_allows, rank, rule_floor, strengthen};
 
 #[cfg(test)]
 #[path = "native_command_controls_tests.rs"]

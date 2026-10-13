@@ -55,13 +55,45 @@ fn repo_creates_the_private_form_would_not_admit_keep_the_generic_reason() {
         "gh repo create todo-app --public -d $NOTES",
         "GH_HOST=example.com gh repo create todo-app --public",
         "gh repo delete todo-app --yes",
-        "gh repo create todo-app --public && git status",
+        "git status && gh repo create example-org/todo-app --public",
+        "gh repo create one --public && gh repo create two --public",
+        "GH_HOST=example.com gh repo create todo-app --public && git status",
+        "cd app && gh repo create todo-app --public --source .",
     ] {
         let (_, _, reason) = review(command);
         assert!(
             !reason.contains("Creating it private"),
             "{command}: {reason}"
         );
+    }
+}
+
+#[test]
+fn a_chained_public_repo_create_names_its_step_and_the_private_alternative() {
+    for (command, step) in [
+        (
+            "git init -q && git add -A && git commit -qm \"Simple todo CLI app\" && gh repo create todo-app --public --source=. --push",
+            4,
+        ),
+        ("gh repo create todo-app --public && git status", 1),
+        ("git add -A; gh repo create todo-app --internal --source .", 2),
+    ] {
+        let (action, code, reason) = review(command);
+        assert_eq!(action, "review", "{command}");
+        assert_eq!(code, "native_command_review_required", "{command}");
+        assert!(
+            reason.contains(&format!("step {step} of this command")),
+            "{command}: {reason}"
+        );
+        assert!(
+            reason.contains("Run the other steps as separate commands"),
+            "{reason}"
+        );
+        assert!(
+            reason.contains("Creating it private runs without review"),
+            "{reason}"
+        );
+        assert!(!reason.contains("todo-app"), "{reason}");
     }
 }
 

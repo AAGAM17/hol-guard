@@ -1680,6 +1680,34 @@
         "evidence": "Remaining callers are the guard connect and uninstall CLI flows, the daemon connect-flow and cloud-sync control handlers, and the cloud sync runner, all of which the install-uninstall-doctor, daemon-control-plane-routes and cloud-sync-transport exclusions already remove from scope, plus the excluded install and update dispatchers that reach the legacy migration by name. The credential read path (health, profile, local credentials, source loading, recovery and the credential lock) is not excluded because approvals and package entitlement callers use it. The report validates that no retained method or in-scope module references the excluded names."
       },
       {
+        "id": "extension-control-authority-commit",
+        "category": "control_plane",
+        "path": "src/codex_plugin_scanner/guard/store_extension_control_authority_commit.py",
+        "symbols": [
+          "ExtensionControlAuthorityCommitMixin.enroll_extension_control_authority",
+          "ExtensionControlAuthorityCommitMixin.commit_extension_control_layers",
+          "ExtensionControlAuthorityCommitMixin._bootstrap_extension_control_authority"
+        ],
+        "entry_points": [],
+        "reason": "Write side of the extension-control authority store: enrolling the local authority and committing signed control layers.",
+        "evidence": "enroll_extension_control_authority is called only from cli/extension_controls_commands.py and commit_extension_control_layers only from daemon/extension_control_api.py; the extension-authoring exclusion already removes both from scope. _bootstrap_extension_control_authority is called only from enroll and from the recovery method excluded by extension-control-authority-recovery. The read and verification side of the authority store (views, layer loading, transitions) is not excluded because hook evaluation reads it. The report validates that no retained symbol references them."
+      },
+      {
+        "id": "extension-control-authority-recovery",
+        "category": "control_plane",
+        "path": "src/codex_plugin_scanner/guard/store_extension_control_authority.py",
+        "symbols": [
+          "StoreExtensionControlAuthorityMixin.recover_extension_control_authority",
+          "StoreExtensionControlAuthorityMixin._restore_missing_snapshot_before_recovery",
+          "StoreExtensionControlAuthorityMixin._reset_extension_control_authority",
+          "StoreExtensionControlAuthorityMixin._note_controls_lost_by_reset",
+          "StoreExtensionControlAuthorityMixin.acknowledge_extension_control_degraded_mode"
+        ],
+        "entry_points": [],
+        "reason": "Operator recovery of the extension-control authority store: resetting to a recovered or new key and acknowledging degraded mode.",
+        "evidence": "The store methods are called only from cli/extension_controls_commands.py and daemon/extension_control_api.py, both removed by the extension-authoring exclusion; the same-named method on daemon/client.py is a separate HTTP client used only by that excluded CLI. _restore_missing_snapshot_before_recovery and _reset_extension_control_authority are called only from the recovery method, and _note_controls_lost_by_reset only from the reset. The reset is the only in-scope caller of _bootstrap_extension_control_authority. Hook evaluation reads the authority view and layers and never recovers or acknowledges. The report validates that no retained symbol references them."
+      },
+      {
         "id": "adapter-cline-setup",
         "category": "install_config",
         "path": "src/codex_plugin_scanner/guard/adapters/cline.py",

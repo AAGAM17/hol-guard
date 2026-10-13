@@ -64,6 +64,7 @@ const GROK: &str = "grok";
 /// A resident answers an allow well inside this. A slower resident leaves
 /// the daemon most of the hook's budget.
 const DIRECT_TIMEOUT: Duration = Duration::from_millis(1_000);
+#[cfg(unix)]
 const MINIMUM_DIRECT_TIMEOUT: Duration = Duration::from_millis(50);
 
 /// The query parameters the daemon reads, as `parse_qs(query)[name][-1]`.
@@ -330,6 +331,21 @@ fn harness_event(harness: &DirectHarness, event_name: &str) -> bool {
 }
 
 /// Send the request to a live resident that runs this very executable.
+///
+/// TODO(windows-direct-resident): the same-executable process check is
+/// unix-only, so on Windows no resident is trusted and the hook always
+/// takes the daemon path.
+#[cfg(windows)]
+fn send_to_live_resident(
+    _state_base: &Path,
+    _request: &[u8],
+    _deadline: Instant,
+) -> Option<Vec<u8>> {
+    None
+}
+
+/// Send the request to a live resident that runs this very executable.
+#[cfg(unix)]
 fn send_to_live_resident(state_base: &Path, request: &[u8], deadline: Instant) -> Option<Vec<u8>> {
     // Discovery checks the directory's privacy; it must already exist.
     if !std::fs::symlink_metadata(state_base).is_ok_and(|metadata| metadata.is_dir()) {
@@ -428,6 +444,6 @@ pub(crate) fn grok_direct_answer(
     answered_response(&output)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 #[path = "codex_hook_bridge_direct_tests.rs"]
 mod tests;

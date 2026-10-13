@@ -55,17 +55,11 @@ mod binding_capture_record;
 #[cfg(all(test, unix))]
 mod binding_capture_vectors_tests;
 mod blocked_request_mode;
-#[cfg(unix)]
 mod bounded_hook_bridge;
-#[cfg(unix)]
 mod bounded_hook_bridge_grok;
-#[cfg(unix)]
 mod bounded_hook_bridge_grok_render;
-#[cfg(unix)]
 mod bounded_hook_bridge_grok_script;
-#[cfg(unix)]
 mod bounded_hook_bridge_hermes;
-#[cfg(unix)]
 mod bounded_hook_bridge_render;
 #[cfg(test)]
 mod bundle_parse_reuse_tests;
@@ -87,21 +81,14 @@ mod claim_reuse_binding_tests;
 #[cfg(test)]
 mod claim_reuse_vectors_tests;
 mod claude_guard_question;
-#[cfg(unix)]
 mod claude_hook_bridge;
-#[cfg(unix)]
 mod claude_hook_bridge_auth;
 #[cfg(all(test, unix))]
 mod claude_hook_bridge_fixture;
-#[cfg(unix)]
 mod claude_hook_bridge_http;
-#[cfg(unix)]
 mod claude_hook_bridge_http_text;
-#[cfg(unix)]
 mod claude_hook_bridge_render;
-#[cfg(unix)]
 mod claude_hook_bridge_transport;
-#[cfg(unix)]
 mod claude_hook_bridge_url;
 mod cli_copilot_resolution;
 mod cli_runtime_support_op;
@@ -119,15 +106,10 @@ mod cloud_sync_privacy;
 mod codex_app_server_socket;
 mod codex_detect;
 mod codex_hook_artifacts;
-#[cfg(unix)]
 mod codex_hook_bridge;
-#[cfg(unix)]
 mod codex_hook_bridge_direct;
-#[cfg(unix)]
 mod codex_hook_bridge_transport;
-#[cfg(unix)]
 mod codex_hook_identity;
-#[cfg(unix)]
 mod codex_hook_response;
 mod codex_hooks;
 mod codex_identity;
@@ -181,11 +163,8 @@ mod continuation_metadata;
 mod continuation_store;
 mod contributed_mcp_decision_op;
 mod critical_floor_op;
-#[cfg(unix)]
 mod cursor_hook_bridge;
-#[cfg(unix)]
 mod cursor_hook_bridge_response;
-#[cfg(unix)]
 mod cursor_hook_bridge_script;
 mod cursor_observer_proof_op;
 mod custom_extension_continuity;
@@ -361,6 +340,7 @@ mod hook_approval_context;
 mod hook_artifact_compose_op;
 mod hook_artifact_compose_reuse;
 mod hook_authority_state_op;
+mod hook_bridge_exit;
 #[cfg(all(test, unix))]
 mod hook_decision_benign_tool_action_tests;
 mod hook_decision_compose;
@@ -373,7 +353,6 @@ mod hook_decision_op;
 mod hook_decision_settle;
 mod hook_direct;
 mod hook_direct_evidence;
-#[cfg(unix)]
 mod hook_env_stamp;
 mod hook_policy_config;
 mod hook_process_spawn;

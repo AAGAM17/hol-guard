@@ -4,8 +4,12 @@
 //! `codex_daemon_hook_auth.py`. Every error string is the `ValueError`
 //! message CPython raises, because the bridge writes it into the hook reason.
 
-use std::fs::{self, File};
+#[cfg(unix)]
+use std::fs::File;
+use std::fs::{self, Metadata};
+#[cfg(unix)]
 use std::io::Read;
+#[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -22,6 +26,7 @@ pub(crate) const LOOPBACK_HOSTS: [&str; 3] = ["127.0.0.1", "localhost", "::1"];
 const DISCOVERY_PROTOCOL_VERSION: i64 = 1;
 const CHALLENGE_TTL_MS: i128 = 5_000;
 /// Discovery files are a few hundred bytes; anything this large is not one.
+#[cfg(unix)]
 const PRIVATE_FILE_MAX_BYTES: u64 = 4 * 1024 * 1024;
 const GENERATION_FIELDS: [&str; 6] = [
     "state_id",
@@ -85,8 +90,9 @@ pub(crate) fn private_file_text(path: &Path, label: &str) -> Result<String, Stri
     private_file_raw(path, label).map(|text| py_strip(&text).to_owned())
 }
 
-/// [`private_file_text`] without the strip: the file's UTF-8 text as is.
-pub(crate) fn private_file_raw(path: &Path, label: &str) -> Result<String, String> {
+/// The directory and file metadata of a private file, refused unless the
+/// directory is a directory and the file is a regular file (not a link).
+fn private_file_metadata(path: &Path, label: &str) -> Result<(Metadata, Metadata), String> {
     let unavailable = || format!("{label} is unavailable");
     let parent = fs::symlink_metadata(parent_of(path)).map_err(|_| unavailable())?;
     let metadata = fs::symlink_metadata(path).map_err(|_| unavailable())?;
@@ -96,6 +102,24 @@ pub(crate) fn private_file_raw(path: &Path, label: &str) -> Result<String, Strin
     if !metadata.file_type().is_file() {
         return Err(format!("{label} must be a regular file"));
     }
+    Ok((parent, metadata))
+}
+
+/// [`private_file_text`] without the strip: the file's UTF-8 text as is.
+#[cfg(windows)]
+pub(crate) fn private_file_raw(path: &Path, label: &str) -> Result<String, String> {
+    private_file_metadata(path, label)?;
+    // TODO(windows-private-file): verify the file and its directory are
+    // owned by and private to the current user (owner SID and DACL). Until
+    // that check exists every file is refused as not private, so nothing
+    // trusts a Guard token or discovery key read on Windows.
+    Err(format!("{label} permissions are not owner-only"))
+}
+
+/// [`private_file_text`] without the strip: the file's UTF-8 text as is.
+#[cfg(unix)]
+pub(crate) fn private_file_raw(path: &Path, label: &str) -> Result<String, String> {
+    let (parent, metadata) = private_file_metadata(path, label)?;
     let uid = nix::unistd::getuid().as_raw();
     if parent.uid() != uid || metadata.uid() != uid {
         return Err(format!("{label} ownership does not match the current user"));
@@ -129,6 +153,7 @@ pub(crate) fn private_file_raw(path: &Path, label: &str) -> Result<String, Strin
 }
 
 /// The `UnicodeDecodeError` text `read_text(encoding="utf-8")` raises.
+#[cfg(unix)]
 fn utf8_error_message(bytes: &[u8], error: std::str::Utf8Error) -> String {
     let start = error.valid_up_to();
     let (end, reason) = match error.error_len() {
@@ -397,6 +422,6 @@ pub(crate) fn verify_challenge_response(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 #[path = "claude_hook_bridge_auth_tests.rs"]
 mod tests;

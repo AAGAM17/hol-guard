@@ -244,6 +244,9 @@ mod guard_config_managed;
 mod guard_store_advisory_cache;
 #[cfg(test)]
 mod guard_store_advisory_cache_vectors_tests;
+mod guard_store_approval_request;
+mod guard_store_approval_row;
+mod guard_store_approval_write;
 mod guard_store_args;
 mod guard_store_clients;
 mod guard_store_cmd_activity;

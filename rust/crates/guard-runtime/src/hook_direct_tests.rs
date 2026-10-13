@@ -397,7 +397,7 @@ fn request_shapes_the_daemon_must_handle_defer() {
 fn other_harnesses_and_homes_defer() {
     let lane = lane("harness", json!({}));
     let mut request = HookDirectRequestV1 {
-        harness: "grok".to_owned(),
+        harness: "gemini".to_owned(),
         guard_home: lane.fixture.root.to_str().unwrap().to_owned(),
         home_dir: Some(HOME.to_owned()),
         workspace: None,
@@ -802,6 +802,15 @@ fn a_bounded_harness_hook_is_answered_as_codex_is() {
     assert_eq!(result["outcome"], "answer", "{result}");
     let page = drain(&zcode, None);
     assert_eq!(page["records"][0]["harness"], "zcode");
+    assert_eq!(
+        page["records"][0]["harness_response"],
+        result["edge"]["harness_response"]
+    );
+    let grok = allowing_lane("bounded-grok", json!({}));
+    let result = run_as(&grok, "grok", Some(HOME), allowed_payload(&grok));
+    assert_eq!(result["outcome"], "answer", "{result}");
+    let page = drain(&grok, None);
+    assert_eq!(page["records"][0]["harness"], "grok");
     assert_eq!(
         page["records"][0]["harness_response"],
         result["edge"]["harness_response"]

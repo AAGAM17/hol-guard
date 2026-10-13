@@ -85,7 +85,7 @@ def test_a_drained_answer_is_recorded_like_a_daemon_allow(tmp_path: Path, observ
     assert activity["receipt_id"] == RECEIPT["decision_id"]
 
 
-@pytest.mark.parametrize("harness", ["claude-code", "cursor", "kimi", "copilot", "zcode", "hermes", "opencode"])
+@pytest.mark.parametrize("harness", ["claude-code", "cursor", "kimi", "copilot", "zcode", "hermes", "opencode", "grok"])
 def test_a_drained_answer_is_recorded_for_its_harness(
     tmp_path: Path, observed: list[dict[str, object]], harness: str
 ) -> None:
@@ -126,7 +126,6 @@ def test_a_codex_receipt_reaches_the_binding_capture(
     [
         "not a record",
         _record(harness="gemini"),
-        _record(harness="grok"),
         _record(payload="ls"),
         _record(workspace=None),
         _record(harness_response=None),

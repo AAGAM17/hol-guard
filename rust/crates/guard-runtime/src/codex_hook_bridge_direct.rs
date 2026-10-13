@@ -51,11 +51,12 @@ pub(crate) const CURSOR: DirectHarness = DirectHarness {
 };
 /// The bounded bridge harnesses the resident answers. The resident routes a
 /// ZCode sandbox requirement to contained execution as the daemon does.
-/// Grok runs its own client, so it keeps the daemon path.
+/// Grok runs its own client, which asks through [`grok_direct_answer`].
 const BOUNDED_DIRECT_HARNESSES: [&str; 8] = [
     "copilot", "kimi", "devin", "zcode", "openclaw", "hermes", "cline", "opencode",
 ];
 const BOUNDED_DIRECT_SWITCH: &str = "HOL_GUARD_BOUNDED_DIRECT_HOOK";
+const GROK: &str = "grok";
 /// A resident answers an allow well inside this. A slower resident leaves
 /// the daemon most of the hook's budget.
 const DIRECT_TIMEOUT: Duration = Duration::from_millis(1_000);
@@ -216,6 +217,42 @@ pub(crate) fn bounded_direct_request(
     request_body(name, &resolved_guard_home, None, None, data, budget)
 }
 
+/// The `hook_direct` request for a Grok hook, which reaches the daemon with
+/// only `?home=`: the daemon reviews it under its own guard home and takes
+/// the workspace from the payload. The request is sent only when the
+/// config's guard home is its resolved path, as for the other bounded
+/// bridge harnesses, and a non-blank `home` resolves at or under that guard
+/// home's parent, where the daemon keeps it. A blank `home` is dropped from
+/// the query, so the daemon uses its own, as the resident does.
+pub(crate) fn grok_direct_request(
+    guard_home: &Path,
+    home: &str,
+    data: &str,
+    budget: Duration,
+) -> Option<Vec<u8>> {
+    let resolved_guard_home = std::fs::canonicalize(guard_home).ok()?;
+    if resolved_guard_home.as_path() != guard_home {
+        return None;
+    }
+    let home = if home.is_empty() {
+        None
+    } else {
+        let home = resolved_directory(home)?;
+        if !home.starts_with(resolved_guard_home.parent()?) {
+            return None;
+        }
+        Some(home)
+    };
+    request_body(
+        GROK,
+        &resolved_guard_home,
+        home.as_deref(),
+        None,
+        data,
+        budget,
+    )
+}
+
 fn request_body(
     harness: &str,
     guard_home: &Path,
@@ -352,6 +389,28 @@ pub(crate) fn bounded_direct_answer(
     }
     let deadline = Instant::now() + remaining(rpc_deadline).min(DIRECT_TIMEOUT);
     let request = bounded_direct_request(harness, guard_home, data, remaining(deadline))?;
+    let output = send_to_live_resident(&guard_home.join(STATE_DIRECTORY), &request, deadline)?;
+    answered_response(&output)
+}
+
+/// The harness response a live resident answered for a Grok hook, or `None`
+/// to take the daemon path. A prompt keeps the daemon path, which prepares
+/// the prompt before it is reviewed.
+pub(crate) fn grok_direct_answer(
+    guard_home: &Path,
+    home: &str,
+    event_name: &str,
+    data: &str,
+    rpc_deadline: Instant,
+) -> Option<String> {
+    if event_name == USER_PROMPT_SUBMIT
+        || !direct_event(event_name)
+        || !direct_enabled(BOUNDED_DIRECT_SWITCH)
+    {
+        return None;
+    }
+    let deadline = Instant::now() + remaining(rpc_deadline).min(DIRECT_TIMEOUT);
+    let request = grok_direct_request(guard_home, home, data, remaining(deadline))?;
     let output = send_to_live_resident(&guard_home.join(STATE_DIRECTORY), &request, deadline)?;
     answered_response(&output)
 }

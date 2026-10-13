@@ -4,7 +4,9 @@
 //! <config>`. When `<script>` is the client this module was ported from
 //! (see [`crate::bounded_hook_bridge_grok_script`]), the bridge does what the
 //! client's `main` does: read the hook, ask the daemon, wait for a pending
-//! approval and write Grok's answer.
+//! approval and write Grok's answer. A live resident that answers the hook
+//! exactly as the daemon would is asked first, and its answer is rendered
+//! as the daemon's would be; a prompt always goes to the daemon.
 //!
 //! Before the daemon is contacted, anything the bridge cannot answer exactly
 //! as the client would runs the client unchanged, with the hook it already
@@ -29,6 +31,7 @@ use crate::claude_hook_bridge_auth::{private_file_raw, LOOPBACK_HOSTS};
 use crate::claude_hook_bridge_http::{LoopbackConnection, MAX_DAEMON_RESPONSE_BYTES};
 use crate::claude_hook_bridge_render::py_strip;
 use crate::claude_hook_bridge_url::assert_loopback_http_url;
+use crate::codex_hook_bridge_direct::grok_direct_answer;
 use crate::hook_env_stamp::{current_environment, dumps, set_member, stamp_hook_input_text, Stamp};
 use crate::pyjson::PyVal;
 
@@ -303,6 +306,23 @@ impl Client {
         (rewritten, if allowed { 0 } else { exit_code })
     }
 
+    /// The resident's answer for a hook it reviews as the daemon would, asked
+    /// within half the daemon's timeout so a slow resident leaves the daemon
+    /// time to answer. A prompt keeps the daemon path.
+    fn direct_answer(&self, event: &str, text: &str, timeout: f64) -> Option<String> {
+        if event == PROMPT_EVENT {
+            return None;
+        }
+        let deadline = capped(Instant::now(), timeout * 0.5, self.deadline);
+        grok_direct_answer(
+            &self.guard_home,
+            &self.invocation.home,
+            event,
+            text,
+            deadline,
+        )
+    }
+
     /// `main` after the hook was read: the client's answer, or
     /// [`Route::Delegate`] while the client would still answer differently.
     pub(crate) fn route(&self, raw: &[u8]) -> Route {
@@ -368,7 +388,16 @@ impl Client {
                 return Self::fail(prefix);
             }
         }
-        let answer = self.http_json(&daemon, HOOK_PATH, Some(text.as_bytes()), timeout);
+        let answer = match self.direct_answer(&event, &text, timeout) {
+            Some(answer) => json_object(&answer),
+            None => {
+                timeout = timeout.min(seconds_left(self.deadline));
+                if timeout <= 0.0 {
+                    return Self::fail(prefix);
+                }
+                self.http_json(&daemon, HOOK_PATH, Some(text.as_bytes()), timeout)
+            }
+        };
         let Some((native, exit_code)) = answer.and_then(|response| to_native(&response, &event))
         else {
             return Self::fail(prefix);

@@ -40,6 +40,8 @@ fn a_decision_harness_lifecycle_hook_gets_the_decision_constant() {
             "{harness}: {result}"
         );
     }
+    let grok = run_as(&lane, "grok", Some(HOME), lifecycle("SessionStart"));
+    assert_eq!(grok["edge"]["harness_response"], json!({}), "{grok}");
     let kimi = run_as(&lane, "kimi", Some(HOME), lifecycle("SessionStart"));
     assert_eq!(
         kimi["edge"]["harness_response"]["hookSpecificOutput"]["hookEventName"],

@@ -266,9 +266,9 @@ jobs:
 
   native-command-evaluators:
     runs-on: ubuntu-latest
-    # A cold opt-level=s release build takes about four minutes, and the
-    # Gauntlet replay gate now replays 81 cases; together they overran ten.
-    timeout-minutes: 15
+    # A cold opt-level=s release build takes about four minutes. The replay
+    # gates run in native-gates so coverage does not wait for them.
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
@@ -328,17 +328,6 @@ jobs:
             tests/test_guard_command_corpus_native_contract.py::test_native_contract_validates_every_authored_signature_without_rewriting_evidence \
             tests/test_pi_adapter.py::TestPiInstall::test_install_writes_managed_extension_that_denies_on_hook_errors \
             tests/test_pi_adapter.py::TestPiInstall::test_managed_extension_fails_safe_on_ambiguous_success_payloads
-      - name: Benign false-positive and Gauntlet replay gates (model-free, native path)
-        env:
-          HOL_GUARD_NATIVE_BINARY: ${{ github.workspace }}/rust/target/release/hol-guard-runtime
-          HOL_GUARD_NATIVE_REGRESSION: "1"
-        run: |
-          # Four workers on the 4-vCPU runner keep this required gate inside the
-          # job budget after a cold native build.
-          uv run --no-sync pytest -q --tb=short -n 4 --dist load --max-worker-restart 0 \
-            tests/test_guard_benign_false_positive_gate.py \
-            tests/test_guard_gauntlet_replay_gate.py \
-            tests/test_guard_command_corpus_benign_allow.py
       - name: Upload native command evaluators
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -358,6 +347,53 @@ jobs:
             src/codex_plugin_scanner/guard/contracts/data/extensions/
           if-no-files-found: error
           retention-days: 1
+
+  native-gates:
+    name: native-gates (${{ matrix.shard-index }})
+    needs: native-command-evaluators
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard-index: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ci-python
+        with:
+          python-version: ${{ env.CI_PYTHON_VERSION }}
+          cache-dependency-glob: ${{ env.CI_UV_CACHE_DEPENDENCY_GLOB }}
+      - name: Download native command evaluators
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: pytest-native-command-evaluators
+          path: rust/target/release
+      - uses: ./.github/actions/restore-command-projections
+      - run: |
+          chmod 0755 rust/target/release/guard-command-source rust/target/release/hol-guard-runtime
+          echo "HOL_GUARD_NATIVE_SOURCE_COMPILER=$GITHUB_WORKSPACE/rust/target/release/guard-command-source" >> "$GITHUB_ENV"
+          echo "HOL_GUARD_NATIVE_BINARY=$GITHUB_WORKSPACE/rust/target/release/hol-guard-runtime" >> "$GITHUB_ENV"
+          echo "HOL_GUARD_NATIVE_REGRESSION=1" >> "$GITHUB_ENV"
+      - name: Benign false-positive and Gauntlet replay gates (model-free, native path)
+        env:
+          SHARD_INDEX: ${{ matrix.shard-index }}
+          SHARD_COUNT: 4
+        run: |
+          # A collection failure must fail the step even when grep still prints nodes.
+          set -o pipefail
+          gates=(tests/test_guard_benign_false_positive_gate.py
+                 tests/test_guard_gauntlet_replay_gate.py
+                 tests/test_guard_command_corpus_benign_allow.py)
+          uv run --no-sync pytest --collect-only -q "${gates[@]}" | grep '::' > gate-nodes.txt
+          # Every shard collects the same sorted list and keeps every fourth
+          # node, so the shards are disjoint and together cover the whole gate.
+          sort gate-nodes.txt | awk -v n="$SHARD_COUNT" -v i="$SHARD_INDEX" '(NR - 1) % n == i' > gate-shard.txt
+          test -s gate-shard.txt
+          echo "shard $SHARD_INDEX runs $(wc -l < gate-shard.txt) of $(wc -l < gate-nodes.txt) gate cases"
+          uv run --no-sync python scripts/ci/run_projection_shard.py gate-shard.txt -- \
+            -q --tb=short -n 4 --dist load --max-worker-restart 0 "@gate-shard.txt"
 
   native-release-size:
     runs-on: ubuntu-latest
@@ -869,7 +905,7 @@ jobs:
   required:
     name: hol-guard / required
     if: always()
-    needs: [plan, native-workspace, native-command-evaluators, native-release-size, quality, coverage-plan, coverage, compatibility, scheduling-sensitive, dashboard, cisco-full, ci-python-312, pi-exact-continuation, cross-platform, windows-native-runtime, windows-shim-admin, windows-packaged-daemon, macos-native-runtime, macos-skill-identity]
+    needs: [plan, native-workspace, native-command-evaluators, native-gates, native-release-size, quality, coverage-plan, coverage, compatibility, scheduling-sensitive, dashboard, cisco-full, ci-python-312, pi-exact-continuation, cross-platform, windows-native-runtime, windows-shim-admin, windows-packaged-daemon, macos-native-runtime, macos-skill-identity]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
@@ -897,7 +933,7 @@ jobs:
           # plan, including data-only. A failed or cancelled provider (or a
           # skipped one, which means its `if`/needs chain broke) must not let a
           # data-only plan coast through on surviving lane-gated residue.
-          always_on = ["plan","native-workspace","native-command-evaluators",
+          always_on = ["plan","native-workspace","native-command-evaluators","native-gates",
                        "native-release-size","quality","coverage-plan","ci-python-312"]
           # Lane-gated required set: skipped is acceptable only on a data-only
           # plan; failure/cancelled always fails.

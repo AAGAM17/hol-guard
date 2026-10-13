@@ -3,8 +3,7 @@ use guard_command::pretool::evaluate_pre_tool_envelope_with_context;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
-#[path = "support/git_helper_fixture.rs"]
-pub mod fixture;
+use crate::git_helper_fixture as fixture;
 
 fn write(path: PathBuf, text: &str) {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();

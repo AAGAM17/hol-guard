@@ -1,5 +1,4 @@
-#[path = "support/git_helper_fixture.rs"]
-pub mod fixture;
+use crate::git_helper_fixture as fixture;
 use fixture::*;
 use guard_command::pretool::evaluate_pre_tool_envelope_with_execution_context;
 use guard_contracts::GuardExecutionEnvironmentV1;

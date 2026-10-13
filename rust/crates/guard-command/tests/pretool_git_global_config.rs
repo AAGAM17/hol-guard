@@ -1,8 +1,6 @@
 #![cfg(unix)]
 
-#[allow(dead_code)]
-#[path = "support/git_helper_fixture.rs"]
-mod fixture;
+use crate::git_helper_fixture as fixture;
 
 use fixture::{evaluate_pre_tool_envelope_with_context, FixtureCleanup};
 use serde_json::json;

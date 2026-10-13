@@ -7,9 +7,7 @@
 
 // This session test builds its own execution environment. The shared helper
 // `evaluate_pre_tool_envelope_with_context` stays for the other Git fixtures.
-#[allow(dead_code)]
-#[path = "support/git_helper_fixture.rs"]
-mod fixture;
+use crate::git_helper_fixture as fixture;
 
 use fixture::FixtureCleanup;
 use serde_json::json;

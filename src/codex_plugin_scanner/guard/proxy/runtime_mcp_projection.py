@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ..models import GuardArtifact
+from ..native_context import _MCP_RISK_CATEGORIES
 from ..native_mcp_proxy_decision import NativeMcpProxyDecisionError, native_mcp_proxy_decide
 from ..native_mcp_tool_evidence import risk_input
 
@@ -82,7 +83,12 @@ def _projection(payload: dict[str, Any]) -> McpCallProjection:
         raise TypeError("call_projection")
     if browser is not None and (not isinstance(browser, dict) or not isinstance(browser["intent"], dict)):
         raise TypeError("call_projection")
-    if risk is not None and (not isinstance(risk, dict) or not isinstance(risk["summary"], str)):
+    if risk is not None and (
+        not isinstance(risk, dict)
+        or not isinstance(risk["summary"], str)
+        or not isinstance(risk["risk_categories"], list)
+        or any(category not in _MCP_RISK_CATEGORIES for category in risk["risk_categories"])
+    ):
         raise TypeError("call_projection")
     return McpCallProjection(
         safe_arguments=payload["safe_arguments"],
@@ -90,6 +96,6 @@ def _projection(payload: dict[str, Any]) -> McpCallProjection:
         launch_target=launch_target,
         browser_launch_target=None if browser is None else str(browser["launch_target"]),
         browser_intent=None if browser is None else cast(dict[str, object], browser["intent"]),
-        risk_categories=() if risk is None else tuple(str(item) for item in risk["risk_categories"]),
+        risk_categories=() if risk is None else tuple(risk["risk_categories"]),
         risk_summary="" if risk is None else risk["summary"],
     )

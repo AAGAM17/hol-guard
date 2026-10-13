@@ -5,6 +5,9 @@
 //! configured helper need the helper-context probe or both `--no-ext-diff`
 //! and `--no-textconv`.
 
+#[path = "git_log_names.rs"]
+mod log_names;
+
 fn has_argument(arguments: &[String], exact: &[&str], prefixes: &[&str]) -> bool {
     arguments.iter().any(|argument| {
         exact.contains(&argument.as_str())
@@ -50,10 +53,13 @@ pub(super) fn safe_git_arguments(
         }
     }
     // Git magic pathspec semantics are not proven by this classifier; retain review.
-    if arguments
-        .iter()
-        .any(|value| value.starts_with(':') || super::sensitive_read_path_argument(value))
-    {
+    // A names-only log's glob pathspecs were checked by `log_names` instead.
+    let listed = log_names::pathspec_start(arguments, context);
+    if arguments.iter().enumerate().any(|(index, value)| {
+        value.starts_with(':')
+            || (super::sensitive_read_path_argument(value)
+                && listed.is_none_or(|start| index < start))
+    }) {
         return false;
     }
     let Some(arguments) =

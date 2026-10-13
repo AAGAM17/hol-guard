@@ -4678,6 +4678,38 @@
       "expect": "allow"
     },
     {
+      "id": "session-git-log-glob-pathspec-chain",
+      "fix_area": "git",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git log --oneline HEAD~1..HEAD | wc -l; echo ---; git log --oneline HEAD~1..HEAD --name-only --diff-filter=A -- 'src/*' '*migration*' 2>/dev/null | head -30; git merge-base --is-ancestor origin/main HEAD && echo merged || echo open"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-git-log-patch-glob-pathspec",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git log -p -3 -- '*secret*' 2>/dev/null | head -60; git rev-parse HEAD"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
       "id": "queue-git-log-range-name-only",
       "fix_area": "queue",
       "harnesses": [

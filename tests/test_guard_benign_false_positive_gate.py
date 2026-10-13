@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
+import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -139,7 +141,15 @@ def _tool_input(case: GateCase, fixture: BenignFixture) -> dict[str, object]:
 
 @pytest.fixture(scope="module")
 def gate_environment(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[BenignFixture, HookWorker]]:
-    fixture = build_fixture(tmp_path_factory.mktemp("benign-fp-gate"))
+    # macOS pytest temp dirs sit under /private/var/folders, where no real HOME
+    # lives and where Guard reviews reads it allows under a real home. Root the
+    # fixture under /tmp as a Linux runner and real developer hosts do.
+    root = (
+        Path(tempfile.mkdtemp(prefix="benign-fp-gate-", dir="/tmp")).resolve()
+        if sys.platform == "darwin"
+        else tmp_path_factory.mktemp("benign-fp-gate")
+    )
+    fixture = build_fixture(root)
     patch = pytest.MonkeyPatch()
     patch.setenv("HOME", str(fixture.home))
     # Git finds the fixture ~/.gitconfig through HOME, as on a real host. The
@@ -173,6 +183,8 @@ def gate_environment(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple
         worker.close()
         patch.undo()
         fixture.cleanup()
+        if sys.platform == "darwin":
+            shutil.rmtree(root, ignore_errors=True)
 
 
 def _review(case: GateCase, fixture: BenignFixture, worker: HookWorker) -> tuple[dict[str, object], int]:

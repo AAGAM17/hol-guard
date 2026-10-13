@@ -75,6 +75,7 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
         "cross-platform",
         "windows-packaged-daemon",
         "macos-skill-identity",
+        "macos-gates",
     ):
         needs = jobs[name]["needs"]
         assert "native-command-evaluators" in (needs if isinstance(needs, list) else [needs])
@@ -201,7 +202,8 @@ def test_ci_workflow_cancels_stale_runs_and_uses_precomputed_affinity_shards() -
         ("compatibility", "ci-python-312", 1),
         ("cross-platform", "windows-native-runtime", 2),
         ("windows-packaged-daemon", "macos-native-runtime", 2),
-        ("macos-skill-identity", "required", 2),
+        ("macos-skill-identity", "macos-gates", 2),
+        ("macos-gates", "required", 2),
     )
     for job_name, next_job_name, expected_count in cache_consumers:
         job = _workflow_job(workflow, job_name, next_job_name)

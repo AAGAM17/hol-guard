@@ -28,7 +28,7 @@ use nix::errno::Errno;
 use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
 
 use crate::bounded_hook_bridge_render::{
-    daemon_response_to_native, event_name, failure_output, NATIVE_HARNESSES,
+    daemon_response_to_native, event_name, failure_output, Rendered, NATIVE_HARNESSES,
 };
 use crate::claude_hook_bridge_auth::{private_file_text, LOOPBACK_HOSTS};
 use crate::claude_hook_bridge_http::{remaining, LoopbackConnection, MAX_DAEMON_RESPONSE_BYTES};
@@ -302,17 +302,20 @@ pub(crate) fn route_hook(config: &BridgeConfig, raw: &[u8], deadline: Instant) -
     if Instant::now() >= deadline {
         return Route::Fail(prepared.event_name);
     }
+    let budget = if prepared.event_name == "UserPromptSubmit" {
+        PROMPT_DAEMON_BUDGET
+    } else {
+        DAEMON_BUDGET
+    };
+    if let Some(route) = direct_route(config, &prepared, deadline, budget) {
+        return route;
+    }
     let left = remaining(deadline);
     let Some((host, port)) = daemon_endpoint(&config.guard_home, &config.harness) else {
         return delegate;
     };
     let Some(token) = daemon_auth_token(&config.guard_home) else {
         return delegate;
-    };
-    let budget = if prepared.event_name == "UserPromptSubmit" {
-        PROMPT_DAEMON_BUDGET
-    } else {
-        DAEMON_BUDGET
     };
     let now = Instant::now();
     let transport_deadline = deadline.min(now + (left / 2).min(budget));
@@ -330,8 +333,15 @@ pub(crate) fn route_hook(config: &BridgeConfig, raw: &[u8], deadline: Instant) -
     let rendered = answer.and_then(|response| {
         daemon_response_to_native(&response, &config.harness, &prepared.event_name)
     });
+    answered_route(rendered, prepared.event_name, deadline)
+}
+
+/// The route for an answer the daemon or its resident gave. A recorded
+/// answer the bridge cannot render runs Python without the daemon, so the
+/// hook is never reviewed twice.
+fn answered_route(rendered: Option<Rendered>, event_name: String, deadline: Instant) -> Route {
     if Instant::now() >= deadline {
-        return Route::Fail(prepared.event_name);
+        return Route::Fail(event_name);
     }
     match rendered {
         Some(rendered) => Route::Respond {
@@ -341,6 +351,40 @@ pub(crate) fn route_hook(config: &BridgeConfig, raw: &[u8], deadline: Instant) -
         },
         None => Route::Delegate { daemon_tried: true },
     }
+}
+
+/// The route for a hook a live resident answered directly, rendered as the
+/// daemon's identical answer would be, or `None` to ask the daemon.
+fn direct_route(
+    config: &BridgeConfig,
+    prepared: &Prepared,
+    deadline: Instant,
+    budget: Duration,
+) -> Option<Route> {
+    let rpc_deadline = deadline.min(Instant::now() + (remaining(deadline) / 2).min(budget));
+    let answer = crate::codex_hook_bridge_direct::bounded_direct_answer(
+        &config.harness,
+        &config.guard_home,
+        &prepared.event_name,
+        &prepared.data,
+        rpc_deadline,
+    )?;
+    // The resident answered and queued the evidence; from here the hook
+    // never reaches the daemon.
+    let rendered = pyjson::parse_mapping_lone_surrogates(&answer)
+        .ok()
+        .and_then(|parsed| match parsed.value {
+            PyVal::Dict(entries) if !parsed.mapped => Some(entries),
+            _ => None,
+        })
+        .and_then(|response| {
+            daemon_response_to_native(&response, &config.harness, &prepared.event_name)
+        });
+    Some(answered_route(
+        rendered,
+        prepared.event_name.clone(),
+        deadline,
+    ))
 }
 
 fn exit_code(status: ExitStatus) -> i32 {

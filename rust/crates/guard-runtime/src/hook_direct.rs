@@ -9,8 +9,9 @@
 //! `PreToolUse` allow or terminal block, any `PreToolUse` verdict in Watch,
 //! any reviewed `PostToolUse` of those harnesses, and a reviewed
 //! `UserPromptSubmit` with its receipt, for Codex always and for Claude Code
-//! in Watch, and a Cursor `PreToolUse` its hook client runs as an allow. The
-//! daemon never changes those responses. Every other request,
+//! in Watch, and a Cursor `PreToolUse` its hook client runs as an allow.
+//! The bounded bridge harnesses other than ZCode and Grok are answered as
+//! Codex is. The daemon never changes those responses. Every other request,
 //! and every `PreToolUse` verdict the daemon turns into an approval or a
 //! repair link, defers so the caller takes the daemon path, which is
 //! unchanged. A Claude Code sandbox requirement outside Watch is routed to
@@ -42,7 +43,20 @@ pub(crate) const HOOK_DIRECT_FEATURE: &str = "hook-direct-v1";
 pub(crate) const HOOK_DIRECT_CONTAINED_ROUTE_FEATURE: &str = "hook-direct-contained-route-v1";
 const HOOK_DIRECT_RESULT_SCHEMA: &str = "guard-hook-direct-result.v1";
 /// The harnesses whose allow the daemon returns as the edge rendered it.
-const DIRECT_HARNESSES: [&str; 3] = ["codex", CLAUDE_CODE, CURSOR];
+/// The bounded bridge harnesses after Cursor have no harness-specific step
+/// on the daemon path for the hooks answered here.
+const DIRECT_HARNESSES: [&str; 10] = [
+    "codex",
+    CLAUDE_CODE,
+    CURSOR,
+    "copilot",
+    "kimi",
+    "devin",
+    "openclaw",
+    "hermes",
+    "cline",
+    "opencode",
+];
 const TRANSITION_PROBE_FIELD: &str = "guard_transition_probe";
 const EXECUTION_ENVIRONMENT_FIELD: &str = "guard_execution_environment";
 const PAYLOAD_REFERENCE_FIELDS: [&str; 2] = ["guard_payload_ref", "guard_source_ref"];

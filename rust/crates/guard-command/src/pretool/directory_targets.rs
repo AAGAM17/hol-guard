@@ -378,8 +378,11 @@ fn rustup_selector(name: &str) -> bool {
 
 /// npm reads every `npm_config_*` variable as configuration, including the
 /// registry and the paths of its other config files. Node reads the rest
-/// before npm's own code runs; an extra CA would let a proxy read registry
-/// traffic.
+/// before npm's own code runs, and `NODE_TLS_REJECT_UNAUTHORIZED=0` turns off
+/// certificate checks. `NODE_EXTRA_CA_CERTS` only adds to the trusted set,
+/// usually for a company's TLS-inspecting proxy that already sees all of the
+/// user's traffic; it leaves the registry where it was, and the agent's own
+/// command cannot set the hook's environment.
 fn npm_selector(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
     upper.starts_with("NPM_CONFIG_")
@@ -387,7 +390,7 @@ fn npm_selector(name: &str) -> bool {
             upper.as_str(),
             "NODE_OPTIONS"
                 | "NODE_PATH"
-                | "NODE_EXTRA_CA_CERTS"
+                | "NODE_TLS_REJECT_UNAUTHORIZED"
                 | "LD_PRELOAD"
                 | "LD_LIBRARY_PATH"
                 | "DYLD_INSERT_LIBRARIES"

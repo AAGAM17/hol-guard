@@ -120,6 +120,7 @@ fn registry_and_tree_reads_continue_unless_configuration_moves_npm() {
         "npm_config_registry",
         "NPM_CONFIG_USERCONFIG",
         "NODE_OPTIONS",
+        "NODE_TLS_REJECT_UNAUTHORIZED",
     ] {
         assert_ne!(
             decide(&[name], Some(&home), "npm view zod version", &home, &plain),
@@ -127,6 +128,18 @@ fn registry_and_tree_reads_continue_unless_configuration_moves_npm() {
             "{name}"
         );
     }
+    // An added CA, as for a company's TLS-inspecting proxy, leaves the
+    // registry where it was.
+    assert_eq!(
+        decide(
+            &["NODE_EXTRA_CA_CERTS"],
+            Some(&home),
+            "npm view zod version",
+            &home,
+            &plain
+        ),
+        "allow"
+    );
 
     // npm reads the user config from its own HOME, which must be the one checked.
     for shell_home in [None, Some(plain.as_path())] {

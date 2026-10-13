@@ -71,9 +71,11 @@ _FETCH_REDIRECTING_KEYS = frozenset(
     }
 )
 # Settings that change what npm or node load before the command line is read,
-# where npm finds its global config, or which TLS certificates node trusts.
+# where npm finds its global config, or whether node checks certificates at
+# all. NODE_EXTRA_CA_CERTS only adds a trusted CA, usually a company's
+# TLS-inspecting proxy, and leaves the registry where it was.
 _ENVIRONMENT_OVERRIDES = ("npm_config_", "node_options", "node_path")
-_ENVIRONMENT_NAMES = frozenset({"prefix", "destdir", "node_extra_ca_certs", "node_tls_reject_unauthorized"})
+_ENVIRONMENT_NAMES = frozenset({"prefix", "destdir", "node_tls_reject_unauthorized"})
 
 
 def native_package_review_response(

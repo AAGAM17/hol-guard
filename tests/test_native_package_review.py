@@ -68,6 +68,14 @@ def test_standard_npm_install_reports_its_version(npm_layout: tuple[Path, Path, 
 
 
 @pytestmark_posix
+def test_an_added_ca_keeps_the_npm_proof(npm_layout: tuple[Path, Path, Path]) -> None:
+    prefix, home, workspace = npm_layout
+
+    environment = _environment(prefix, home, "NODE_EXTRA_CA_CERTS")
+    assert package_review.verified_npm_version(environment, workspace=workspace) == "11.9.0"
+
+
+@pytestmark_posix
 @pytest.mark.parametrize(
     "name",
     [
@@ -77,7 +85,6 @@ def test_standard_npm_install_reports_its_version(npm_layout: tuple[Path, Path, 
         "NODE_PATH",
         "PREFIX",
         "DESTDIR",
-        "NODE_EXTRA_CA_CERTS",
         "NODE_TLS_REJECT_UNAUTHORIZED",
     ],
 )

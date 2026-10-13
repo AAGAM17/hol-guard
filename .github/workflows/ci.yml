@@ -834,18 +834,27 @@ jobs:
       - uses: ./.github/actions/ci-job-windows-native-runtime
 
   windows-shim-admin:
+    name: windows-shim-admin (${{ matrix.shim-gate }})
     needs: [plan]
     if: >-
       !cancelled() &&
       (github.event_name != 'pull_request' ||
        (needs.plan.result == 'success' && needs.plan.outputs.data_only != 'true'))
     runs-on: windows-latest
-    timeout-minutes: 30
+    # The two native Windows shim contract families are independent. Run them
+    # concurrently, but require both outcomes via the existing job-level needs.
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shim-gate: [vectors, native-op]
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           persist-credentials: false
       - uses: ./.github/actions/ci-job-windows-shim-admin
+        with:
+          shim-gate: ${{ matrix.shim-gate }}
 
   windows-packaged-daemon:
     needs: [plan, native-command-evaluators, windows-native-runtime]

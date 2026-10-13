@@ -388,14 +388,26 @@ def run_authorized_contained_test(
     def authorize_capability(argv: tuple[str, ...]) -> None:
         capability = {**payload, "tool_input": {**tool_input, "command": shlex.join(argv)}}
         # The approved workspace root stays in scope so a subdirectory cannot shed its denies.
-        contexts = (workspace, cwd, *((vitest_plan.cwd,) if vitest_plan is not None else ()))
+        build = node_tool_plan is not None and node_tool_plan.profile_version == NODE_BUILD_OUTPUT_PROFILE_VERSION
+        transform_plan = vitest_plan or (node_tool_plan if build else None)
+        contexts = (workspace, cwd, *((transform_plan.cwd,) if transform_plan is not None else ()))
         for directory in dict.fromkeys(contexts):
             response = authorize({**capability, "cwd": str(directory)})
             if (
                 not isinstance(response, Mapping)
                 or not (
                     (response.get("decision") == "allow" and response.get("policy_action") == "allow")
-                    or (vitest_plan is not None and required(response))
+                    # Native classifies the transform image as a read-only
+                    # Vitest capability; it runs inside the Vitest run's or the
+                    # Vite build's own profile.
+                    or (
+                        transform_plan is not None
+                        and required(
+                            response,
+                            expected_reason="native_vitest_readonly_containment_required",
+                            expected_profile=VITEST_READ_ONLY_PROFILE_VERSION,
+                        )
+                    )
                 )
                 or response.get("observe_mode") is True
             ):

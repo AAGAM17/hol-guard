@@ -104,6 +104,24 @@ def run_restricted_vitest(
     )
 
 
+def _transform_image(anchor: Path, workspace: Path, images: Path, *, required: bool) -> tuple[Path, Path, str] | None:
+    """The private esbuild image, or None when a build can run without one.
+
+    A build that never loads esbuild (tsc, a plain JavaScript config) keeps
+    running when the image cannot be prepared; Vitest always needs it.
+    """
+    from .restricted_esbuild import snapshot_esbuild
+    from .restricted_node_test import nearest_project_root
+
+    try:
+        project = nearest_project_root(anchor, workspace, "node_modules/esbuild/package.json")
+        return snapshot_esbuild(project, images)
+    except RestrictedPytestError:
+        if required:
+            raise
+        return None
+
+
 def run_restricted_node_plan(
     plan: RestrictedPytestPlan,
     *,
@@ -134,15 +152,14 @@ def run_restricted_node_plan(
         home.mkdir(mode=0o700)
         tmp.mkdir(mode=0o700)
         esbuild = None
-        if plan.profile_version == VITEST_READ_ONLY_PROFILE_VERSION:
-            from .restricted_esbuild import snapshot_esbuild
-            from .restricted_node_test import nearest_project_root
-
+        # Vite bundles a TypeScript config with esbuild before a build starts,
+        # so a contained build needs the same transform image as Vitest.
+        if plan.profile_version in {VITEST_READ_ONLY_PROFILE_VERSION, NODE_BUILD_OUTPUT_PROFILE_VERSION}:
             # Executable images have a separate read-only tree. A child cannot
             # replace the image by renaming a writable scratch ancestor.
             anchor = _tsx_package_dir(plan.command) or plan.cwd
-            project = nearest_project_root(anchor, plan.workspace, "node_modules/esbuild/package.json")
-            esbuild = snapshot_esbuild(project, Path(images).resolve())
+            required = plan.profile_version == VITEST_READ_ONLY_PROFILE_VERSION
+            esbuild = _transform_image(anchor, plan.workspace, Path(images).resolve(), required=required)
             if esbuild is not None:
                 source, image, version = esbuild
                 if authorize_capability is None:

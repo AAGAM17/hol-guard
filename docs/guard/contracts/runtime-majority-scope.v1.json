@@ -1638,6 +1638,30 @@
         "evidence": "commands_router maps the \"mcp\" subcommand name to this handler by string, and it lazily imports guard.mcp.server only inside its body. No adapter, installer or harness config registers `guard mcp serve`, and no hook, run, protect or MCP proxy route dispatches to it; it runs only when a user configures an MCP client to launch it. The report validates that no retained symbol references it. Marked root_function because the module is a dispatcher root."
       },
       {
+        "id": "mcp-policy-request-workflow",
+        "category": "control_plane",
+        "path": "src/codex_plugin_scanner/guard/mcp/policy_store.py",
+        "symbols": [
+          "_VALID_REQUEST_STATUSES",
+          "_PolicyRequestStoreConnection",
+          "_PolicyImportResult",
+          "_PENDING_TTL_SECONDS",
+          "_now",
+          "_parse_iso",
+          "PendingPolicyRequest",
+          "_coerce_status",
+          "_coerce_mode",
+          "_row_to_request",
+          "StageRequestInput",
+          "StageRequestResult",
+          "ApplyRequestResult",
+          "MCPolicyRequestRepository"
+        ],
+        "entry_points": [],
+        "reason": "Pending MCP policy creation requests are staged, applied, declined and recovered only by operator workflows: the Guard MCP policy tools (mcp/policy_tools.py, mcp/tools.py, mcp/policy_apply.py), the daemon policy-decision and business-policy recovery routes, and dashboard support reads. None of those run on a hook or proxy request. The runtime keeps ensure_mcp_policy_request_schema, which store_connection_schema calls when it opens the store.",
+        "evidence": "rg -n 'MCPolicyRequestRepository|PendingPolicyRequest|StageRequestInput' src -g '*.py' lists only mcp/policy_apply.py, mcp/policy_tools.py, mcp/tools.py, daemon/mcp_policy_decisions.py, daemon/business_policy_recovery.py and daemon/server_dashboard_support.py outside mcp/policy_store.py; none of them is in the runtime import closure."
+      },
+      {
         "id": "store2-oauth-connect-lifecycle",
         "category": "async_control_plane",
         "path": "src/codex_plugin_scanner/guard/store_oauth.py",

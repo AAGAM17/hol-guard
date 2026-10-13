@@ -350,6 +350,7 @@
     "src/codex_plugin_scanner/guard/native_approval_reuse.py",
     "src/codex_plugin_scanner/guard/native_runtime_detectors.py",
     "src/codex_plugin_scanner/guard/native_runner_authority.py",
+    "src/codex_plugin_scanner/guard/native_developer_inspection_authority.py",
     "src/codex_plugin_scanner/guard/native_shell_request_authority.py",
     "src/codex_plugin_scanner/guard/native_continuation_authority.py",
     "src/codex_plugin_scanner/guard/native_decisions.py",

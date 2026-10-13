@@ -1327,6 +1327,33 @@
    ]
   },
   {
+   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/developer_inspection.py",
+   "source_sha256": "f6d0184abba2aae634007a8480cbfc4d30e2715c1bfb0c166e421d73d886f2cc",
+   "forbidden_symbols": [
+    "_READ_ONLY_SEARCH_FILE_INPUT_FLAGS",
+    "_GREP_SHORT_VALUE_FLAGS",
+    "_READ_ONLY_SEARCH_SHORT_VALUE_FLAGS"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/developer_inspection_authority.rs",
+    "rust/crates/guard-runtime/src/developer_inspection_authority_op.rs"
+   ]
+  },
+  {
+   "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/source_edit_context.py",
+   "source_sha256": "895e59d8fb5e9d1f275a2c4eb5ae27c4e61cc4662ac4645dba98bec79263bc1c",
+   "forbidden_symbols": [
+    "index_inspection_execution_context",
+    "model_shell_execution_context",
+    "_without_safe_inspection_redirections",
+    "_leading_literal_cd_workspace_root"
+   ],
+   "native_replacements": [
+    "rust/crates/guard-command/src/developer_inspection_authority.rs",
+    "rust/crates/guard-runtime/src/developer_inspection_authority_op.rs"
+   ]
+  },
+  {
    "path": "src/codex_plugin_scanner/guard/runtime/secret_file_request_services/github_shell_capabilities.py",
    "source_sha256": "d584623615ba075ac4ab57cc81f9db42a8c4448638308935dff08e5172484317",
    "forbidden_symbols": [

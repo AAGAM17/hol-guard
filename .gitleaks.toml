@@ -46,7 +46,10 @@ id = "generic-api-key"
 description = "Pinned public token-fixture SHA-256, not a credential"
 condition = "AND"
 regexTarget = "line"
-paths = ['''(?:^|/)rust/crates/guard\-command/tests/fixtures/shell_request_authority\.json$''']
+paths = [
+  '''(?:^|/)rust/crates/guard\-command/tests/fixtures/developer_inspection_authority\.json$''',
+  '''(?:^|/)rust/crates/guard\-command/tests/fixtures/shell_request_authority\.json$''',
+]
 regexes = [
   '''^[\t\r\n ]*"rust/crates/guard-command/tests/fixtures/sfrs/intermediate_tokens\.json\.gz": "fe85e5500ef3cf7c9f81bd69650d09e6cfca8813dedb5717c78e9de32223105a",?[\t\r\n ]*$''',
 ]

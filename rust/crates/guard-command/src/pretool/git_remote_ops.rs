@@ -284,7 +284,7 @@ fn prove(
     !config::config_weakens_transport(&effective)
         && !config::repository_config_routes_transport(&repository)
         && !effective.keys().any(|key| key.starts_with("submodule."))
-        && probe.hooks_inert(&["pre-auto-gc", "reference-transaction", "post-fetch"])
+        && probe.hooks_inert(["pre-auto-gc", "reference-transaction", "post-fetch"])
         && upstream.is_none_or(|upstream| {
             pull::fast_forward_inert(&effective, &repository, upstream, &probe)
         })

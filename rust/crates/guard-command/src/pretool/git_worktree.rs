@@ -64,17 +64,10 @@ pub(super) fn worktree_add_execution_free(
     let Some(facts) = safe_worktree_config(&output, &git_home)? else {
         return Some(false);
     };
-    let git_dir = git_path(
+    let [git_dir, common_dir] = git_paths(
         &base,
         leading,
-        &["rev-parse", "--absolute-git-dir"],
-        &cwd,
-        deadline,
-    )?;
-    let common_dir = git_path(
-        &base,
-        leading,
-        &["rev-parse", "--git-common-dir"],
+        ["--absolute-git-dir", "--git-common-dir"],
         &cwd,
         deadline,
     )?;
@@ -361,28 +354,41 @@ fn git_query_with_args(
     super::git_probe::output(&mut command, deadline, limit)
 }
 
-fn git_path(
+/// One `rev-parse` answers every request, one line each, in order. A path
+/// that itself held a line break shifts the count, so the answer is refused.
+fn git_paths<const N: usize>(
     base: &Command,
     leading: &[String],
-    arguments: &[&str],
+    requests: [&str; N],
     cwd: &Path,
     deadline: Instant,
-) -> Option<PathBuf> {
-    let (status, output) = git_query_with_args(base, leading, arguments, deadline, 4096)?;
+) -> Option<[PathBuf; N]> {
+    let mut arguments = vec!["rev-parse"];
+    arguments.extend(requests);
+    let (status, output) =
+        git_query_with_args(base, leading, &arguments, deadline, 4096 * N as u64)?;
     if !status.success() {
         return None;
     }
-    let rendered = std::str::from_utf8(&output).ok()?.trim();
-    if rendered.is_empty() || rendered.contains(['\0', '\n', '\r']) {
-        return None;
-    }
-    let path = Path::new(rendered);
-    fs::canonicalize(if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        cwd.join(path)
-    })
-    .ok()
+    let rendered = std::str::from_utf8(&output).ok()?;
+    let rendered = rendered.strip_suffix('\n').unwrap_or(rendered);
+    let paths = rendered
+        .split('\n')
+        .map(|line| {
+            let line = line.trim();
+            if line.is_empty() || line.contains(['\0', '\r']) {
+                return None;
+            }
+            let path = Path::new(line);
+            fs::canonicalize(if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                cwd.join(path)
+            })
+            .ok()
+        })
+        .collect::<Option<Vec<_>>>()?;
+    paths.try_into().ok()
 }
 
 fn hooks_are_inert(path: &Path) -> bool {

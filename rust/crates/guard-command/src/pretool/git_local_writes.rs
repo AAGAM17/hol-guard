@@ -328,7 +328,7 @@ fn proven(
     if branch_scoped
         || !inert(&effective, &repository)
         || forms::aliased(&effective, model)
-        || !writes.iter().all(|(_, hooks)| probe.hooks_inert(hooks))
+        || !probe.hooks_inert(writes.iter().flat_map(|(_, hooks)| hooks.iter().copied()))
         || !stashed.iter().all(|index| {
             forms::stash_free(
                 &effective,

@@ -152,28 +152,43 @@ impl Probe {
 
     /// No named hook can run: each is absent or a non-executable file.
     /// `--git-path` honors `core.hooksPath` and the linked worktree layout.
-    pub(super) fn hooks_inert(&self, names: &[&str]) -> bool {
-        names.iter().all(|name| {
+    /// One `rev-parse` resolves every name; it prints one path per request.
+    pub(super) fn hooks_inert<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> bool {
+        let mut arguments = vec!["rev-parse", "--path-format=absolute"];
+        // Several writes may share a hook; ask for each path once.
+        let mut requests: Vec<String> = Vec::new();
+        for name in names {
             let request = format!("hooks/{name}");
-            let Some(path) = self
-                .text(&[
-                    "rev-parse",
-                    "--path-format=absolute",
-                    "--git-path",
-                    &request,
-                ])
-                .map(PathBuf::from)
-                .filter(|path| path.is_absolute())
-            else {
-                return false;
-            };
-            match fs::symlink_metadata(&path) {
-                Err(error) => error.kind() == std::io::ErrorKind::NotFound,
-                Ok(metadata) => {
-                    !(metadata.file_type().is_symlink()
-                        || metadata.is_file() && hook_is_executable(&metadata))
-                }
+            if !requests.contains(&request) {
+                requests.push(request);
             }
+        }
+        if requests.is_empty() {
+            return true;
+        }
+        for request in &requests {
+            arguments.extend(["--git-path", request.as_str()]);
+        }
+        let Some((status, output)) = self.run(true, &arguments, TEXT_LIMIT * requests.len() as u64)
+        else {
+            return false;
+        };
+        let Some(paths) = status
+            .success()
+            .then(|| lines(&output, requests.len()))
+            .flatten()
+        else {
+            return false;
+        };
+        paths.iter().map(PathBuf::from).all(|path| {
+            path.is_absolute()
+                && match fs::symlink_metadata(&path) {
+                    Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+                    Ok(metadata) => {
+                        !(metadata.file_type().is_symlink()
+                            || metadata.is_file() && hook_is_executable(&metadata))
+                    }
+                }
         })
     }
 
@@ -225,6 +240,18 @@ fn line(output: &[u8]) -> Option<String> {
     (!rendered.is_empty() && !rendered.contains(['\0', '\n', '\r'])).then(|| rendered.to_owned())
 }
 
+/// Exactly `count` lines, each one a value [`line`] accepts. A value that
+/// itself held a line break shifts the count, so the whole answer is refused.
+fn lines(output: &[u8], count: usize) -> Option<Vec<String>> {
+    let rendered = std::str::from_utf8(output).ok()?;
+    let rendered = rendered.strip_suffix('\n').unwrap_or(rendered);
+    let values = rendered
+        .split('\n')
+        .map(|value| line(value.as_bytes()))
+        .collect::<Option<Vec<_>>>()?;
+    (values.len() == count).then_some(values)
+}
+
 #[cfg(unix)]
 fn hook_is_executable(metadata: &fs::Metadata) -> bool {
     use std::os::unix::fs::PermissionsExt;
@@ -234,4 +261,23 @@ fn hook_is_executable(metadata: &fs::Metadata) -> bool {
 #[cfg(not(unix))]
 fn hook_is_executable(metadata: &fs::Metadata) -> bool {
     metadata.is_file()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::lines;
+
+    #[test]
+    fn batched_paths_need_one_clean_line_per_request() {
+        let both = Some(vec![
+            "/r/.git/hooks/a".to_owned(),
+            "/r/.git/hooks/b".to_owned(),
+        ]);
+        assert_eq!(lines(b"/r/.git/hooks/a\n/r/.git/hooks/b\n", 2), both);
+        assert_eq!(lines(b"/r/.git/hooks/a\r\n/r/.git/hooks/b\r\n", 2), both);
+        assert_eq!(lines(b"/r/.git/hooks/a\n", 2), None);
+        assert_eq!(lines(b"/r/.git/hooks/a\n/r/x\ny/hooks/b\n", 2), None);
+        assert_eq!(lines(b"/r/.git/hooks/a\n\n", 2), None);
+        assert_eq!(lines(b"", 1), None);
+    }
 }

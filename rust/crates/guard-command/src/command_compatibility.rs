@@ -25,6 +25,12 @@ pub(crate) use environment::{
     code_or_redirect_environment_name, inert_environment_name, plain_printed_name,
 };
 
+/// Whether `name` changes nothing about how the Git command it prefixes runs:
+/// an inert output or locale setting, or the commit identity.
+pub(crate) fn inert_git_environment_name(name: &str) -> bool {
+    environment::inert_environment_name(name) || environment::git_identity_environment_name(name)
+}
+
 pub(crate) fn github_arguments_are_read_only(arguments: &[String], text: &str) -> bool {
     github::arguments_are_read_only(arguments, text)
 }
@@ -268,11 +274,13 @@ pub fn compatibility_observations_with_context(
         if assignment_prefix_is_unsupported(segment) {
             return Err("native_command_compatibility_context_unsupported");
         }
-        if segment
-            .environment_names
-            .iter()
-            .any(|name| !environment::inert_environment_name(name))
-        {
+        // The commit identity only names who Git records; it steers no other
+        // program.
+        let git = basename(segment) == "git";
+        if segment.environment_names.iter().any(|name| {
+            !(environment::inert_environment_name(name)
+                || git && environment::git_identity_environment_name(name))
+        }) {
             steered.push(index);
         }
         match basename(segment).as_str() {

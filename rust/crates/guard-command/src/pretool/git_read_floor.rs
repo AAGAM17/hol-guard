@@ -117,12 +117,12 @@ pub(super) fn requires_review(
                 return false;
             }
             let inspection = inspections[index];
-            // Inert names (`CI`, `LANG`, ...) change no Git behavior, so the
-            // segment keeps its own permission decision.
+            // Inert names (`CI`, `LANG`, ...) and the commit identity change
+            // no Git behavior, so the segment keeps its own permission decision.
             segment
                 .environment_names
                 .iter()
-                .any(|name| !crate::command_compatibility::inert_environment_name(name))
+                .any(|name| !crate::command_compatibility::inert_git_environment_name(name))
                 || !super::directory_targets::drive_targets_quoted(segment)
                 || inspection == Some(false)
                 // Only inspection operations have a configuration proof to

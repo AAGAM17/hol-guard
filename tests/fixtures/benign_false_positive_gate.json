@@ -2826,6 +2826,62 @@
       "expect": "allow"
     },
     {
+      "id": "queue-sibling-git-c-add",
+      "fix_area": "queue",
+      "harnesses": [
+        "claude-code",
+        "codex"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${ORG}/service-api add README.md"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-sibling-git-c-commit",
+      "fix_area": "queue",
+      "harnesses": [
+        "claude-code",
+        "codex"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${ORG}/service-api commit -m \"fix: correct epoch anchors\" -m \"Body line.\""
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-sibling-git-c-amend-then-log",
+      "fix_area": "queue",
+      "harnesses": [
+        "claude-code",
+        "codex"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${ORG}/service-api commit --amend --no-edit 2>&1 | tail -1; git -C ${ORG}/service-api log --format='%h %an <%ae>' -1"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-sibling-git-c-stash-pop-then-log",
+      "fix_area": "queue",
+      "harnesses": [
+        "claude-code",
+        "codex"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${ORG}/service-api stash pop 2>&1 | tail -2; git -C ${ORG}/service-api log --format='%h %an <%ae> %s' -3"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
       "id": "home-rg-relative-sibling-repo",
       "fix_area": "shell",
       "harnesses": [
@@ -4930,6 +4986,76 @@
       "tool": "shell",
       "tool_input": {
         "command": "git stash"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-git-author-env-commit",
+      "fix_area": "queue",
+      "harnesses": [
+        "claude-code",
+        "codex"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "GIT_AUTHOR_NAME=dev GIT_AUTHOR_EMAIL=dev@example.com git commit -m \"fix: x\""
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-git-stash-list",
+      "fix_area": "queue",
+      "harnesses": [
+        "claude-code",
+        "codex"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git stash list"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-git-stash-apply",
+      "fix_area": "queue",
+      "harnesses": [
+        "claude-code",
+        "codex"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git stash apply"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-git-stash-pop-then-log",
+      "fix_area": "queue",
+      "harnesses": [
+        "claude-code",
+        "codex"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git stash pop 2>&1 | tail -2; git log --oneline -3"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-sibling-cd-amend-then-log",
+      "fix_area": "queue",
+      "harnesses": [
+        "claude-code",
+        "codex"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cd ${ORG}/service-api && git commit --amend --no-edit 2>&1 | tail -1; git log -1"
       },
       "cwd": "org_app",
       "expect": "allow"

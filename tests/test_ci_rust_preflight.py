@@ -173,7 +173,13 @@ def test_rust_shard_cache_fallback_is_read_only_and_conditional() -> None:
         if step.get("name") == "Seed a new cache namespace from compatible dependencies"
     )
     assert steps.index(primary) < steps.index(fallback)
-    assert fallback["if"] == "inputs.cache-fallback-key != '' && steps.rust-cache.outputs.cache-hit != 'true'"
+    restored = next(step for step in steps if step.get("id") == "rust-cache-state")
+    assert steps.index(primary) < steps.index(restored) < steps.index(fallback)
+    assert restored["if"] == "inputs.cache-fallback-key != '' && steps.rust-cache.outputs.cache-hit != 'true'"
+    assert fallback["if"] == (
+        "inputs.cache-fallback-key != '' && steps.rust-cache.outputs.cache-hit != 'true' "
+        "&& steps.rust-cache-state.outputs.restored != 'true'"
+    )
     assert fallback["with"]["save-if"] == "false"
     assert "inputs.cache-key" in primary["with"]["shared-key"]
     assert "inputs.cache-fallback-key" in fallback["with"]["shared-key"]
@@ -184,3 +190,42 @@ def test_rust_shard_cache_fallback_is_read_only_and_conditional() -> None:
                  if step.get("uses") == "./.github/actions/setup-rust")
     assert setup["with"]["cache-key"] == "ci-workspace-${{ matrix.check }}"
     assert setup["with"]["cache-fallback-key"] == "${{ matrix.check != 'clippy' && 'ci-workspace-test' || '' }}"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Execute the composite action's Bash restore probe")
+@pytest.mark.parametrize(
+    ("artifact", "expected"),
+    [
+        (None, "false"),
+        ("empty", "false"),
+        (".rustc_info.json", "false"),
+        ("debug/deps/libdependency.rlib", "true"),
+        ("aarch64-unknown-linux-gnu/release/deps/libdependency.rmeta", "true"),
+    ],
+)
+def test_rust_cache_probe_distinguishes_partial_restores(
+    tmp_path: Path, artifact: str | None, expected: str,
+) -> None:
+    """Skip fallback only when cached dependency artifacts actually exist."""
+    action = yaml.safe_load((ROOT / ".github/actions/setup-rust/action.yml").read_text(encoding="utf-8"))
+    probe = next(step for step in action["runs"]["steps"] if step.get("id") == "rust-cache-state")
+    assert probe["shell"] == "bash"
+    workspace = tmp_path / "workspace with spaces"
+    workspace.mkdir()
+    target = workspace / "rust/target"
+    if artifact is not None:
+        target.mkdir(parents=True)
+        if artifact != "empty":
+            cached_file = target / artifact
+            cached_file.parent.mkdir(parents=True, exist_ok=True)
+            cached_file.write_text("cached dependency", encoding="utf-8")
+    output = tmp_path / "github-output"
+    subprocess.run(
+        ["bash", "-e", "-o", "pipefail", "-c", probe["run"]],
+        cwd=workspace,
+        env={**os.environ, "GITHUB_OUTPUT": str(output)},
+        capture_output=True, text=True, check=True, timeout=5,
+    )
+    assert output.read_text(encoding="utf-8").splitlines() == [f"restored={expected}"]
+    if artifact not in (None, "empty"):
+        assert (target / artifact).read_text(encoding="utf-8") == "cached dependency"

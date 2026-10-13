@@ -76,8 +76,20 @@ runs:
               (github.event_name == 'push' ||
                (inputs.save-main-cache == 'true' && runner.os == 'Windows' &&
                 (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) }}
-    - name: Seed a new cache namespace from compatible dependencies
+    - name: Check for restored Rust dependencies
+      id: rust-cache-state
       if: inputs.cache-fallback-key != '' && steps.rust-cache.outputs.cache-hit != 'true'
+      shell: bash
+      # rust-cache reports false for both partial hits and complete misses.
+      # Do not unpack the old full-workspace archive over restored shard deps.
+      run: |
+        restored=false
+        if [ -d rust/target ] && [ -n "$(find rust/target -type f \( -name '*.rlib' -o -name '*.rmeta' \) -print -quit)" ]; then
+          restored=true
+        fi
+        echo "restored=$restored" >> "$GITHUB_OUTPUT"
+    - name: Seed a new cache namespace from compatible dependencies
+      if: inputs.cache-fallback-key != '' && steps.rust-cache.outputs.cache-hit != 'true' && steps.rust-cache-state.outputs.restored != 'true'
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
       with:
         # Preserve the same toolchain/environment hash and archive path set.

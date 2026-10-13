@@ -270,7 +270,7 @@ mod archive_scanning;
 mod registry_install_identity;
 use registry_install_identity::{
     lifecycle_scripts_enabled_reason, plain_registry_spec, registry_install_needs_flags,
-    registry_selector, script_free_older_npm_install, script_free_registry_install,
+    registry_selector, script_free_git_free_tree_install, script_free_registry_install,
 };
 #[path = "supply_chain_package_eval/registry_install_tree.rs"]
 mod registry_install_tree;

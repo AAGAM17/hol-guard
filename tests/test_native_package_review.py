@@ -378,6 +378,8 @@ class TestEvaluatorRule:
         assert [package.get("scriptFreeRegistryInstall") for package in evaluation.packages] == [True]
 
     def test_missing_flags_get_rerun_guidance(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        # A git dependency keeps the tree proof out of reach, so only --allow-git=none settles it.
+        self._project(tmp_path, {"dependencies": {"left": "github:someone/left"}})
         evaluation = self._evaluate(tmp_path, monkeypatch, "npm install zod --ignore-scripts", "11.9.0")
 
         assert evaluation.decision == "ask"
@@ -398,8 +400,8 @@ class TestEvaluatorRule:
         workspace.mkdir(exist_ok=True)
         (workspace / "package.json").write_text(json.dumps(manifest), encoding="utf-8")
 
-    @pytest.mark.parametrize("npm_version", ["10.9.9", "11.8.9"])
-    def test_older_npm_installs_a_git_free_tree_without_review(
+    @pytest.mark.parametrize("npm_version", ["10.9.9", "11.8.9", "11.9.0", "11.10.1"])
+    def test_ignore_scripts_installs_a_git_free_tree_without_review(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, npm_version: str
     ) -> None:
         self._project(tmp_path, {"dependencies": {"zod": "^3.22.0"}})
@@ -408,12 +410,13 @@ class TestEvaluatorRule:
         assert evaluation.decision == "monitor", evaluation.reasons
         assert [package.get("scriptFreeRegistryInstall") for package in evaluation.packages] == [True]
 
+    @pytest.mark.parametrize("npm_version", ["10.9.9", "11.9.0"])
     @pytest.mark.parametrize("dependency", ["github:someone/left", "file:../left", "npm:zod@3"])
-    def test_older_npm_keeps_review_when_the_tree_can_hold_a_git_dependency(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dependency: str
+    def test_ignore_scripts_keeps_review_when_the_tree_can_hold_a_git_dependency(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dependency: str, npm_version: str
     ) -> None:
         self._project(tmp_path, {"dependencies": {"left": dependency}})
-        evaluation = self._evaluate(tmp_path, monkeypatch, "npm install zod --ignore-scripts", "10.9.9")
+        evaluation = self._evaluate(tmp_path, monkeypatch, "npm install zod --ignore-scripts", npm_version)
 
         assert evaluation.decision == "ask"
         assert not any(package.get("scriptFreeRegistryInstall") for package in evaluation.packages)

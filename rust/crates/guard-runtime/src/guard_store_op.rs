@@ -31,6 +31,7 @@ use crate::guard_store_connect as connect;
 use crate::guard_store_db::{exec, query_all, query_one, text, StoreError, StoreResult};
 use crate::guard_store_inventory as inventory;
 use crate::guard_store_local_cli as local_cli;
+use crate::guard_store_local_cli_grants as local_cli_grants;
 use crate::guard_store_local_mcp_observation as local_mcp;
 use crate::guard_store_native_review_consume as native_review_consume;
 use crate::guard_store_observed_mcp as observed_mcp;
@@ -276,6 +277,9 @@ fn method_kind(method: &str) -> Option<Kind> {
         | "count_receipts"
         | "artifact_latest_diff"
         | "oauth_sources_list"
+        | "read_local_cli_grant"
+        | "read_local_cli_command_catalog"
+        | "read_local_cli_command_states"
         | "policy_source_contexts" => Kind::Read,
         "list_command_activity_page"
         | "command_activity_analytics"
@@ -432,6 +436,11 @@ fn dispatch(
         "count_command_shadow_observations" => privacy::count_shadow(connection),
         "list_command_shadow_observations" => privacy::list_shadow(connection, args),
         "observed_mcp_tool_actions" => observed_mcp::observed_mcp_tool_actions(connection),
+        "read_local_cli_grant" => local_cli_grants::read_grant(connection, args),
+        "read_local_cli_command_catalog" => {
+            local_cli_grants::read_command_catalog(connection, args)
+        }
+        "read_local_cli_command_states" => local_cli_grants::read_command_states(connection, args),
         "consume_native_review_approval" => native_review_consume::consume(connection, args),
         "workflow_capability_plan" => wfcap::plan(connection, args),
         "workflow_capability_commit" => wfcap::commit(connection, args),

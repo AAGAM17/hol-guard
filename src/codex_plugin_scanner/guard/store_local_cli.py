@@ -163,15 +163,10 @@ class StoreLocalCliMixin:
         return items
 
     def read_local_cli_grant(self, cli_id: str) -> dict[str, object] | None:
-        if not is_local_cli_id(cli_id):
-            return None
-        with self._connect() as connection:
-            ensure_local_cli_schema(connection)
-            row = connection.execute(
-                "select cli_id, identity_hash, state, revision, updated_at from local_cli_grant where cli_id = ?",
-                (cli_id,),
-            ).fetchone()
-        return None if row is None else _grant_from_row(row)
+        grant = self._native_store_call("read_local_cli_grant", {"cli_id": cli_id})
+        if grant is not None and not isinstance(grant, dict):
+            raise sqlite3.DatabaseError("native_local_cli_grant_invalid")
+        return grant
 
     def has_local_cli_block_rules(self) -> bool:
         with self._connect() as connection:
@@ -355,79 +350,20 @@ class StoreLocalCliMixin:
             _write_command_states(connection, cli_id, states)
 
     def read_local_cli_command_catalog(self, cli_id: str) -> list[LocalCliCommand]:
-        if not is_local_cli_id(cli_id):
-            return []
-        with self._connect() as connection:
-            ensure_local_cli_schema(connection)
-            return _read_command_catalog(connection, cli_id)
+        rows = self._native_store_call("read_local_cli_command_catalog", {"cli_id": cli_id})
+        if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+            raise sqlite3.DatabaseError("native_local_cli_command_catalog_invalid")
+        return [LocalCliCommand(**row) for row in rows]
 
     def read_local_cli_command_states(self, cli_id: str) -> dict[str, LocalCliCommandState]:
-        if not is_local_cli_id(cli_id):
-            return {}
-        with self._connect() as connection:
-            ensure_local_cli_schema(connection)
-            return _read_command_states(connection, cli_id)
-
-
-def _command_id_filter(command_ids: Sequence[str] | None) -> tuple[str, tuple[str, ...]]:
-    if command_ids is None:
-        return "", ()
-    if not command_ids:
-        # An empty filter must never turn into a full permission read.
-        return " and 0", ()
-    return f" and command_id in ({','.join('?' for _ in command_ids)})", tuple(command_ids)
-
-
-def _read_command_catalog(
-    connection: sqlite3.Connection, cli_id: str, command_ids: Sequence[str] | None = None
-) -> list[LocalCliCommand]:
-    selection, parameters = _command_id_filter(command_ids)
-    rows = connection.execute(
-        f"""
-        select command_id, name, usage, description, parent_id
-        from local_cli_command
-        where cli_id = ?{selection}
-        order by sort_index asc, command_id asc
-        """,
-        (cli_id, *parameters),
-    ).fetchall()
-    catalog: list[LocalCliCommand] = []
-    for row in rows:
-        command_id, name, usage, description, parent_id = _row_values(row, 5)
-        if (
-            isinstance(command_id, str)
-            and isinstance(name, str)
-            and isinstance(usage, str)
-            and isinstance(description, str)
-            and (parent_id is None or isinstance(parent_id, str))
-        ):
-            catalog.append(
-                LocalCliCommand(
-                    command_id=command_id,
-                    name=name,
-                    usage=usage,
-                    description=description,
-                    parent_id=parent_id,
-                )
-            )
-    return catalog
-
-
-def _read_command_states(
-    connection: sqlite3.Connection, cli_id: str, command_ids: Sequence[str] | None = None
-) -> dict[str, LocalCliCommandState]:
-    selection, parameters = _command_id_filter(command_ids)
-    rows = connection.execute(
-        f"select command_id, state from local_cli_command_grant where cli_id = ?{selection}",
-        (cli_id, *parameters),
-    ).fetchall()
-    states: dict[str, LocalCliCommandState] = {}
-    for row in rows:
-        command_id, raw_state = _row_values(row, 2)
-        parsed_state = local_cli_command_state(raw_state)
-        if isinstance(command_id, str) and parsed_state is not None:
-            states[command_id] = parsed_state
-    return states
+        states = self._native_store_call("read_local_cli_command_states", {"cli_id": cli_id})
+        if not isinstance(states, dict):
+            raise sqlite3.DatabaseError("native_local_cli_command_states_invalid")
+        return {
+            command_id: state
+            for command_id, raw_state in states.items()
+            if (state := local_cli_command_state(raw_state)) is not None
+        }
 
 
 def _write_command_states(

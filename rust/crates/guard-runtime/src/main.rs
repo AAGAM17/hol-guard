@@ -269,6 +269,9 @@ mod guard_store_json;
 mod guard_store_lineage;
 mod guard_store_local_cli;
 #[cfg(test)]
+mod guard_store_local_cli_grant_vectors_tests;
+mod guard_store_local_cli_grants;
+#[cfg(test)]
 mod guard_store_local_cli_vectors_tests;
 mod guard_store_local_mcp_observation;
 mod guard_store_native_review_consume;

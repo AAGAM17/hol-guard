@@ -73,7 +73,11 @@ pub(super) fn requires_review(
             || super::git_remote_ops::verified_fetch(segment, context)
             || (inspections[prior] == Some(true)
                 && segment.environment_names.is_empty()
-                && super::git_reads::safe_git_arguments(&segment.arguments, true, read_context))
+                && (super::git_reads::safe_git_arguments(&segment.arguments, true, read_context)
+                    || super::git_reads::inspection_writes_nothing(
+                        &segment.arguments,
+                        read_context,
+                    )))
     };
     model.segments.iter().enumerate().any(|(index, segment)| {
         segment.executable.as_deref().is_some_and(|executable| {

@@ -71,6 +71,10 @@ fn read_only_segments_before_a_git_read_keep_its_proof() {
         "ls && cat package.json 2>/dev/null; git log --oneline -5",
         "ls -la && git status --short",
         "pwd && git diff --stat",
+        // A glob pathspec keeps its own read review but writes nothing, so a
+        // later read in the same command keeps its configuration proof.
+        "git log --oneline HEAD --name-only -- 'src/db/*' '*migration*' 2>/dev/null | head -30; \
+         git merge-base --is-ancestor HEAD HEAD 2>/dev/null && echo merged || echo not",
     ] {
         assert_ne!(reason(&home, &repository, command), FLOOR, "{command}");
     }

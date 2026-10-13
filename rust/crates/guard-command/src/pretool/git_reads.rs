@@ -114,3 +114,38 @@ pub(super) fn safe_git_arguments(
         &["--output=", "--exec-path="],
     )
 }
+
+/// Whether a Git inspection, once the configuration probe cleared its helpers,
+/// writes nothing a later Git read could depend on. A pathspec that needs its
+/// own read review (a glob that might select a credential file) is judged on
+/// that segment; it does not change what the next read runs.
+pub(super) fn inspection_writes_nothing(
+    arguments: &[String],
+    context: super::PathContext<'_>,
+) -> bool {
+    let Some(inspected) =
+        crate::command_compatibility::git_inspection_arguments(arguments, context)
+    else {
+        return false;
+    };
+    let leading = &arguments[..arguments.len() - inspected.len()];
+    let Some(subcommand) = inspected.first() else {
+        return false;
+    };
+    if !matches!(
+        subcommand.as_str(),
+        "status" | "diff" | "log" | "show" | "merge-base"
+    ) {
+        return false;
+    }
+    let option_end = inspected
+        .iter()
+        .position(|argument| argument == "--")
+        .unwrap_or(inspected.len());
+    !has_argument(leading, &[], &["--exec-path"])
+        && !has_argument(
+            &inspected[1..option_end],
+            &["--ext-diff", "--textconv", "--output", "-o"],
+            &["--output=", "--exec-path="],
+        )
+}

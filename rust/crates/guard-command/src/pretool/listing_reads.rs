@@ -161,10 +161,16 @@ pub(super) fn absent_listing_operand(value: &str, context: super::PathContext<'_
     if value.is_empty()
         || value.len() > 4096
         || value.starts_with('-')
-        || value.contains([
-            '$', '`', '|', ';', '&', '<', '>', '\n', '\r', '\0', '\\', '*', '?', '[', ']', '{', '}',
-        ])
-        || value.split('/').any(|part| part == "..")
+        || value.contains(|c: char| {
+            // Windows spells the home path with `\`, so there it is a separator.
+            (c == '\\' && !cfg!(windows))
+                || [
+                    '$', '`', '|', ';', '&', '<', '>', '\n', '\r', '\0', '*', '?', '[', ']', '{',
+                    '}',
+                ]
+                .contains(&c)
+        })
+        || value.split(['/', '\\']).any(|part| part == "..")
         || super::sensitive_read_path_argument(value)
         || !safe_reads::verified_path_context(context.home_dir, context.cwd)
     {

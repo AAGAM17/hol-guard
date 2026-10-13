@@ -129,6 +129,17 @@ def test_remote_tasks_are_judged_by_the_host_not_the_local_checks(tmp_path: Path
     assert CANARY in hosts and "oauth_token:" not in hosts
 
 
+def test_the_container_builds_the_task_in_the_account_home(tmp_path: Path) -> None:
+    account = tmp_path / "account"
+    account.mkdir()
+    fixture = create_full_task_fixture(tmp_path / "task-01", "fix-failing-node-test", home=account)
+    assert fixture.home == account
+    assert fixture.workspace == account / "projects" / "fix-failing-node-test"
+    assert (account / ".gitconfig").is_file()
+    with pytest.raises(ValueError, match="account home"):
+        create_full_task_fixture(tmp_path / "task-02", "fix-failing-node-test", home=account)
+
+
 def test_seeded_node_task_starts_failing(tmp_path: Path) -> None:
     fixture = create_full_task_fixture(tmp_path / "task-02", "fix-failing-node-test")
     checks = full_task_checks(fixture, "fix-failing-node-test")

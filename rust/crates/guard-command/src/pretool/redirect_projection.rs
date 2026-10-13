@@ -38,6 +38,7 @@ pub(super) fn project(
     let mut removed = false;
     let mut writes_file = false;
     let mut bounded_writes = true;
+    let mut temporary_writes = true;
     let mut index = 0usize;
     while index < chars.len() {
         let current = chars[index];
@@ -85,6 +86,7 @@ pub(super) fn project(
                     context,
                     &mut writes_file,
                     &mut bounded_writes,
+                    &mut temporary_writes,
                 )?;
                 removed = true;
                 continue;
@@ -118,12 +120,13 @@ pub(super) fn project(
         extraction_provenance: "pre-tool-generic".to_owned(),
     })
     .ok()?;
-    // An earlier segment could change directory or create a symlink before
-    // the shell opens the target, so file writes need a single segment.
+    // An earlier segment could cd or create a symlink before the shell opens
+    // a target, so a chain may only write absolute temp files beside peers.
+    let temporary_chain = temporary_writes && super::super::chain_temporary::peers_only(&model);
     if model.confidence != "exact"
         || model.uncertainty_reason.is_some()
         || model.segments.is_empty()
-        || (writes_file && model.segments.len() != 1)
+        || (writes_file && model.segments.len() != 1 && !temporary_chain)
     {
         return None;
     }
@@ -237,6 +240,7 @@ fn remove_output_redirect(
     context: super::super::PathContext<'_>,
     writes_file: &mut bool,
     bounded_writes: &mut bool,
+    temporary_writes: &mut bool,
 ) -> Option<usize> {
     let mut index = start + 1;
     let descriptor = trailing_word(out).to_owned();
@@ -291,6 +295,11 @@ fn remove_output_redirect(
     }
     *writes_file = true;
     *bounded_writes &= bounded_write(&target, context);
+    *temporary_writes &= super::super::chain_temporary::temporary_file_target(
+        &target,
+        context.home_dir,
+        context.cwd,
+    );
     out.push(' ');
     Some(index)
 }

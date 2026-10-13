@@ -2,6 +2,8 @@
   "_comment": "Gauntlet replay lane cases. expect: quiet = allow with no approval row and no rendered text; always = review row that carries an exact-action Always allow offer; block = must not allow. Benign cases of tests/fixtures/benign_false_positive_gate.json are replayed too, under the same strict judge. known_gaps lists case ids expected to fail on the current product.",
   "version": 1,
   "known_gaps": {
+    "awk-end-anchor-after-vitest@pi": "native_command_review_required",
+    "awk-single-quoted-end-anchor@pi": "native_command_review_required",
     "gauntlet-python-local-test-script@pi": "native_command_review_required",
     "pytest-module-quiet@cursor": "native_command_review_required",
     "pytest-quiet@pi": "native_command_review_required",

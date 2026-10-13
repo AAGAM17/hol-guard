@@ -6,7 +6,8 @@ channel and records them exactly as the daemon path does. After a
 ``PreToolUse`` allow that is the decision receipt, the binding capture, the
 command activity, and the command-line observation; after a reviewed
 ``PostToolUse`` it is the receipt, the binding capture, and the post-tool
-command activity. The publisher advertises the drain in the
+command activity; after a ``UserPromptSubmit`` it is the receipt and the
+binding capture alone. The publisher advertises the drain in the
 direct-lane binding only while it runs, so a resident never answers directly
 for a daemon that would leave the evidence behind.
 """
@@ -31,6 +32,7 @@ _MAX_PAGES_PER_WAKE = 8
 _DIRECT_HARNESSES = frozenset({"codex", "claude-code"})
 _PRE_TOOL_USE = "PreToolUse"
 _POST_TOOL_USE = "PostToolUse"
+_USER_PROMPT_SUBMIT = "UserPromptSubmit"
 
 
 class _DrainHost(Protocol):
@@ -65,7 +67,7 @@ def record_direct_hook_evidence(host: _DrainHost, record: object) -> bool:
     # A record without an event predates the post-tool lane, which answered only `PreToolUse`.
     event = record.get("event", _PRE_TOOL_USE)
     if (
-        event not in (_PRE_TOOL_USE, _POST_TOOL_USE)
+        event not in (_PRE_TOOL_USE, _POST_TOOL_USE, _USER_PROMPT_SUBMIT)
         or not isinstance(harness, str)
         or harness not in _DIRECT_HARNESSES
         or not isinstance(payload, dict)
@@ -88,6 +90,9 @@ def record_direct_hook_evidence(host: _DrainHost, record: object) -> bool:
             # The daemon hands a Codex receipt to the binding capture as well.
             with suppress(Exception):
                 capture(guard_home=host.guard_home, payload=payload, receipt=accepted)
+    if event == _USER_PROMPT_SUBMIT:
+        # The daemon records no activity for a prompt it answers.
+        return True
     if event == _POST_TOOL_USE:
         host._record_post_tool_activity(  # pyright: ignore[reportPrivateUsage]
             harness=harness,

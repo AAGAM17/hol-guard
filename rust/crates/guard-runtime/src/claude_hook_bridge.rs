@@ -146,9 +146,9 @@ impl Bridge<'_> {
         valid_hook_json_or_degraded(&response, malformed, &self.data).map_err(json_failure)
     }
 
-    /// The response a live resident answered for an allowed `PreToolUse`
-    /// or a reviewed `PostToolUse` hook, checked as a daemon response is;
-    /// `None` takes the daemon path.
+    /// The response a live resident answered for an allowed `PreToolUse`,
+    /// a reviewed `PostToolUse` or a `UserPromptSubmit` hook without Guard's
+    /// notice, checked as a daemon response is; `None` takes the daemon path.
     fn direct_response(&self, state_path: &Path) -> Option<String> {
         let guard_home = state_path.parent()?;
         let query = endpoint_query(&self.config.query);

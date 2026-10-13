@@ -303,3 +303,24 @@ def test_a_failed_tool_is_recorded_as_failed(tmp_path: Path, observed: list[dict
 
     [activity] = host.post_tool_activity
     assert activity["succeeded"] is False
+
+
+PROMPT_PAYLOAD = {"hook_event_name": "UserPromptSubmit", "prompt": "List the files in this repository."}
+
+
+@pytest.mark.parametrize(("harness", "captured"), [("codex", 1), ("claude-code", 0)])
+def test_a_drained_prompt_records_only_its_receipt_and_capture(
+    tmp_path: Path, observed: list[dict[str, object]], harness: str, captured: int
+) -> None:
+    host = _host(tmp_path)
+    capture = _Capture()
+    host.capture_writer = capture  # pyright: ignore[reportAttributeAccessIssue]
+    record = _record(event="UserPromptSubmit", harness=harness, payload=dict(PROMPT_PAYLOAD))
+    assert record_direct_hook_evidence(host, record)
+
+    assert host.activity_writer.receipts == [RECEIPT]
+    assert len(capture.captured) == captured
+    # The daemon records no command activity or observation for a prompt.
+    assert observed == []
+    assert host.activity_writer.activity == []
+    assert host.post_tool_activity == []

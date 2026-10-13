@@ -1,8 +1,9 @@
 //! Direct resident answers for Codex and Claude Code tool hooks.
 //!
 //! For an allowed `PreToolUse` hook, and for every reviewed `PostToolUse`
-//! hook, of either harness the daemon forwards the payload to its resident
-//! and returns the edge's harness response unchanged. When a live resident
+//! and `UserPromptSubmit` hook the daemon does not restyle, of either
+//! harness the daemon forwards the payload to its resident and returns the
+//! edge's harness response unchanged. When a live resident
 //! of this runtime holds a direct-lane binding, the bridge asks it first
 //! with `hook_direct` and skips the daemon round trip. The resident answers
 //! only those hooks and queues the evidence the daemon drains and records;
@@ -24,6 +25,7 @@ use crate::codex_hook_response::{POST_TOOL_USE, PRE_TOOL_USE};
 
 const STATE_DIRECTORY: &str = "native-runtime";
 const DIRECT_RESULT_SCHEMA: &str = "guard-hook-direct-result.v1";
+const USER_PROMPT_SUBMIT: &str = "UserPromptSubmit";
 
 /// A harness whose allowed `PreToolUse` hook the daemon answers with the
 /// edge's own response.
@@ -257,7 +259,9 @@ pub(crate) fn direct_answer(
     data: &str,
     rpc_deadline: Instant,
 ) -> Option<String> {
-    if ![PRE_TOOL_USE, POST_TOOL_USE].contains(&event_name) || !direct_enabled(harness) {
+    if ![PRE_TOOL_USE, POST_TOOL_USE, USER_PROMPT_SUBMIT].contains(&event_name)
+        || !direct_enabled(harness)
+    {
         return None;
     }
     let deadline = Instant::now() + remaining(rpc_deadline).min(DIRECT_TIMEOUT);

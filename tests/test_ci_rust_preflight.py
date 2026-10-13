@@ -49,19 +49,28 @@ def test_shipped_native_size_gate_uses_cargo_release_profile() -> None:
     evaluator_runs = "\n".join(step.get("run", "") for step in evaluators["steps"])
     assert "check_wheel_size.py" not in evaluator_runs
     assert "unset CARGO_PROFILE_RELEASE_LTO" not in evaluator_runs
+    # The unshipped source compiler remains compiled and verified against
+    # current source in the mandatory artifact producer.
+    assert (
+        "cargo build --manifest-path rust/Cargo.toml --locked --release "
+        "-p guard-command -p hol-guard-runtime --bin guard-command-source --bin hol-guard-runtime"
+    ) in evaluator_runs
+    assert "verify_native_command_program.py" in evaluator_runs
+    assert "native-command-evaluators" in document["jobs"]["required"]["needs"]
 
     size_job = document["jobs"]["native-release-size"]
     assert size_job["timeout-minutes"] >= 40
     measure = next(
-        step for step in size_job["steps"] if step.get("name") == "Measure the shipped fat-LTO release binaries"
+        step for step in size_job["steps"] if step.get("name") == "Measure the shipped fat-LTO runtime size"
     )
     script = measure["run"]
     unset_at = script.index("unset CARGO_PROFILE_RELEASE_LTO")
     codegen_at = script.index("unset CARGO_PROFILE_RELEASE_CODEGEN_UNITS")
     build_at = script.index(
         "cargo build --manifest-path rust/Cargo.toml --locked --release "
-        "-p guard-command -p hol-guard-runtime --bin guard-command-source --bin hol-guard-runtime"
+        "-p hol-guard-runtime --bin hol-guard-runtime"
     )
+    assert "--bin guard-command-source" not in script
     check_at = script.index(
         "python3 scripts/ci/check_wheel_size.py --native-dir rust/target/release "
         "--platform manylinux_2_17_x86_64"

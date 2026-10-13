@@ -408,7 +408,7 @@ jobs:
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
         with:
           version: v0.18.0
-      - name: Measure the shipped fat-LTO release binaries
+      - name: Measure the shipped fat-LTO runtime size
         env:
           RUSTC_WORKSPACE_WRAPPER: sccache
           SCCACHE_GHA_ENABLED: 'on'
@@ -422,7 +422,9 @@ jobs:
             echo "Shipped size gate must use the rust/Cargo.toml release profile" >&2
             exit 1
           fi
-          cargo build --manifest-path rust/Cargo.toml --locked --release -p guard-command -p hol-guard-runtime --bin guard-command-source --bin hol-guard-runtime
+          # Only the runtime ships in platform wheels; the native evaluator
+          # builds and verifies guard-command-source separately on this commit.
+          cargo build --manifest-path rust/Cargo.toml --locked --release -p hol-guard-runtime --bin hol-guard-runtime
           python3 scripts/ci/check_wheel_size.py --native-dir rust/target/release --platform manylinux_2_17_x86_64
 
   coverage-plan:

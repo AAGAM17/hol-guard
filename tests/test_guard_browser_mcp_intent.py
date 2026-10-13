@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from codex_plugin_scanner.guard.mcp_tool_calls import (
+    build_tool_call_artifact,
+    tool_call_risk_categories,
+    tool_call_risk_summary,
+)
 from codex_plugin_scanner.guard.runtime.browser_mcp_intent import normalize_browser_mcp_intent
+from codex_plugin_scanner.guard.runtime.mcp_protection import build_mcp_server_identity
 
 pytestmark = pytest.mark.usefixtures("native_context_digest")
 
@@ -12,14 +20,6 @@ pytestmark = pytest.mark.usefixtures("native_context_digest")
 def _normalized_url(url: str):
     artifact, arguments = _browser_artifact(arguments={"url": url})
     return normalize_browser_mcp_intent(artifact, arguments)
-
-
-from codex_plugin_scanner.guard.mcp_tool_calls import (
-    build_tool_call_artifact,
-    tool_call_risk_categories,
-    tool_call_risk_summary,
-)
-from codex_plugin_scanner.guard.runtime.mcp_protection import build_mcp_server_identity
 
 
 def _browser_artifact(
@@ -696,9 +696,10 @@ class TestBrowserRiskClassifierIntegration:
 class TestProxyBrowserIntentMetadata:
     """HGBM063-HGBM065: Proxy includes browser intent metadata."""
 
-    def test_build_artifact_payload_includes_browser_intent(self) -> None:
+    def test_build_artifact_payload_includes_browser_intent(self, native_context_digest: Path) -> None:
         """HGBM063: _build_artifact_payload includes browser_intent for browser MCP."""
         from codex_plugin_scanner.guard.proxy.runtime_mcp import RuntimeMcpGuardProxy
+        from codex_plugin_scanner.guard.proxy.runtime_mcp_projection import McpCallProjector
 
         artifact, arguments = _browser_artifact(
             arguments={"type": "url", "url": "https://hol.org/guard/integrations/slack"},
@@ -706,10 +707,9 @@ class TestProxyBrowserIntentMetadata:
 
         # Create a minimal proxy-like object to test the payload builder
         class _FakeProxy:
-            _launch_target = staticmethod(lambda tool, args: f"{tool} {args}")
+            _call_projector = McpCallProjector(native_context_digest)
 
-        # Test _build_artifact_payload directly (it's a method but doesn't use self)
-        # We'll call it as an unbound function with a mock
+        # Call the builder unbound: it only needs the call projector
         payload = RuntimeMcpGuardProxy._build_artifact_payload(
             _FakeProxy(),
             artifact=artifact,
@@ -724,9 +724,10 @@ class TestProxyBrowserIntentMetadata:
         assert "runtime_browser_tool_call" in payload["changed_fields"]
         assert "runtime_tool_call" in payload["changed_fields"]
 
-    def test_build_artifact_payload_no_browser_intent_for_non_browser(self) -> None:
+    def test_build_artifact_payload_no_browser_intent_for_non_browser(self, native_context_digest: Path) -> None:
         """HGBM063: Non-browser MCP does not include browser_intent."""
         from codex_plugin_scanner.guard.proxy.runtime_mcp import RuntimeMcpGuardProxy
+        from codex_plugin_scanner.guard.proxy.runtime_mcp_projection import McpCallProjector
         from codex_plugin_scanner.guard.runtime.mcp_protection import (
             build_mcp_server_identity,
         )
@@ -745,7 +746,7 @@ class TestProxyBrowserIntentMetadata:
         )
 
         class _FakeProxy:
-            _launch_target = staticmethod(lambda tool, args: f"{tool} {args}")
+            _call_projector = McpCallProjector(native_context_digest)
 
         payload = RuntimeMcpGuardProxy._build_artifact_payload(
             _FakeProxy(),
@@ -758,16 +759,17 @@ class TestProxyBrowserIntentMetadata:
         assert "browser_intent" not in payload
         assert payload["changed_fields"] == ["runtime_tool_call"]
 
-    def test_launch_target_prefers_browser_label(self) -> None:
+    def test_launch_target_prefers_browser_label(self, native_context_digest: Path) -> None:
         """HGBM065: launch_target is safe browser label when browser intent exists."""
         from codex_plugin_scanner.guard.proxy.runtime_mcp import RuntimeMcpGuardProxy
+        from codex_plugin_scanner.guard.proxy.runtime_mcp_projection import McpCallProjector
 
         artifact, arguments = _browser_artifact(
             arguments={"type": "url", "url": "https://hol.org/guard/integrations/slack"},
         )
 
         class _FakeProxy:
-            _launch_target = staticmethod(lambda tool, args: f"{tool} {args}")
+            _call_projector = McpCallProjector(native_context_digest)
 
         payload = RuntimeMcpGuardProxy._build_artifact_payload(
             _FakeProxy(),

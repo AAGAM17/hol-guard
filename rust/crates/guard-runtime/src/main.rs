@@ -391,6 +391,9 @@ mod mcp_proxy_decision_tests;
 mod mcp_proxy_decision_vectors_tests;
 mod mcp_proxy_package;
 mod mcp_proxy_postclaim;
+mod mcp_proxy_projection;
+#[cfg(test)]
+mod mcp_proxy_projection_vectors_tests;
 mod mcp_proxy_route;
 mod mcp_proxy_shlex;
 mod mcp_proxy_signals;

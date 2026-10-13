@@ -385,6 +385,52 @@ pub(crate) fn configured_values_hash(
     Ok(hex::encode(hasher.finalize()))
 }
 
+/// One MCP call's arguments as the proxy shows and binds them.
+pub(crate) struct McpArgumentsProjection {
+    /// `_safe_mcp_arguments`: secrets masked, `null` without arguments.
+    pub(crate) safe: Value,
+    /// Canonical JSON of `safe`; empty without arguments.
+    pub(crate) serialized: String,
+    /// sha256 over the canonical RAW arguments.
+    pub(crate) digest: String,
+    /// `_launch_target`: tool name, safe arguments and the raw digest.
+    pub(crate) launch_target: String,
+}
+
+/// Project one MCP call's arguments. `None` means the request carried no
+/// arguments (absent and `null` alike). `default=str` is irrelevant at the
+/// JSON transport boundary: every surviving value is JSON already.
+pub(crate) fn mcp_arguments_projection(
+    tool_name: &str,
+    arguments: Option<&Value>,
+) -> Result<McpArgumentsProjection, &'static str> {
+    let safe = match arguments {
+        Some(inner) => {
+            guard_command::mcp_arguments::mcp_safe_arguments(inner).map_err(|_| ERR_ARGUMENTS)?
+        }
+        None => Value::Null,
+    };
+    let mut digest_material = Vec::with_capacity(256);
+    write_canonical_json(arguments.unwrap_or(&Value::Null), &mut digest_material)?;
+    let digest = digest_bytes(&digest_material);
+    let serialized = if arguments.is_some() {
+        let mut out = Vec::with_capacity(256);
+        write_canonical_json(&safe, &mut out)?;
+        String::from_utf8(out).map_err(|_| "canonical_json_unencodable")?
+    } else {
+        String::new()
+    };
+    let launch_target = format!("{tool_name} {serialized} [arguments-sha256:{digest}]")
+        .trim()
+        .to_owned();
+    Ok(McpArgumentsProjection {
+        safe,
+        serialized,
+        digest,
+        launch_target,
+    })
+}
+
 fn evaluate_request(
     request: &ContextDigestRequestV1,
     result: &mut ContextDigestResultV1,
@@ -458,33 +504,11 @@ fn evaluate_request(
             tool_name,
             arguments,
         } => {
-            // _launch_target: safe arguments + display serialization +
-            // sha256 over the RAW arguments (default=str is irrelevant at
-            // the JSON transport boundary — every surviving value is a JSON
-            // scalar/container already).
-            let arguments_value = arguments.clone().unwrap_or(Value::Null);
-            let safe = match arguments {
-                Some(inner) => guard_command::mcp_arguments::mcp_safe_arguments(inner)
-                    .map_err(|_| ERR_ARGUMENTS)?,
-                None => Value::Null,
-            };
-            let mut digest_material = Vec::with_capacity(256);
-            write_canonical_json(&arguments_value, &mut digest_material)?;
-            result.digest = Some(digest_bytes(&digest_material));
-            let serialized = if arguments.is_some() {
-                let mut out = Vec::with_capacity(256);
-                write_canonical_json(&safe, &mut out)?;
-                String::from_utf8(out).map_err(|_| "canonical_json_unencodable")?
-            } else {
-                String::new()
-            };
-            result.mcp_serialized_arguments = Some(serialized.clone());
-            result.mcp_safe_arguments = Some(safe);
-            let label = format!(
-                "{tool_name} {serialized} [arguments-sha256:{}]",
-                result.digest.as_deref().unwrap_or("")
-            );
-            result.mcp_launch_target = Some(label.trim().to_owned());
+            let projection = mcp_arguments_projection(tool_name, arguments.as_ref())?;
+            result.digest = Some(projection.digest);
+            result.mcp_serialized_arguments = Some(projection.serialized);
+            result.mcp_safe_arguments = Some(projection.safe);
+            result.mcp_launch_target = Some(projection.launch_target);
         }
         ContextDigestKindV1::McpRedactJson { material } => {
             result.mcp_redacted_value = Some(

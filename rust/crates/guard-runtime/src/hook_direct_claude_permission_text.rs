@@ -39,7 +39,7 @@ fn notice_field<'a>(notice: Option<&'a Map<String, Value>>, key: &str) -> Option
 }
 
 /// `ensure_terminal_punctuation`: stripped, ending in `.`, `!` or `?`.
-fn ensure_terminal_punctuation(message: &str) -> String {
+pub(super) fn ensure_terminal_punctuation(message: &str) -> String {
     let trimmed = python_strip(message);
     if trimmed.is_empty() {
         return String::new();

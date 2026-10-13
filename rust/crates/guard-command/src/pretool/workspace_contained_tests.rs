@@ -269,6 +269,21 @@ fn redirects_the_sandbox_cannot_bound_stay_out_of_the_workspace_sandbox() {
     );
 }
 
+#[test]
+fn git_commands_that_write_sandbox_denied_metadata_stay_out_of_the_sandbox() {
+    let ws = workspace("git-metadata", true);
+    for command in [
+        "git worktree add -b report ../report-wt main && ls ../report-wt",
+        "mkdir -p .git/worktrees; git worktree add ../wt main",
+        "git config user.name Agent && git commit -m x",
+        "git remote add origin https://example.com/x.git",
+        "git branch -m main trunk",
+        "git submodule add ../lib lib",
+    ] {
+        assert_ne!(reason("omp", command, &ws, true), CONTAINED, "{command}");
+    }
+}
+
 /// Whether this host runs the workspace sandbox at all.
 fn host() -> bool {
     cfg!(target_os = "macos") || crate::restricted_pytest::linux_workspace_sandbox_available()

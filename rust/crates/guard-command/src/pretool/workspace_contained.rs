@@ -23,6 +23,8 @@ fn workspace_admissible(_cwd: &Path, _home: Option<&Path>) -> Option<std::path::
 pub(crate) const REASON: &str = "native_workspace_containment_required";
 pub(crate) const PROFILE: &str = "workspace-contained-v1";
 
+#[path = "workspace_contained_git.rs"]
+mod git_metadata;
 #[path = "workspace_contained_package.rs"]
 mod package;
 
@@ -162,6 +164,9 @@ pub(crate) fn command_shape(
         }
         let name = super::executable_basename(executable);
         if PRIVILEGE_DENY.contains(&name) {
+            return None;
+        }
+        if name == "git" && git_metadata::writes_denied_metadata(&segment.arguments) {
             return None;
         }
         if name == "git" && segment.arguments.iter().any(|argument| argument == "init") {

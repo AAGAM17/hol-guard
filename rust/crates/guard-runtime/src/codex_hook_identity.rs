@@ -9,15 +9,11 @@ pub(crate) fn current_process_identity() -> Option<(u32, String)> {
     process_start_token(pid).map(|token| (pid, token))
 }
 
-/// `_process_start_token(pid)` on Windows.
-///
-/// TODO(windows-process-identity): Python answers `windows:<creation time>`
-/// from the process creation time. Until that is ported no token is
-/// produced, so the bridge never asks the daemon to wait on its process.
+#[cfg(any(windows, test))]
+#[path = "codex_hook_identity_windows.rs"]
+mod windows_identity;
 #[cfg(windows)]
-pub(crate) fn process_start_token(_pid: u32) -> Option<String> {
-    None
-}
+pub(crate) use windows_identity::process_start_token;
 
 #[cfg(unix)]
 #[path = "codex_hook_identity_posix.rs"]

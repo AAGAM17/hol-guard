@@ -9,12 +9,12 @@ import re
 import shlex
 import sys
 from collections.abc import Iterator
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from .contained_output_filters import Stage, apply_filters, filter_chain, keep_lines
 from .restricted_pytest_validation import _path_is_within
 
-_COUNT = re.compile(r"[0-9]{1,6}")
 _MERGE = re.compile(r"2>&1(?=[ \t|]|\Z)")
 _HOME_CD = re.compile(r"[ \t]*cd[ \t]+~(?=/|[ \t])")
 _OPERATOR = frozenset("();<>|&\n")
@@ -30,21 +30,28 @@ _STATUS_ECHO = re.compile(
 
 @dataclass(frozen=True)
 class OutputFilter:
-    """A trailing `2>&1`, `| head|tail -N` or `; echo "<label>$?"`, applied in-process.
+    """A trailing `2>&1`, output filter chain or `; echo "<label>$?"`.
 
-    `kind` is "head" or "tail" for a bounded filter, else "all".
+    `kind` is "head" or "tail" for one bounded filter, "pipe" for any other
+    chain in `stages` (see `contained_output_filters`), else "all".
     """
 
     kind: str
     count: int
     merge_stderr: bool
     status_label: str | None = None
+    stages: tuple[Stage, ...] = ()
+    pipe_status: list[int] = field(default_factory=list, init=False, compare=False, repr=False)
 
     def status_line(self, exit_code: int) -> str | None:
-        """The echo's output; after a pipe, `$?` is the filter's own status."""
+        """The echo's output; after a pipe, `$?` is the last filter's own status."""
         if self.status_label is None:
             return None
-        return f"{self.status_label}{0 if self.kind in {'head', 'tail'} else exit_code}\n"
+        if self.kind == "pipe":
+            exit_code = self.pipe_status[-1] if self.pipe_status else 0
+        elif self.kind in {"head", "tail"}:
+            exit_code = 0
+        return f"{self.status_label}{exit_code}\n"
 
 
 def _lex(command: str) -> tuple[list[tuple[str, bool]], bool]:
@@ -115,17 +122,6 @@ def _lex(command: str) -> tuple[list[tuple[str, bool]], bool]:
             index += 1
     finish()
     return tokens, exact
-
-
-def _bounded_filter(arguments: list[tuple[str, bool]]) -> int | None:
-    if any(operator for _value, operator in arguments):
-        return None
-    values = [value for value, _operator in arguments]
-    if len(values) == 1 and values[0].startswith("-") and _COUNT.fullmatch(values[0][1:]):
-        return int(values[0][1:])
-    if len(values) == 2 and values[0] == "-n" and _COUNT.fullmatch(values[1]):
-        return int(values[1])
-    return None
 
 
 def sibling_project_root(directory: Path, *, home: Path | None) -> Path | None:
@@ -292,15 +288,15 @@ def peel_contained_wrapper(
         wrapped = True
     if ("|", True) in tokens:
         index = tokens.index(("|", True))
-        program = tokens[index + 1 : index + 2]
-        count = _bounded_filter(tokens[index + 2 :])
-        if program not in ([("tail", False)], [("head", False)]) or count is None:
-            raise ValueError("unsupported output filter")
+        stages = filter_chain(tokens[index + 1 :])
         tokens = tokens[:index]
         merge = tokens[-1:] == [("2>&1", True)]
         if merge:
             tokens = tokens[:-1]
-        output = OutputFilter(program[0][0], count, merge)
+        if len(stages) == 1 and stages[0][0] in {"head", "tail"}:
+            output = OutputFilter(stages[0][0], int(stages[0][1]), merge)
+        else:
+            output = OutputFilter("pipe", 0, merge, stages=stages)
         wrapped = True
     elif tokens[-1:] == [("2>&1", True)]:
         tokens = tokens[:-1]
@@ -318,11 +314,12 @@ def peel_contained_wrapper(
 
 @contextlib.contextmanager
 def bounded_output(output: OutputFilter | None) -> Iterator[None]:
-    """Apply head/tail in-process; no external filter runs outside containment.
+    """Apply the output filters to the contained core's captured output.
 
     A bare `2>&1` is one file descriptor in the sandbox, so this wrapper does
-    not buffer that full stream. Head and tail still keep only the requested
-    lines of the replay.
+    not buffer that full stream. Head and tail keep only the requested lines
+    in-process; a grep stage runs the system grep on the captured text alone,
+    with arguments that name no file (see `contained_output_filters`).
     """
     if output is None or (output.kind == "all" and not output.merge_stderr):
         yield
@@ -338,10 +335,13 @@ def bounded_output(output: OutputFilter | None) -> Iterator[None]:
         with contextlib.redirect_stdout(captured), errors:
             yield
     finally:
-        lines = captured.getvalue().splitlines(keepends=True)
-        if output.kind == "head":
-            kept = lines[: output.count]
+        if output.kind == "pipe":
+            text, diagnostics, status = apply_filters(captured.getvalue(), output.stages)
+            output.pipe_status.append(status)
+            if diagnostics:
+                sys.stderr.write(diagnostics)
+                sys.stderr.flush()
         else:
-            kept = lines[len(lines) - output.count :] if output.count else []
-        destination.write("".join(kept))
+            text = "".join(keep_lines(captured.getvalue().splitlines(keepends=True), output.kind, output.count))
+        destination.write(text)
         destination.flush()

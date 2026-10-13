@@ -109,7 +109,7 @@ def test_a_workspace_receipt_runs_what_the_read_only_parsers_reject(
 @pytest.mark.parametrize(
     "command",
     [
-        "node --test 2>&1 | grep -A10 'user.test' | head -20",
+        "node --test 2>&1 | awk '/user.test/' | head -20",
         "git status --short && git add -A 2>&1; echo EXIT=$?",
         "cd /nonexistent && npm test",
     ],

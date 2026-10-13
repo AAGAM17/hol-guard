@@ -3,7 +3,7 @@ use crate::native_command_program::packaged_command_program;
 use guard_contracts::NativeCommandControlBindingV1;
 use std::path::{Path, PathBuf};
 
-fn controls() -> CompiledNativeCommandControls {
+pub(super) fn controls() -> CompiledNativeCommandControls {
     let program = packaged_command_program().unwrap();
     let mut binding: NativeCommandControlBindingV1 = serde_json::from_value(serde_json::json!({
         "schema": "guard.native-command-control-binding.v1",

@@ -1845,6 +1845,66 @@
       "expect": "allow"
     },
     {
+      "id": "queue-docker-ps",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "docker ps"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-docker-ps-format-head",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | head -8"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-nc-z-loopback-status",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "nc -z 127.0.0.1 55433; echo \"probe-status:$?\""
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-nc-z-loopback-open-closed",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "nc -z 127.0.0.1 55433 && echo open || echo closed"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
       "id": "neg-curl-pipe-shell",
       "fix_area": "negative",
       "harnesses": [
@@ -5739,6 +5799,21 @@
         "command": "hol-guard update --help 2>&1 | head -20"
       },
       "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-hol-guard-guard-help-head",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "hol-guard guard --help 2>&1 | head -30"
+      },
+      "cwd": "org_app",
       "expect": "allow"
     },
     {

@@ -237,7 +237,11 @@ pub(super) fn observe(
 ) {
     let executable = basename(segment);
     let arguments = &segment.arguments;
-    if executable == "docker" {
+    // A proven container or image listing changes nothing and prints no
+    // container environment, credential or Compose project data.
+    if executable == "docker"
+        && !crate::pretool::docker_reads::proven_read_segment(command, segment, context)
+    {
         docker(segment, index, output);
     }
     if matches!(executable.as_str(), "kubectl" | "oc") {
@@ -274,9 +278,11 @@ pub(super) fn observe(
             .count()
             > 1;
         // A proven read takes no option that sends stdin or a file, so a
-        // pipe after it only filters the response.
-        let proven_read = executable == "curl"
-            && crate::pretool::curl_reads::proven_read_segment(command, segment, context);
+        // pipe after it only filters the response. A zero-I/O loopback
+        // `nc -z` probe reads no stdin and sends nothing.
+        let proven_read = (executable == "curl"
+            && crate::pretool::curl_reads::proven_read_segment(command, segment, context))
+            || crate::pretool::port_probes::proven_probe_segment(command, segment, context);
         if (upload || pipeline) && !proven_read {
             output.rule("command.data-protection.file-upload", index, true);
         }

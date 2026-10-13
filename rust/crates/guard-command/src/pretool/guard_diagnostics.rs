@@ -57,7 +57,14 @@ pub(super) fn safe_hol_guard_arguments(arguments: &[String]) -> bool {
 /// usage and exits before any subcommand runs. Only known subcommand names are
 /// admitted: a frozen launcher treats a leading word naming a package manager
 /// as a shim script path, which the working directory could supply.
+///
+/// A leading `guard` is the launcher's no-op prefix (`hol-guard guard --help`
+/// runs `hol-guard --help`), so it is dropped before the same check.
 fn help_request(words: &[&str]) -> bool {
+    let words = match words {
+        ["guard", rest @ ..] => rest,
+        _ => words,
+    };
     let known = |word: &&str| HELP_SUBCOMMANDS.contains(word);
     match words {
         ["help", rest @ ..] => rest.len() <= 2 && rest.iter().all(known),
@@ -144,6 +151,11 @@ mod tests {
             "secrets --help",
             "update --help",
             "help update",
+            "guard --help",
+            "guard -h",
+            "guard help",
+            "guard doctor --help",
+            "guard help doctor",
         ] {
             assert!(safe_hol_guard_arguments(&arguments(command)), "{command}");
         }
@@ -181,6 +193,13 @@ mod tests {
             "status --json --help",
             "help npm",
             "a b c --help",
+            "guard",
+            "guard repair",
+            "guard start",
+            "guard status --repair",
+            "guard guard --help",
+            "guard npm --help",
+            "guard a b c --help",
         ] {
             assert!(!safe_hol_guard_arguments(&arguments(command)), "{command}");
         }

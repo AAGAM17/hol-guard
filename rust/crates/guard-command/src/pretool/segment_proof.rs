@@ -491,6 +491,8 @@ pub(super) fn exact_safe_segment_with_context(
         "kubectl" => super::kubectl_reads::safe_kubectl_segment(model, segment, context),
         "export" => super::kubectl_reads::safe_export_segment(model, segment, context),
         "wrangler" => super::wrangler_reads::safe_wrangler_arguments(&segment.arguments),
+        "docker" => super::docker_reads::safe_docker_segment(model, segment),
+        "nc" | "netcat" => super::port_probes::safe_nc_segment(model, segment),
         "npm" => {
             super::npm_reads::read_only_neighbors(model)
                 && super::npm_reads::safe_npm_read(&segment.arguments, context)

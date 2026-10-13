@@ -22,7 +22,9 @@ pub struct PathContext<'a> {
 
 mod contained_wrapper;
 pub(crate) mod curl_reads;
+pub(crate) mod docker_reads;
 pub(crate) mod kubectl_reads;
+pub(crate) mod port_probes;
 mod workspace_contained;
 #[cfg(unix)]
 pub(crate) use workspace_contained::PROFILE as WORKSPACE_PROFILE;

@@ -202,7 +202,8 @@ pub(super) fn exact_safe_segment_with_context(
                     Some(index) != jq_filter && sensitive_path_argument(argument)
                 }))
         || !segment.environment_names.is_empty()
-        || executable.contains(['/', '\\'])
+        || (executable.contains(['/', '\\'])
+            && !super::postgres_reads::trusted_pg_ctl_path(executable, context))
     {
         return false;
     }
@@ -287,6 +288,8 @@ pub(super) fn exact_safe_segment_with_context(
         "wrangler" => super::wrangler_reads::safe_wrangler_arguments(&segment.arguments),
         "docker" => super::docker_reads::safe_docker_segment(model, segment),
         "nc" | "netcat" => super::port_probes::safe_nc_segment(model, segment),
+        "brew" => super::brew_reads::safe_brew_segment(model, segment),
+        "pg_ctl" => super::postgres_reads::safe_pg_ctl_arguments(&segment.arguments),
         "npm" => {
             super::npm_reads::read_only_neighbors(model)
                 && super::npm_reads::safe_npm_read(&segment.arguments, context)

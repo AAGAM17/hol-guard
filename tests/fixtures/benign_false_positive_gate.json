@@ -7478,6 +7478,336 @@
       },
       "cwd": "org_app",
       "expect": "not_allow"
+    },
+    {
+      "id": "brew-services-list",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew services list"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "brew-services-list-grep",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew services list 2>/dev/null | grep -i postgres"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "brew-services-info",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew services info postgresql@16"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "brew-list-versions",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew list --versions"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "brew-ls-formula-one",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew ls --formula -1"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "brew-info-formula",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew info widget-cli"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "brew-prefix-formula",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew --prefix postgresql@16"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "brew-deps-tree",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew deps --tree widget-cli"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "brew-uses-installed",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew uses --installed openssl@3"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "brew-leaves",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew leaves"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "pg-ctl-status-data-dir",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "pg_ctl -D /var/lib/acme-pg status"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "pg-ctl-version",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "pg_ctl --version"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-brew-install",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew install widget-cli"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-brew-upgrade",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew upgrade"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-brew-tap",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew tap acme/tools"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-brew-services-start",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew services start postgresql@16"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-brew-bundle",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew bundle"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-brew-config",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew config"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-brew-info-ruby-path",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "brew info ./widget.rb"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-brew-env-prefix-list",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "HOMEBREW_NO_AUTO_UPDATE=1 brew list"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-pg-ctl-stop",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "pg_ctl -D /var/lib/acme-pg stop"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-pg-ctl-start",
+      "fix_area": "package",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "pg_ctl -D /var/lib/acme-pg start"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
     }
   ],
   "pending_pr": {

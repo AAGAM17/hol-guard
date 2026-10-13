@@ -389,10 +389,6 @@ pub(crate) fn configured_values_hash(
 pub(crate) struct McpArgumentsProjection {
     /// `_safe_mcp_arguments`: secrets masked, `null` without arguments.
     pub(crate) safe: Value,
-    /// Canonical JSON of `safe`; empty without arguments.
-    pub(crate) serialized: String,
-    /// sha256 over the canonical RAW arguments.
-    pub(crate) digest: String,
     /// `_launch_target`: tool name, safe arguments and the raw digest.
     pub(crate) launch_target: String,
 }
@@ -425,8 +421,6 @@ pub(crate) fn mcp_arguments_projection(
         .to_owned();
     Ok(McpArgumentsProjection {
         safe,
-        serialized,
-        digest,
         launch_target,
     })
 }
@@ -444,14 +438,6 @@ fn evaluate_request(
             current_token,
         } => {
             result.validation_reason = validate_context_tokens(saved_token, current_token);
-        }
-        ContextDigestKindV1::ValidateApprovalContext {
-            saved_token,
-            components,
-        } => {
-            let current = build_context_token(components)?;
-            result.validation_reason =
-                validate_context_tokens(saved_token, &Value::String(current));
         }
         ContextDigestKindV1::ConfiguredEnvironmentHash {
             values,
@@ -500,32 +486,9 @@ fn evaluate_request(
             // NO JSON serialization (module specifiers, source text, h:s:n).
             result.digest = Some(digest_bytes(material.as_bytes()));
         }
-        ContextDigestKindV1::McpArgumentsProjection {
-            tool_name,
-            arguments,
-        } => {
-            let projection = mcp_arguments_projection(tool_name, arguments.as_ref())?;
-            result.digest = Some(projection.digest);
-            result.mcp_serialized_arguments = Some(projection.serialized);
-            result.mcp_safe_arguments = Some(projection.safe);
-            result.mcp_launch_target = Some(projection.launch_target);
-        }
         ContextDigestKindV1::McpRedactJson { material } => {
             result.mcp_redacted_value = Some(
                 guard_command::mcp_arguments::redact_json(material).map_err(|_| ERR_ARGUMENTS)?,
-            );
-        }
-        ContextDigestKindV1::PackageEnvironmentPolicy {
-            manager,
-            environment,
-            referenced_names,
-        } => {
-            result.environment_values = Some(
-                guard_command::package_context_environment::environment_policy_values(
-                    manager,
-                    environment,
-                    referenced_names,
-                ),
             );
         }
         ContextDigestKindV1::McpLaunchEnvironment {
@@ -599,50 +562,8 @@ fn evaluate_request(
                 identity_hash: identity.identity_hash,
             });
         }
-        ContextDigestKindV1::McpServerDescriptor { request } => {
-            result.mcp_descriptor = Some(
-                guard_command::mcp_decision::portal_mcp_server_descriptor(request),
-            );
-        }
-        ContextDigestKindV1::McpToolDescriptor { request } => {
-            result.mcp_descriptor = Some(guard_command::mcp_decision::portal_mcp_tool_descriptor(
-                request,
-            ));
-        }
-        ContextDigestKindV1::McpToolContentDigest { request } => {
-            result.digest = Some(guard_command::mcp_decision::mcp_tool_content_digest(
-                request,
-            )?);
-        }
         ContextDigestKindV1::BrowserMcp { request } => {
             result.browser_mcp = Some(guard_command::browser_mcp_intent::evaluate_browser_mcp(
-                request,
-            )?);
-        }
-        ContextDigestKindV1::McpToolRisk {
-            artifact,
-            arguments,
-        } => {
-            result.mcp_tool_risk = Some(guard_command::mcp_tool_risk::evaluate_tool_risk(
-                artifact, arguments,
-            )?);
-        }
-        ContextDigestKindV1::McpToolPolicy { request } => {
-            result.mcp_tool_policy = Some(guard_command::mcp_tool_policy::evaluate_tool_policy(
-                request,
-            )?);
-        }
-        ContextDigestKindV1::BuildMcpToolApprovalHash { request } => {
-            let built = build_mcp_tool_approval(request)?;
-            if request.config.is_some() {
-                result.token = Some(built.token_or_digest);
-            } else {
-                result.digest = Some(built.token_or_digest);
-            }
-            result.mcp_tool_risk = Some(built.risk_categories);
-        }
-        ContextDigestKindV1::McpToolApprovalDigest { request } => {
-            result.digest = Some(guard_command::mcp_decision::mcp_tool_approval_digest(
                 request,
             )?);
         }
@@ -731,11 +652,6 @@ fn evaluate_request(
             result.custom_extension_suggestion = Some(
                 super::custom_extension_suggestion::suggestion_verdicts(tools)?,
             );
-        }
-        ContextDigestKindV1::PackageLauncherToken { command_name, args } => {
-            result.package_launcher = Some(guard_contracts::PackageLauncherResultV1 {
-                package: guard_command::mcp_decision::package_token(command_name, args),
-            });
         }
         ContextDigestKindV1::RuntimeExecutableIdentity {
             command,
@@ -901,19 +817,11 @@ fn evaluate_context_digest_request_inner(
         token: None,
         digest: None,
         validation_reason: None,
-        environment_values: None,
         mcp_launch_environment: None,
         package_context: None,
         mcp_server_identity: None,
         mcp_tool_identity: None,
-        package_launcher: None,
-        mcp_descriptor: None,
         browser_mcp: None,
-        mcp_tool_risk: None,
-        mcp_tool_policy: None,
-        mcp_launch_target: None,
-        mcp_safe_arguments: None,
-        mcp_serialized_arguments: None,
         mcp_redacted_value: None,
         runtime_identity: None,
         runtime_identity_match: None,

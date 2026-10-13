@@ -152,6 +152,11 @@ class NativePolicySnapshotPublicationMixin:
         current = recheckable_review_facts(publisher.store)
         if current is None or current == bound:
             return
+        # A lane published before the daemon recorded where it listens binds
+        # no origin, so learning that origin moves nothing the lane carries.
+        # The next publish binds it.
+        if bound[0] is None and current[1] == bound[1]:
+            return
         publisher._close_direct_lane_ack()
         with publisher._condition:
             publisher._direct_lane_review_facts = None

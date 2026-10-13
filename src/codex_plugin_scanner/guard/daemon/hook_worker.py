@@ -76,12 +76,17 @@ _NATIVE_POLICY_STARTUP_READY_TIMEOUT_SECONDS = _PUBLISH_TIMEOUT_SECONDS
 _NATIVE_POLICY_READY_TIMEOUT_SECONDS = 25.0
 # Session setup uses this bounded window before any timed runtime hook starts.
 WORKSPACE_POLICY_READINESS_TIMEOUT_SECONDS = _NATIVE_POLICY_READY_TIMEOUT_SECONDS
+# The publisher retries these on its own: another writer re-committed the
+# command-control authority, or a late renewal let the snapshot expire. A hook
+# waits for that fresh ACK within its deadline instead of failing at once.
 _TRANSIENT_RESIDENT_PUBLICATION_ERRORS = frozenset(
     {
         "native_policy_snapshot_resident_changed",
         "native_resident_restart_budget_busy",
         "native_command_control_mutation_in_progress",
+        "native_command_control_authority_not_current",
         "native_business_source_mutation_in_progress",
+        "native_policy_snapshot_expired",
     }
 )
 

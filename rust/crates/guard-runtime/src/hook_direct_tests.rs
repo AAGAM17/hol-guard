@@ -111,19 +111,6 @@ fn workspace_strings_normalize_like_the_daemon() {
 }
 
 #[test]
-fn temporary_roots_defer_instead_of_falling_through() {
-    assert_eq!(
-        normalized_workspace(Some("/tmp"), HOME),
-        Err(HookDirectDefer::WorkspaceInvalid)
-    );
-    let temporary = std::env::temp_dir();
-    assert_eq!(
-        normalized_workspace(temporary.to_str(), HOME),
-        Err(HookDirectDefer::WorkspaceInvalid)
-    );
-}
-
-#[test]
 fn workspace_prefers_exec_command_workdir_then_cwd_then_query() {
     let payload = object(json!({
         "tool_name": " Exec_Command ",

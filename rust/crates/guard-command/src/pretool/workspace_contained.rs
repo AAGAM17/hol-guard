@@ -29,6 +29,8 @@ mod chmod;
 mod git_metadata;
 #[path = "workspace_git_keeps_work.rs"]
 mod keeps_work;
+#[path = "workspace_contained_links.rs"]
+mod links;
 #[path = "workspace_contained_package.rs"]
 mod package;
 #[path = "workspace_contained_reach.rs"]
@@ -182,6 +184,9 @@ pub(crate) fn command_shape(
         return None;
     }
     let mut bootstrap = None;
+    if links::unbounded_linked_writes(model, workspace) {
+        return None;
+    }
     let linked = super::worktree_writes::linked_worktree_common_dir(workspace).is_some();
     for (index, segment) in model.segments.iter().enumerate() {
         let executable = segment.executable.as_deref()?;

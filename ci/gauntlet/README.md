@@ -149,6 +149,33 @@ Keep the native runtime and its manifests private to the installing user. A grou
 
 ## Run with real inference
 
+### Qualification throughput
+
+The one-command `qualify` driver chooses half the host CPU count, bounded to
+one through eight isolated case workers. `--jobs N` overrides this selection;
+use a lower value on constrained hosts or providers. The host-wide slot limit
+and load gate still apply. The lower-level `run` command keeps its explicit
+concurrency setting and sequential default.
+
+Every core scenario and its existing oracle still runs. More workers do not
+share mutable fixtures, Guard homes, daemons, collectors or agent sessions.
+Provider errors, unexercised cases and benign interruptions remain failures;
+parallelism cannot turn them into qualification.
+
+`qualification.json` includes `phase_seconds` for preflight, source setup,
+SDK setup, wheel preparation, installation, live cases, verification and
+cleanup. Repeated attempts accumulate in their phase rather than hiding
+retry cost. The existing `elapsed_seconds` is the end-to-end measurement,
+including cold build and cleanup; a cached-wheel run must be reported as such.
+
+The native inference adapter treats sixty seconds without a model text,
+reasoning or tool-argument delta as a stalled medium/low request. Transport
+keepalives do not extend that wait. Active generation retains the existing
+four-minute round deadline, high effort retains its previous idle budget,
+and scenario/tool deadlines are unchanged. A stall remains an inference error
+with retained evidence; it can trigger a fresh full attempt, never a repaired
+completion or a stitched pass.
+
 Use an OpenAI-compatible **Chat Completions streaming** provider endpoint and a model that supports tool calls. DeepSeek or another compatible provider can be configured directly. A Codex subscription is not automatically an API credential. A local compatible server is supported explicitly; prerecorded responses are not qualification evidence.
 
 The relay identifies itself as `hol-guard-gauntlet/1.0` and supplies a stable, random `x-opencode-session` for each scenario. These routing headers support coding-agent providers without borrowing another client's identity. Session identifiers and provider credentials are never included in public evidence. Interrupting a run terminates and reaps its owned agent process group.

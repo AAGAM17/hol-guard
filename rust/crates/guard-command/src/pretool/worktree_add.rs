@@ -3,7 +3,10 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 struct WorktreeAdd<'a> {
-    leading: &'a [String],
+    leading: Vec<String>,
+    /// The single `-C <dir>` value, applied by changing the proof's cwd
+    /// (as Git does) instead of being passed on to the probes.
+    chdir: Option<&'a str>,
     branch: &'a str,
     destination: &'a str,
     reference: Option<&'a str>,
@@ -133,7 +136,11 @@ pub(super) fn outside_home_reason(
     let target = if supplied.is_absolute() {
         supplied.to_path_buf()
     } else {
-        Path::new(context.cwd?).join(supplied)
+        let base = match spec.chdir {
+            Some(directory) => resolve_chdir(directory, context)?,
+            None => context.cwd?.to_owned(),
+        };
+        Path::new(&base).join(supplied)
     };
     let parent = std::fs::canonicalize(target.parent()?).ok()?;
     if parent.starts_with(&home) {
@@ -210,12 +217,25 @@ fn safe_segment(
     let Some(spec) = parse(segment) else {
         return false;
     };
+    let chdir_cwd = match spec.chdir {
+        Some(directory) => {
+            let Some(resolved) = resolve_chdir(directory, context) else {
+                return false;
+            };
+            Some(resolved)
+        }
+        None => None,
+    };
+    let context = super::PathContext {
+        cwd: chdir_cwd.as_deref().or(context.cwd),
+        ..context
+    };
     let Some(destination) = fresh_destination(spec.destination, context) else {
         return false;
     };
     let result = super::git_worktree::worktree_add_execution_free(
         segment.executable.as_deref().unwrap_or("git"),
-        spec.leading,
+        &spec.leading,
         &destination,
         spec.branch,
         spec.reference,
@@ -238,16 +258,32 @@ fn parse(segment: &CommandSegmentV1) -> Option<WorktreeAdd<'_>> {
         &segment.arguments
     };
     let mut index = 0;
-    while matches!(
-        arguments.get(index).map(String::as_str),
-        Some("-P" | "--no-pager" | "--no-optional-locks")
-    ) {
-        index += 1;
+    let mut leading = Vec::new();
+    let mut chdir = None;
+    loop {
+        match arguments.get(index).map(String::as_str) {
+            Some(flag @ ("-P" | "--no-pager" | "--no-optional-locks")) => {
+                leading.push(flag.to_owned());
+                index += 1;
+            }
+            Some("-C") if chdir.is_none() => {
+                let value = arguments.get(index + 1)?.as_str();
+                if value.is_empty()
+                    || value.starts_with('-')
+                    || value.contains(['\0', '\n', '\r'])
+                    || value.len() > MAX_DESTINATION_BYTES
+                {
+                    return None;
+                }
+                chdir = Some(value);
+                index += 2;
+            }
+            _ => break,
+        }
     }
     if arguments.get(index).map(String::as_str) != Some("worktree") {
         return None;
     }
-    let leading = &arguments[..index];
     index += 1;
     if arguments.get(index).map(String::as_str) != Some("add") {
         return None;
@@ -282,6 +318,7 @@ fn parse(segment: &CommandSegmentV1) -> Option<WorktreeAdd<'_>> {
     }
     Some(WorktreeAdd {
         leading,
+        chdir,
         branch,
         destination,
         reference,
@@ -344,6 +381,22 @@ fn valid_path_text(value: &str) -> bool {
         && !parts
             .iter()
             .any(|part| part.is_empty() || *part == "." || *part == "..")
+}
+
+/// The directory `git -C <dir>` enters: absolute or relative to the context
+/// cwd, an existing directory, canonical.
+fn resolve_chdir(value: &str, context: super::PathContext<'_>) -> Option<String> {
+    let cwd = std::fs::canonicalize(Path::new(context.cwd?)).ok()?;
+    let supplied = Path::new(value);
+    let target = if supplied.is_absolute() {
+        supplied.to_path_buf()
+    } else {
+        cwd.join(supplied)
+    };
+    let canonical = std::fs::canonicalize(target).ok()?;
+    canonical
+        .is_dir()
+        .then(|| canonical.to_str().map(str::to_owned))?
 }
 
 fn fresh_destination(value: &str, context: super::PathContext<'_>) -> Option<PathBuf> {

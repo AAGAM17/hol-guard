@@ -22,7 +22,7 @@ pub(super) fn worktree_add_execution_free(
     if Instant::now() >= deadline || !destination.is_absolute() {
         return None;
     }
-    let (base, _binary, cwd, _git_home) =
+    let (base, _binary, cwd, git_home) =
         prepared_git_command(executable, context, execution_environment)?;
     let home = fs::canonicalize(Path::new(context.home_dir?)).ok()?;
     if !destination.starts_with(&home) {
@@ -51,9 +51,9 @@ pub(super) fn worktree_add_execution_free(
     if !(status.success() || status.code() == Some(1) && output.is_empty()) {
         return None;
     }
-    if !safe_worktree_config(&output)? {
+    let Some(facts) = safe_worktree_config(&output, &git_home)? else {
         return Some(false);
-    }
+    };
     let git_dir = git_path(
         &base,
         leading,
@@ -69,6 +69,13 @@ pub(super) fn worktree_add_execution_free(
         deadline,
     )?;
     if !hooks_are_inert(&git_dir.join("hooks")) || !hooks_are_inert(&common_dir.join("hooks")) {
+        return Some(false);
+    }
+    if !facts
+        .hook_dirs
+        .iter()
+        .all(|directory| hooks_are_inert(directory))
+    {
         return Some(false);
     }
     let branch_ref = format!("refs/heads/{branch}");
@@ -94,7 +101,162 @@ pub(super) fn worktree_add_execution_free(
         deadline,
         WORKTREE_PROBE_LIMIT,
     )?;
-    Some(status.success() && !output.is_empty())
+    if !status.success() || output.is_empty() {
+        return Some(false);
+    }
+    if !facts.filters {
+        return Some(true);
+    }
+    let commit = std::str::from_utf8(&output).ok()?.trim();
+    if commit.len() < 40
+        || commit.len() > 64
+        || !commit.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return None;
+    }
+    let attribute_sources_free = no_filter_attributes(
+        &base,
+        leading,
+        commit,
+        &common_dir,
+        &facts,
+        &git_home,
+        execution_environment?,
+        deadline,
+    )?;
+    Some(attribute_sources_free)
+}
+
+const ATTRIBUTES_LIMIT: u64 = 1024 * 1024;
+const MAX_TREE_ATTRIBUTE_FILES: usize = 16;
+
+fn mentions_filter(bytes: &[u8]) -> bool {
+    bytes
+        .windows(6)
+        .any(|window| window.eq_ignore_ascii_case(b"filter"))
+}
+
+/// A global filter driver only runs for paths whose attributes assign
+/// `filter=`. Prove no attribute source of this checkout mentions `filter`:
+/// the checked-out tree's `.gitattributes` files, `info/attributes`, and the
+/// global attributes file. `None` is doubt and keeps review.
+#[allow(clippy::too_many_arguments)]
+fn no_filter_attributes(
+    base: &Command,
+    leading: &[String],
+    commit: &str,
+    common_dir: &Path,
+    facts: &ConfigFacts,
+    git_home: &Path,
+    environment: &guard_contracts::GuardExecutionEnvironmentV1,
+    deadline: Instant,
+) -> Option<bool> {
+    if facts.attribute_source_override {
+        return Some(false);
+    }
+    // Tree `.gitattributes` files.
+    let (status, listing) = git_query_with_args(
+        base,
+        leading,
+        &["ls-tree", "-r", "-z", "--name-only", commit],
+        deadline,
+        super::git_probe::LISTING_LIMIT,
+    )?;
+    if !status.success() {
+        return None;
+    }
+    let mut seen = 0;
+    for path in listing
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+    {
+        let name = path.rsplit(|byte| *byte == b'/').next().unwrap_or(path);
+        if name != b".gitattributes" {
+            continue;
+        }
+        seen += 1;
+        if seen > MAX_TREE_ATTRIBUTE_FILES {
+            return None;
+        }
+        let object = format!("{commit}:{}", std::str::from_utf8(path).ok()?);
+        let (status, content) = git_query_with_args(
+            base,
+            leading,
+            &["cat-file", "blob", &object],
+            deadline,
+            ATTRIBUTES_LIMIT,
+        )?;
+        if !status.success() {
+            return None;
+        }
+        if mentions_filter(&content) {
+            return Some(false);
+        }
+    }
+    // Repository-wide and user-wide attribute files.
+    let global = match facts.attributes_file.as_deref() {
+        Some(value) => expand_config_path(value, git_home)?,
+        None => match environment.xdg_config_home.as_deref() {
+            Some(directory) => Path::new(directory).join("git/attributes"),
+            None => git_home.join(".config/git/attributes"),
+        },
+    };
+    // Git also reads the system attributes file. A Git that cannot name it
+    // (before 2.42) leaves the proof in doubt.
+    let (status, system) = git_query(base, leading, ["var", "GIT_ATTR_SYSTEM"], deadline, 4096)?;
+    let system = std::str::from_utf8(&system).ok()?.trim();
+    if !status.success() || system.is_empty() || !Path::new(system).is_absolute() {
+        return None;
+    }
+    for file in [
+        common_dir.join("info/attributes"),
+        global,
+        PathBuf::from(system),
+    ] {
+        if attributes_file_mentions_filter(&file)? {
+            return Some(false);
+        }
+    }
+    Some(true)
+}
+
+fn attributes_file_mentions_filter(path: &Path) -> Option<bool> {
+    use std::io::Read;
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Some(false),
+        Err(_) => return None,
+    };
+    if !metadata.is_file() || metadata.len() > ATTRIBUTES_LIMIT {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    fs::File::open(path)
+        .ok()?
+        .take(ATTRIBUTES_LIMIT + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    (bytes.len() as u64 <= ATTRIBUTES_LIMIT).then(|| mentions_filter(&bytes))
+}
+
+/// An absolute path or `~/...` under the session home; anything else is doubt.
+fn expand_config_path(value: &str, home: &Path) -> Option<PathBuf> {
+    if value.is_empty() || value.contains(['\0', '\n', '\r']) {
+        return None;
+    }
+    if let Some(rest) = value.strip_prefix("~/") {
+        return (!rest.is_empty()).then(|| home.join(rest));
+    }
+    let path = Path::new(value);
+    path.is_absolute().then(|| path.to_path_buf())
+}
+
+#[derive(Default)]
+struct ConfigFacts {
+    hook_dirs: Vec<PathBuf>,
+    filters: bool,
+    attributes_file: Option<String>,
+    attribute_source_override: bool,
 }
 
 pub(super) fn trusted_pipeline_command(
@@ -228,8 +390,9 @@ fn git_path(
     .ok()
 }
 
-fn safe_worktree_config(output: &[u8]) -> Option<bool> {
+fn safe_worktree_config(output: &[u8], home: &Path) -> Option<Option<ConfigFacts>> {
     let output = std::str::from_utf8(output).ok()?;
+    let mut facts = ConfigFacts::default();
     let mut records = output.split('\0');
     while let Some(scope) = records.next() {
         if scope.is_empty() {
@@ -239,15 +402,47 @@ fn safe_worktree_config(output: &[u8]) -> Option<bool> {
         let (key, value) = record.split_once('\n')?;
         let key = key.to_ascii_lowercase();
         if key == "core.bare" && super::git_config::enabled_boolean(value) {
-            return Some(false);
+            return Some(None);
+        }
+        let global_scope = matches!(scope, "global" | "system");
+        if key == "core.hookspath" {
+            // Hook managers set this globally; the directory must exist and
+            // hold no hook Git would run for this operation.
+            if !global_scope {
+                return Some(None);
+            }
+            let Some(directory) = expand_config_path(value, home)
+                .and_then(|path| fs::canonicalize(path).ok())
+                .filter(|path| path.is_dir())
+            else {
+                return Some(None);
+            };
+            facts.hook_dirs.push(directory);
+            continue;
+        }
+        if key.starts_with("filter.") {
+            // Git LFS installs these globally; they only act where an
+            // attribute assigns a filter, which the caller then rules out.
+            if !global_scope {
+                return Some(None);
+            }
+            facts.filters = true;
+            continue;
+        }
+        if key == "core.attributesfile" {
+            facts.attributes_file = Some(value.to_owned());
+            continue;
+        }
+        if key.starts_with("attr.") {
+            facts.attribute_source_override = true;
+            continue;
         }
         // `worktree add` and each probe below use built-in commands, local
         // refs, and no diff/editor operation. A global or system credential
         // helper, such as the `osxkeychain` helper Git for macOS installs, is
         // not consulted for this local-ref operation; retain the deny floor
         // for repository-scoped helpers and execution-capable settings.
-        if key == "core.hookspath"
-            || key == "core.worktree"
+        if key == "core.worktree"
             || key == "core.fsmonitor"
             || key == "core.sshcommand"
             || key == "core.gitproxy"
@@ -255,7 +450,6 @@ fn safe_worktree_config(output: &[u8]) -> Option<bool> {
             || key == "core.pager"
             || key.starts_with("hook.")
             || key.starts_with("pager.")
-            || key.starts_with("filter.")
             || (key.starts_with("credential.") && !matches!(scope, "global" | "system"))
             || key.starts_with("include")
             || key.starts_with("extensions.")
@@ -265,10 +459,10 @@ fn safe_worktree_config(output: &[u8]) -> Option<bool> {
             || key.ends_with(".uploadpack")
             || key.ends_with(".receivepack")
         {
-            return Some(false);
+            return Some(None);
         }
     }
-    Some(true)
+    Some(Some(facts))
 }
 
 fn hooks_are_inert(path: &Path) -> bool {
@@ -301,13 +495,13 @@ fn hooks_are_inert(path: &Path) -> bool {
             Ok(metadata) => metadata,
             Err(_) => return false,
         };
-        if metadata.file_type().is_symlink() {
+        // Git runs hooks by exact name, so only an entry with a hook's name
+        // matters; a symlink under such a name is not followed here.
+        let hook_named = EXECUTABLE_HOOKS.contains(&entry.file_name().to_string_lossy().as_ref());
+        if hook_named && metadata.file_type().is_symlink() {
             return false;
         }
-        if EXECUTABLE_HOOKS.contains(&entry.file_name().to_string_lossy().as_ref())
-            && metadata.is_file()
-            && hook_is_executable(&metadata)
-        {
+        if hook_named && metadata.is_file() && hook_is_executable(&metadata) {
             return false;
         }
     }

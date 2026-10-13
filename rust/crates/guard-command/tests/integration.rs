@@ -77,6 +77,7 @@ pub mod pretool_home_cd;
 pub mod pretool_home_layout_reads;
 pub mod pretool_linked_writes;
 pub mod pretool_links_removals;
+pub mod pretool_literal_route_writes;
 pub mod pretool_lockfile_install;
 pub mod pretool_lockfile_install_forms;
 pub mod pretool_lookup_reads;

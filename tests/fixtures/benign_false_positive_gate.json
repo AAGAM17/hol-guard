@@ -781,6 +781,54 @@
       "expect": "allow"
     },
     {
+      "id": "write-slug-route-existing",
+      "fix_area": "write",
+      "harnesses": [
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "write",
+      "tool_input": {
+        "path": "${WORKTREE}/app/registry/[slug]/page.tsx",
+        "content": "export default function Page() { return null; }\n"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "write-dynamic-route-new-subtree",
+      "fix_area": "write",
+      "harnesses": [
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "write",
+      "tool_input": {
+        "path": "${WORKTREE}/app/api/guard/extensions/[id]/promotion/local-distribution/route.ts",
+        "content": "export async function GET() { return Response.json({}); }\n"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "write-dollar-route-file",
+      "fix_area": "write",
+      "harnesses": [
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "write",
+      "tool_input": {
+        "path": "${WORKTREE}/app/routes/posts.$slug.edit.tsx",
+        "content": "export default function Edit() { return null; }\n"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "read-credential-lookalike-name",
       "fix_area": "shell",
       "harnesses": [

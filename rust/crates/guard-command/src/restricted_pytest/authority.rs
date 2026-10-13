@@ -24,6 +24,7 @@ struct Input {
     search_path: String,
     read_only_workspace: bool,
     source: BTreeMap<String, String>,
+    user_site_root: Option<PathBuf>,
 }
 
 pub fn evaluate(operation: &str, input: &Value) -> Value {
@@ -97,8 +98,13 @@ fn evaluate_inner(operation: &str, input: &Input) -> Result<Value, RestrictedPyt
             &input.cwd,
             &input.private_home,
             &input.private_tmp,
-            &input.allowed_executables
+            &input.allowed_executables,
+            input
+                .user_site_root
+                .as_deref()
+                .is_some_and(super::user_site::grantable)
         )?),
+        "user_site_link_target" => json!(super::user_site::link_target(&input.source)),
         "runtime_roots" => json!(runtime_roots(
             &input.allowed_executables,
             &input.workspace,

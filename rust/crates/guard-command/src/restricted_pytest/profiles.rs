@@ -20,6 +20,7 @@ struct Input {
     write_denials: Vec<PathBuf>,
     command: Vec<String>,
     backend_executable: PathBuf,
+    user_site_root: Option<PathBuf>,
     #[serde(rename = "search_path")]
     _search_path: String,
 }
@@ -160,6 +161,15 @@ fn compose_macos_profile(
     let mut roots = vec![input.workspace.clone(), input.private_root.clone()];
     roots.extend_from_slice(&input.read_only_roots);
     roots.extend_from_slice(system_roots);
+    if let Some(root) = &input.user_site_root {
+        if !super::user_site::grantable(root) {
+            return Err(RestrictedPytestError::new(
+                PYTEST_SANDBOX_UNAVAILABLE_REASON_CODE,
+                "Unexpected user site grant.",
+            ));
+        }
+        roots.push(root.clone());
+    }
     roots.extend(runtime_roots(
         &input.allowed_executables,
         &input.workspace,

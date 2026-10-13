@@ -218,6 +218,7 @@ mod mapping_snapshot;
 mod paths;
 mod profiles;
 mod toolchains;
+mod user_site;
 mod validation;
 mod workspace;
 mod workspace_linux;

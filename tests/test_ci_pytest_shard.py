@@ -247,7 +247,7 @@ def test_sonar_scope_includes_native_rust_workspace() -> None:
     assert "rust/**/*_tests.rs" in properties["sonar.cpd.exclusions"]
 
 
-def test_native_preflight_stops_known_contract_failures_before_shard_fanout() -> None:
+def test_native_contract_preflight_is_required_without_delaying_artifact_fanout() -> None:
     document = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
     producer = document["jobs"]["native-command-evaluators"]
     steps = producer["steps"]
@@ -255,21 +255,36 @@ def test_native_preflight_stops_known_contract_failures_before_shard_fanout() ->
     assert "rustfmt" in rust["with"]["components"].split()
     formatting = next(i for i, step in enumerate(steps) if "cargo fmt" in step.get("run", ""))
     compilation = next(i for i, step in enumerate(steps) if "cargo build" in step.get("run", ""))
-    preflight = next(
-        i for i, step in enumerate(steps) if step.get("name") == "Check native contract groups before pytest fan-out"
-    )
+    verification = next(i for i, step in enumerate(steps) if "verify_native_command_program.py" in step.get("run", ""))
     uploads = [i for i, step in enumerate(steps) if step.get("uses", "").startswith("actions/upload-artifact@")]
-    assert formatting < compilation < preflight < min(uploads)
-    for index in (formatting, preflight):
+    assert formatting < compilation < verification < min(uploads)
+    for index in (formatting, verification):
         assert "if" not in steps[index]
         assert not steps[index].get("continue-on-error", False)
-    check = steps[preflight]
+
+    # Native contracts still block the required result, but do not withhold
+    # already-verified compiler/runtime artifacts from the coverage fan-out.
+    assert not any("ci/package_size" in step.get("run", "") for step in steps)
+    gates = document["jobs"]["native-gates"]
+    assert gates["needs"] == "native-command-evaluators"
+    checks = [
+        step for step in gates["steps"]
+        if step.get("name") == "Check native contract groups after artifact fan-out"
+    ]
+    assert len(checks) == 1
+    check = checks[0]
+    assert check["if"] == "matrix.shard-index == 0"
+    assert not check.get("continue-on-error", False)
+    assert "ci/package_size" in check["run"]
     assert "test_native_contract_validates_every_authored_signature_without_rewriting_evidence" in check["run"]
     assert "test_install_writes_managed_extension_that_denies_on_hook_errors" in check["run"]
     assert "test_managed_extension_fails_safe_on_ambiguous_success_payloads" in check["run"]
     assert "test_pi_legacy_source_contract" not in check["run"]
     assert "--ignore" not in check["run"] and "--deselect" not in check["run"]
     assert check["env"]["HOL_GUARD_NATIVE_REGRESSION"] == "1"
+    assert "native-gates" in document["jobs"]["required"]["needs"]
+    assert '"native-gates"' in document["jobs"]["required"]["steps"][0]["run"]
+
     assert document["jobs"]["coverage-plan"]["needs"] == "native-command-evaluators"
     assert (
         document["jobs"]["coverage"]["strategy"]["matrix"]["shard-index"]

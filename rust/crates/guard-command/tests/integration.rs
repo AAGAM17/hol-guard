@@ -91,6 +91,7 @@ pub mod pretool_omp_home_documents;
 pub mod pretool_omp_project_dotfiles;
 pub mod pretool_omp_tools;
 pub mod pretool_omp_yield_reports;
+pub mod pretool_outside_workspace_files;
 pub mod pretool_pi_tools;
 pub mod pretool_private_temporary_workspace;
 pub mod pretool_prompt_negation_scope;

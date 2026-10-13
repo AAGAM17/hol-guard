@@ -1,3 +1,7 @@
+#[path = "command_sequences.rs"]
+mod command_sequences;
+#[path = "jq_filter.rs"]
+mod jq_filter;
 pub(super) use super::directory_targets::verified_cwd_target;
 pub(super) use super::read_paths::{
     bounded_file_read_target, bounded_omp_directory_read_target, bounded_omp_file_read_target,
@@ -8,6 +12,8 @@ pub(super) use super::safe_scalar::{safe_date_arguments, safe_sleep_arguments};
 pub(super) use super::safe_writes::{
     bounded_native_file_write_target, safe_copy_arguments, safe_file_mutation_arguments,
 };
+pub(super) use command_sequences::exact_safe_sequence;
+pub(crate) use command_sequences::proven_created_file_removal;
 
 pub(super) fn safe_file_predicate_arguments(
     arguments: &[String],
@@ -50,6 +56,8 @@ pub(super) fn safe_listing_arguments(
                 && !super::search::skill_link_resolves_over_home(argument, context))
             || super::listing_reads::absent_listing_operand(argument, context)
             || super::tool_bin_listing::tool_bin_listing_operand(argument, context)
+            || super::tool_bin_listing::credential_file_metadata_operand(argument, context)
+            || super::tool_bin_listing::global_package_listing_operand(argument, context)
     })
 }
 
@@ -345,48 +353,7 @@ pub(super) fn safe_jq_stdin_arguments(arguments: &[String]) -> bool {
         }
     }
     let Some(filter) = filter else { return false };
-    // Only field/index projections: no functions, file operands, modules or env access.
-    if filter.len() > 256 || !filter.starts_with('.') {
-        return false;
-    }
-    let bytes = filter.as_bytes();
-    let mut index = 1;
-    while index < bytes.len() {
-        if bytes[index] == b'[' {
-            index += 1;
-            while index < bytes.len() && bytes[index].is_ascii_digit() {
-                index += 1;
-            }
-            if bytes.get(index) != Some(&b']') {
-                return false;
-            }
-            index += 1;
-            if index < bytes.len() && !matches!(bytes[index], b'.' | b'[') {
-                return false;
-            }
-        } else {
-            if bytes[index] == b'.' {
-                if index == 1 {
-                    return false;
-                }
-                index += 1;
-            }
-            if index >= bytes.len() || !(bytes[index].is_ascii_alphabetic() || bytes[index] == b'_')
-            {
-                return false;
-            }
-            index += 1;
-            while index < bytes.len()
-                && (bytes[index].is_ascii_alphanumeric() || bytes[index] == b'_')
-            {
-                index += 1;
-            }
-            if index < bytes.len() && !matches!(bytes[index], b'.' | b'[') {
-                return false;
-            }
-        }
-    }
-    true
+    jq_filter::safe_filter(filter)
 }
 
 fn safe_head_tail_with_targets(

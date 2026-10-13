@@ -101,7 +101,7 @@ pub(super) fn exact_safe_cwd_compound(
 }
 
 /// Executables a verified `cd` compound may run after the directory change.
-fn cwd_read_executable(executable: Option<&str>) -> bool {
+pub(super) fn cwd_read_executable(executable: Option<&str>) -> bool {
     matches!(
         executable,
         Some(

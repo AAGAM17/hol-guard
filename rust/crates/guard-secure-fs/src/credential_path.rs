@@ -80,6 +80,8 @@ mod tests {
             "keys/service_credentials.json",
             "config/api-tokens/github.json",
             "auth/oauth_tokens/session.json",
+            "home/kubeconfig.yaml",
+            "deploy/prod-kubeconfig.yml",
         ] {
             assert!(credential_named_path(Path::new(path)), "{path}");
         }

@@ -218,25 +218,7 @@ pub(super) fn resolved_path_allowed_for_operation(
     verified_temporary: bool,
     read_only: bool,
 ) -> bool {
-    let rendered = canonical.to_string_lossy().replace('\\', "/");
-    let lowered = rendered.to_ascii_lowercase();
-    const ROOTS: [&str; 7] = [
-        "/etc",
-        "/dev",
-        "/proc",
-        "/sys",
-        "/var",
-        "/private/etc",
-        "/private/var",
-    ];
-    if (!verified_temporary
-        && !private_temporary::inside_private_temporary_workspace(canonical, home_dir, cwd)
-        && ROOTS
-            .iter()
-            .any(|prefix| lowered == *prefix || lowered.starts_with(&format!("{prefix}/"))))
-        || foreign_user_home(canonical, home_dir, cwd)
-        || guard_secure_fs::sensitive_path_family(canonical).is_some()
-        || guard_secure_fs::credential_named_path(canonical)
+    if !resolved_location_allowed(canonical, home_dir, cwd, verified_temporary)
         || !(guard_secure_fs::hidden_read_parts_allowed(canonical)
             || (read_only && guard_secure_fs::hidden_empty_work_tree_file(canonical))
             || guard_safety_doc(canonical, home_dir)
@@ -253,6 +235,35 @@ pub(super) fn resolved_path_allowed_for_operation(
         return false;
     }
     true
+}
+
+/// Every resolved-path screen except the hidden-component one: system roots,
+/// another user's home, sensitive families and credential-named paths.
+pub(super) fn resolved_location_allowed(
+    canonical: &std::path::Path,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+    verified_temporary: bool,
+) -> bool {
+    let rendered = canonical.to_string_lossy().replace('\\', "/");
+    let lowered = rendered.to_ascii_lowercase();
+    const ROOTS: [&str; 7] = [
+        "/etc",
+        "/dev",
+        "/proc",
+        "/sys",
+        "/var",
+        "/private/etc",
+        "/private/var",
+    ];
+    !((!verified_temporary
+        && !private_temporary::inside_private_temporary_workspace(canonical, home_dir, cwd)
+        && ROOTS
+            .iter()
+            .any(|prefix| lowered == *prefix || lowered.starts_with(&format!("{prefix}/"))))
+        || foreign_user_home(canonical, home_dir, cwd)
+        || guard_secure_fs::sensitive_path_family(canonical).is_some()
+        || guard_secure_fs::credential_named_path(canonical))
 }
 
 pub(super) fn foreign_user_home(

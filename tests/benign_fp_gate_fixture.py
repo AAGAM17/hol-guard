@@ -266,6 +266,9 @@ def build_fixture(root: Path) -> BenignFixture:
     _node_toolchain(parent / "dashboard")
     _write(worktree / "dashboard" / "package.json", (parent / "dashboard" / "package.json").read_text())
     (worktree / "dashboard" / "node_modules").symlink_to(parent / "dashboard" / "node_modules")
+    # Fresh worktree package whose dependencies are installed only in the canonical checkout.
+    _write(parent / "web" / "node_modules" / "left-pad" / "package.json", "{}\n")
+    _write(worktree / "web" / "package.json", "{\"private\": true}\n")
 
     # Untracked child repository nested inside the parent working tree.
     nested.mkdir(parents=True)

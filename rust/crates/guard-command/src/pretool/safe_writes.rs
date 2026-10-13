@@ -1,7 +1,10 @@
+#[path = "write_target_screens.rs"]
+mod screens;
 use super::read_paths::{
     bounded_file_read_target, existing_regular_read_target, expand_home_read_path,
-    resolved_path_allowed,
+    resolved_location_allowed,
 };
+use screens::{autostart_write_target, home_spelling_matches_target, shared_library_part};
 
 pub(super) fn bounded_file_write_target(
     value: &str,
@@ -19,13 +22,14 @@ pub(super) fn bounded_native_file_write_target(
     bounded_write_target(value, home_dir, cwd, false, true)
 }
 
-/// A new directory path inside the workspace, screened like `mkdir`.
+/// A new directory path, screened like `mkdir`: the workspace, a linked
+/// worktree or the verified home.
 pub(super) fn bounded_new_directory_write_target(
     value: &str,
     home_dir: Option<&str>,
     cwd: Option<&str>,
 ) -> bool {
-    bounded_write_target(value, home_dir, cwd, true, false)
+    bounded_write_target(value, home_dir, cwd, true, true)
 }
 
 /// A single absolute file write into a temporary directory the user owns.
@@ -108,8 +112,9 @@ fn bounded_write_target(
     (canonical.starts_with(&workspace)
         || super::worktree_writes::same_repository_worktree(&workspace, &canonical)
         || inside_verified_home)
-        && guard_secure_fs::hidden_read_parts_allowed(&canonical)
-        && resolved_path_allowed(&canonical, home_dir, workspace.to_str())
+        && resolved_location_allowed(&canonical, home_dir, workspace.to_str(), false)
+        && (guard_secure_fs::hidden_read_parts_allowed(&canonical)
+            || screens::plain_dot_scratch_target(&canonical, home_dir))
         // A safe pathname can alias a protected inode through a hard link.
         && ((directory && canonical.is_dir()) || single_link_write_target(&canonical))
         && !autostart_write_target(&canonical)
@@ -180,21 +185,13 @@ pub(super) fn safe_file_mutation_arguments(
         ("mktemp", [flag]) if flag == "-d" => {
             super::safe_reads::verified_path_context(context.home_dir, context.cwd)
         }
-        ("mkdir", [target]) => {
-            !target.starts_with('-')
-                && bounded_write_target(target, context.home_dir, context.cwd, true, false)
-        }
+        ("mkdir", [target]) => !target.starts_with('-') && creatable_target(target, context, true),
         ("mkdir", [flag, target]) if matches!(flag.as_str(), "-p" | "--parents" | "--") => {
-            !target.starts_with('-')
-                && bounded_write_target(target, context.home_dir, context.cwd, true, false)
+            !target.starts_with('-') && creatable_target(target, context, true)
         }
-        ("touch", [target]) => {
-            !target.starts_with('-')
-                && bounded_file_write_target(target, context.home_dir, context.cwd)
-        }
+        ("touch", [target]) => !target.starts_with('-') && creatable_target(target, context, false),
         ("touch", [flag, target]) if flag == "--" => {
-            !target.starts_with('-')
-                && bounded_file_write_target(target, context.home_dir, context.cwd)
+            !target.starts_with('-') && creatable_target(target, context, false)
         }
         ("mv", [source, destination]) => {
             existing_regular_read_target(source, context.home_dir, context.cwd)
@@ -212,6 +209,19 @@ pub(super) fn safe_file_mutation_arguments(
         ("rm", operands) => super::safe_links::safe_remove_arguments(operands, context),
         _ => false,
     }
+}
+
+/// `mkdir` and `touch` only create a path or bump a timestamp, so they share
+/// the screens of `cp`: the workspace, a linked worktree, the verified home,
+/// or a path spelled absolutely inside a private temporary directory.
+pub(super) fn creatable_target(
+    value: &str,
+    context: super::PathContext<'_>,
+    directory: bool,
+) -> bool {
+    bounded_write_target(value, context.home_dir, context.cwd, directory, true)
+        || (std::path::Path::new(value).is_absolute()
+            && bounded_temporary_copy_target(value, context))
 }
 
 pub(super) fn absent_move_destination(value: &str, context: super::PathContext<'_>) -> bool {
@@ -391,28 +401,6 @@ fn bounded_temporary_copy_target(_value: &str, _context: super::PathContext<'_>)
     false
 }
 
-fn autostart_write_target(path: &std::path::Path) -> bool {
-    let rendered = path
-        .to_string_lossy()
-        .replace('\\', "/")
-        .to_ascii_lowercase();
-    let parts: Vec<&str> = rendered
-        .split('/')
-        .filter(|part| !part.is_empty())
-        .collect();
-    parts.windows(2).any(|pair| {
-        matches!(
-            pair,
-            ["library", "launchagents"]
-                | ["library", "launchdaemons"]
-                | [".config", "autostart"]
-                | [".config", "systemd"]
-        )
-    }) || parts
-        .windows(3)
-        .any(|parts| parts == ["start menu", "programs", "startup"])
-}
-
 fn single_link_write_target(path: &std::path::Path) -> bool {
     #[cfg(unix)]
     {
@@ -477,34 +465,4 @@ fn home_execution_control_target(
                     || (first == ".github" && second == "workflows")
         )
     })
-}
-
-/// A shared library or framework bundle the dynamic loader can pick up from
-/// an exported search path such as `LD_LIBRARY_PATH` or `DYLD_LIBRARY_PATH`:
-/// `libz.so`, `libz.so.1.3`, `libz.dylib`, `z.dll` or a `.framework` bundle.
-/// The caller applies this to the written filename. A parent directory named
-/// `project.so` does not make an ordinary child a library. A file inside a
-/// `.framework` bundle stays a bundle member because the loader reads the bundle.
-fn shared_library_part(part: &str) -> bool {
-    part.ends_with(".dylib")
-        || part.ends_with(".dll")
-        || part.ends_with(".framework")
-        || part.rsplit_once(".so").is_some_and(|(stem, version)| {
-            !stem.is_empty()
-                && version
-                    .split('.')
-                    .all(|piece| piece.bytes().all(|byte| byte.is_ascii_digit()))
-        })
-}
-
-fn home_spelling_matches_target(
-    target: &std::path::Path,
-    canonical: &std::path::Path,
-    supplied_home: Option<&str>,
-    canonical_home: &std::path::Path,
-) -> bool {
-    let relative = target.strip_prefix(canonical_home).ok().or_else(|| {
-        supplied_home.and_then(|home| target.strip_prefix(std::path::Path::new(home)).ok())
-    });
-    relative.is_some_and(|relative| canonical_home.join(relative) == canonical)
 }

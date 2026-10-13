@@ -4,10 +4,6 @@
   "pending_fix": {
     "gauntlet-python-local-test-script@cursor": "native_command_review_required",
     "pytest-quiet@cursor": "native_command_review_required",
-    "session-cd-semicolon-ls@claude-code": "native_command_review_required",
-    "session-cd-semicolon-ls@codex": "native_command_review_required",
-    "session-cd-semicolon-ls@omp": "native_command_review_required",
-    "session-cd-semicolon-ls@zcode": "native_command_review_required",
     "session-echo-add-commit-message-init@claude-code": "native_command_review_required",
     "session-echo-add-commit-message-init@codex": "native_command_review_required",
     "session-echo-add-commit-message-init@omp": "native_command_review_required",
@@ -20,22 +16,10 @@
     "session-git-dir-log@codex": "native_command_review_required",
     "session-git-dir-log@omp": "native_command_review_required",
     "session-git-dir-log@zcode": "native_command_review_required",
-    "session-jq-filter-tmp-sibling@claude-code": "native_command_review_required",
-    "session-jq-filter-tmp-sibling@codex": "native_command_review_required",
-    "session-jq-filter-tmp-sibling@omp": "native_command_review_required",
-    "session-jq-filter-tmp-sibling@zcode": "native_command_review_required",
-    "session-ls-bun-global-modules@claude-code": "native_command_review_required",
-    "session-ls-bun-global-modules@codex": "native_command_review_required",
-    "session-ls-bun-global-modules@omp": "native_command_review_required",
-    "session-ls-bun-global-modules@zcode": "native_command_review_required",
     "session-ls-echo-cd-repo-git-status-remote-log@claude-code": "native_git_execution_context_review",
     "session-ls-echo-cd-repo-git-status-remote-log@codex": "native_git_execution_context_review",
     "session-ls-echo-cd-repo-git-status-remote-log@omp": "native_git_execution_context_review",
     "session-ls-echo-cd-repo-git-status-remote-log@zcode": "native_git_execution_context_review",
-    "session-ls-nvm-global-modules@claude-code": "native_command_review_required",
-    "session-ls-nvm-global-modules@codex": "native_command_review_required",
-    "session-ls-nvm-global-modules@omp": "native_command_review_required",
-    "session-ls-nvm-global-modules@zcode": "native_command_review_required",
     "session-rm-workspace-file@cursor": "native_command_extension_review",
     "session-sed-inplace-workspace-file@cursor": "native_command_review_required",
     "session-sibling-cd-vite-build-workspace@claude-code": "native_command_review_required",
@@ -1029,6 +1013,166 @@
       "expect": "allow"
     },
     {
+      "id": "queue-write-sibling-worktree-scratch",
+      "fix_area": "queue",
+      "harnesses": [
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "write",
+      "tool_input": {
+        "path": "${ORG_WT}/.tmp/validate.mjs",
+        "content": "console.log('ok');\n"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-write-sibling-repo-dot-scratch",
+      "fix_area": "queue",
+      "harnesses": [
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "write",
+      "tool_input": {
+        "path": "${ORG}/service-api/.write-test",
+        "content": "ok\n"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-write-org-parent-dot-probe",
+      "fix_area": "queue",
+      "harnesses": [
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "write",
+      "tool_input": {
+        "path": "${ORG}/.rehearsal-probe.txt",
+        "content": "ok\n"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-write-sibling-worktree-dot-tmp-json",
+      "fix_area": "queue",
+      "harnesses": [
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "write",
+      "tool_input": {
+        "path": "${ORG_WT}/.tmp/validate-rehearsal-json.mjs",
+        "content": "console.log(JSON.stringify({ok: true}));\n"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-write-sibling-repo-envrc",
+      "fix_area": "queue",
+      "harnesses": [
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "write",
+      "tool_input": {
+        "path": "${ORG}/service-api/.envrc",
+        "content": "export X=1\n"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-write-sibling-repo-npmrc",
+      "fix_area": "queue",
+      "harnesses": [
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "write",
+      "tool_input": {
+        "path": "${ORG}/service-api/.npmrc",
+        "content": "registry=https://registry.example.com/\n"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-write-sibling-repo-workflow",
+      "fix_area": "queue",
+      "harnesses": [
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "write",
+      "tool_input": {
+        "path": "${ORG}/service-api/.github/workflows/release.yml",
+        "content": "name: release\n"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-write-sibling-repo-husky-hook",
+      "fix_area": "queue",
+      "harnesses": [
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "write",
+      "tool_input": {
+        "path": "${ORG}/service-api/.husky/pre-commit",
+        "content": "echo hi\n"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-write-sibling-repo-git-hook",
+      "fix_area": "queue",
+      "harnesses": [
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "write",
+      "tool_input": {
+        "path": "${ORG}/service-api/.git/hooks/pre-commit",
+        "content": "echo hi\n"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-write-home-dot-probe",
+      "fix_area": "queue",
+      "harnesses": [
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "write",
+      "tool_input": {
+        "path": "${HOME}/.rehearsal-probe.txt",
+        "content": "ok\n"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
       "id": "git-tmp-worktree-status",
       "fix_area": "git",
       "harnesses": [
@@ -1250,6 +1394,22 @@
       "expect": "allow"
     },
     {
+      "id": "queue-ls-la-file-head",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls -la ${HOME}/kubeconfig.yaml 2>&1 | head -2"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
       "id": "guard-status-stderr-merged",
       "fix_area": "shell",
       "harnesses": [
@@ -1305,6 +1465,21 @@
         "path": "${HOME}/.agent/artifacts/report.md"
       },
       "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-read-home-plan-notes",
+      "fix_area": "queue",
+      "harnesses": [
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "read",
+      "tool_input": {
+        "path": "${HOME}/.codex/plans/remediation-evidence.json"
+      },
+      "cwd": "org",
       "expect": "allow"
     },
     {
@@ -1465,6 +1640,22 @@
         "command": "cat ${HOME}/.ssh/id_rsa"
       },
       "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-cat-home-kubeconfig",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cat ${HOME}/kubeconfig.yaml"
+      },
+      "cwd": "org",
       "expect": "not_allow"
     },
     {
@@ -1648,6 +1839,21 @@
       "expect": "not_allow"
     },
     {
+      "id": "neg-read-home-codex-auth",
+      "fix_area": "queue",
+      "harnesses": [
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "read",
+      "tool_input": {
+        "path": "${HOME}/.codex/auth.json"
+      },
+      "cwd": "org",
+      "expect": "not_allow"
+    },
+    {
       "id": "neg-omp-eval-tool-bash-curl",
       "fix_area": "negative",
       "harnesses": [
@@ -1694,6 +1900,22 @@
         "command": "rm -rf src 2>&1"
       },
       "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-rm-sibling-file",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "rm -f ${ORG_WT}/scripts/report.ts"
+      },
+      "cwd": "org",
       "expect": "not_allow"
     },
     {
@@ -1816,6 +2038,38 @@
       "expect": "allow"
     },
     {
+      "id": "queue-mkdir-home-deliverables",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "mkdir -p ${HOME}/deliverables"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-touch-probe-rm",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "touch ${ORG_WT}/probe.txt && echo ok || echo fail; rm -f ${ORG_WT}/probe.txt 2>/dev/null"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
       "id": "cp-recursive-in-workspace",
       "fix_area": "shell",
       "harnesses": [
@@ -1827,6 +2081,38 @@
       "tool": "shell",
       "tool_input": {
         "command": "cp -R src src-copy"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-cp-r-sibling-node-modules",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cp -R ${ORG}/app-portal/scripts ${ORG_WT}/scripts-copy"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-ln-s-sibling-node-modules",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ln -s ${PARENT}/web/node_modules ${WORKTREE}/web/node_modules"
       },
       "cwd": "worktree",
       "expect": "allow"
@@ -1861,6 +2147,22 @@
         "command": "cp -R ${HOME}/.ssh ssh-copy"
       },
       "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-ln-s-ssh-into-sibling",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ln -s ${HOME}/.ssh ${ORG_WT}/ssh-link"
+      },
+      "cwd": "org",
       "expect": "not_allow"
     },
     {
@@ -2480,6 +2782,22 @@
       "expect": "allow"
     },
     {
+      "id": "queue-diff-sibling-to-tmp-patch",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "diff -u ${ORG}/app-portal/scripts/report.ts ${ORG_WT}/scripts/report.ts > ${PRIVATE_TMP}/remediation.patch"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
       "id": "git-config-key",
       "fix_area": "shell",
       "harnesses": [
@@ -2698,6 +3016,38 @@
         "command": "grep -rln --exclude-dir=.git retry ${HOME}/other-project"
       },
       "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-grep-rln-tmp-sibling",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "grep -rln report ${TMP_ORG}/app"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-grep-rln-e-two-dirs",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "grep -rln -e REPORT_WINDOW ${ORG}/app-portal/scripts ${ORG_WT}/scripts"
+      },
+      "cwd": "org",
       "expect": "allow"
     },
     {
@@ -3810,6 +4160,22 @@
       "expect": "allow"
     },
     {
+      "id": "queue-find-home-agents-name",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "find ${HOME}/.agent -maxdepth 4 -name \"SKILL.md\" 2>&1"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "session-ls-home-skill-dir",
       "fix_area": "shell",
       "harnesses": [
@@ -4874,6 +5240,22 @@
       "expect": "allow"
     },
     {
+      "id": "queue-echo-path-to-file",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "echo \"$PATH\" > p.txt"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "session-ls-nvm-global-modules",
       "fix_area": "shell",
       "harnesses": [
@@ -5101,10 +5483,6 @@
   "pending_pr": {
     "gauntlet-python-local-test-script@cursor": "unassigned",
     "pytest-quiet@cursor": "unassigned",
-    "session-cd-semicolon-ls@claude-code": "unassigned",
-    "session-cd-semicolon-ls@codex": "unassigned",
-    "session-cd-semicolon-ls@omp": "unassigned",
-    "session-cd-semicolon-ls@zcode": "unassigned",
     "session-echo-add-commit-message-init@claude-code": "unassigned",
     "session-echo-add-commit-message-init@codex": "unassigned",
     "session-echo-add-commit-message-init@omp": "unassigned",
@@ -5117,22 +5495,10 @@
     "session-git-dir-log@codex": "unassigned",
     "session-git-dir-log@omp": "unassigned",
     "session-git-dir-log@zcode": "unassigned",
-    "session-jq-filter-tmp-sibling@claude-code": "unassigned",
-    "session-jq-filter-tmp-sibling@codex": "unassigned",
-    "session-jq-filter-tmp-sibling@omp": "unassigned",
-    "session-jq-filter-tmp-sibling@zcode": "unassigned",
-    "session-ls-bun-global-modules@claude-code": "unassigned",
-    "session-ls-bun-global-modules@codex": "unassigned",
-    "session-ls-bun-global-modules@omp": "unassigned",
-    "session-ls-bun-global-modules@zcode": "unassigned",
     "session-ls-echo-cd-repo-git-status-remote-log@claude-code": "unassigned",
     "session-ls-echo-cd-repo-git-status-remote-log@codex": "unassigned",
     "session-ls-echo-cd-repo-git-status-remote-log@omp": "unassigned",
     "session-ls-echo-cd-repo-git-status-remote-log@zcode": "unassigned",
-    "session-ls-nvm-global-modules@claude-code": "unassigned",
-    "session-ls-nvm-global-modules@codex": "unassigned",
-    "session-ls-nvm-global-modules@omp": "unassigned",
-    "session-ls-nvm-global-modules@zcode": "unassigned",
     "session-rm-workspace-file@cursor": "unassigned",
     "session-sed-inplace-workspace-file@cursor": "unassigned",
     "session-sibling-cd-vite-build-workspace@claude-code": "unassigned",

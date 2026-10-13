@@ -68,6 +68,7 @@ pub const EXTERNAL_SENSITIVE_PARTS: &[&str] = &[
     "id_ecdsa",
     "id_ed25519",
     "id_rsa",
+    "kubeconfig",
     "passwd",
     "password",
     "private-key",

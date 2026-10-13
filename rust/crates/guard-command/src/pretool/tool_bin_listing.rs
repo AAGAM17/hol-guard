@@ -9,6 +9,10 @@
 
 use std::path::{Component, Path};
 
+#[path = "listing_metadata.rs"]
+mod metadata;
+pub(super) use metadata::{credential_file_metadata_operand, global_package_listing_operand};
+
 const TOOL_ROOTS: [&str; 4] = [".bun", ".cargo", ".deno", ".local"];
 
 pub(super) fn tool_bin_listing_operand(value: &str, context: super::PathContext<'_>) -> bool {

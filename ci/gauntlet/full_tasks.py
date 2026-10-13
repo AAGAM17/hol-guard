@@ -232,7 +232,17 @@ def full_task_checks(fixture: Fixture, task_id: str) -> dict[str, bool]:
         text = "\n".join(_blob(workspace, "HEAD", name) for name in sources).lower()
         test_text = "\n".join(_blob(workspace, "HEAD", name) for name in tests).lower()
         checks["task:committed-python-source"] = "celsius" in text and "fahrenheit" in text
-        checks["task:committed-tests"] = ("def test" in test_text or "testcase" in test_text) and "celsius" in test_text
+        # Tests exercise the committed source when they import one of its modules or packages,
+        # including dotted paths such as `tempconv.core` or `src.tempconv`.
+        modules = {part.lower() for name in sources for part in Path(name).with_suffix("").parts if part != "__init__"}
+        imported = {
+            segment
+            for statement in re.findall(r"^\s*(?:from\s+([\w.]+)|import\s+([\w., ]+))", test_text, re.MULTILINE)
+            for path in "".join(statement).split(",")
+            for segment in path.split(" as ")[0].strip().split(".")
+        }
+        imports = bool(modules & imported)
+        checks["task:committed-tests"] = ("def test" in test_text or "testcase" in test_text) and imports
         checks["task:tests-pass"] = _ran_python_tests(workspace, home)
     elif task_id == "fix-failing-node-test":
         checks["task:tests-pass"] = _passes(["node", "--test"], workspace, home)

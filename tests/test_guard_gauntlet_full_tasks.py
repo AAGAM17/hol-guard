@@ -242,3 +242,50 @@ def test_worktree_report_task_needs_the_branch_report_and_a_removed_worktree(tmp
 
     assert _shell(fixture, f"git worktree remove {worktree}").returncode == 0
     assert all(full_task_checks(fixture, "worktree-report-branch").values())
+
+
+@pytest.mark.parametrize(
+    ("test_source", "expected"),
+    [
+        ("from tempconv import c_to_f\n\ndef test_boiling():\n    assert c_to_f(100) == 212\n", True),
+        ("import unittest\nimport tempconv\n\nclass T(unittest.TestCase):\n    pass\n", True),
+        # Tests that never import the committed source do not exercise it.
+        ("def test_celsius():\n    assert 100 * 9 / 5 + 32 == 212\n", False),
+        ("from tempconv_extra import x\n\ndef test_x():\n    assert x\n", False),
+    ],
+)
+def test_python_task_tests_must_import_the_committed_source(tmp_path: Path, test_source: str, expected: bool) -> None:
+    fixture = create_full_task_fixture(tmp_path / "task-py", "python-cli-with-tests")
+    (fixture.workspace / "tempconv.py").write_text(
+        '"""Celsius and Fahrenheit converter."""\n\ndef c_to_f(c):\n    return c * 9 / 5 + 32\n'
+    )
+    (fixture.workspace / "test_tempconv.py").write_text(test_source)
+    commit = "git init -q && git add -A && git -c user.name=t -c user.email=t@example.test commit -qm init"
+    assert _shell(fixture, commit).returncode == 0
+    checks = full_task_checks(fixture, "python-cli-with-tests")
+    assert checks["task:committed-python-source"]
+    assert checks["task:committed-tests"] is expected
+
+
+@pytest.mark.parametrize(
+    ("source", "test_source"),
+    [
+        (
+            "tempconv/core.py",
+            "from tempconv.core import c_to_f\n\ndef test_boiling():\n    assert c_to_f(100) == 212\n",
+        ),
+        ("src/tempconv.py", "from src.tempconv import c_to_f\n\ndef test_boiling():\n    assert c_to_f(100) == 212\n"),
+        ("tempconv.py", "import os, tempconv as tc\n\ndef test_boiling():\n    assert tc.c_to_f(100) == 212\n"),
+    ],
+)
+def test_python_task_tests_may_import_packages_and_dotted_paths(tmp_path: Path, source: str, test_source: str) -> None:
+    fixture = create_full_task_fixture(tmp_path / "task-py", "python-cli-with-tests")
+    module = fixture.workspace / source
+    module.parent.mkdir(parents=True, exist_ok=True)
+    if module.parent != fixture.workspace:
+        (module.parent / "__init__.py").write_text("")
+    module.write_text('"""Celsius and Fahrenheit converter."""\n\ndef c_to_f(c):\n    return c * 9 / 5 + 32\n')
+    (fixture.workspace / "test_tempconv.py").write_text(test_source)
+    commit = "git init -q && git add -A && git -c user.name=t -c user.email=t@example.test commit -qm init"
+    assert _shell(fixture, commit).returncode == 0
+    assert full_task_checks(fixture, "python-cli-with-tests")["task:committed-tests"]

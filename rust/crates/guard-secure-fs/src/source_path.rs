@@ -129,24 +129,6 @@ pub fn sensitive_external_filename(path: &Path) -> bool {
         .any(|token| !token.is_empty() && EXTERNAL_SENSITIVE_PARTS.contains(&token))
 }
 
-pub fn credential_named_path(path: &Path) -> bool {
-    let normalized = path.to_string_lossy().replace('\\', "/");
-    let Some(last) = normalized.rsplit('/').find(|part| !part.is_empty()) else {
-        return false;
-    };
-    let last = Path::new(last);
-    let extension = last
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default();
-    // Keep bounded source-code inspection; credential data directories still
-    // retain review even when their final filename has no credential marker.
-    !is_source_code_extension(extension)
-        && normalized
-            .split('/')
-            .any(|part| sensitive_external_filename(Path::new(part)))
-}
-
 /// Code syntax eligible for source inspection. Data formats such as JSON,
 /// TOML, YAML, and Markdown still require credential-name and glob checks.
 pub fn is_source_code_extension(extension: &str) -> bool {

@@ -205,3 +205,54 @@ fn recursive_search_checks_every_reachable_path() {
         }
     }
 }
+
+#[test]
+fn recursive_search_reads_feature_directories_but_not_credential_stores() {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/recursive-file-search")
+        .join(format!("features-{}-{nonce}", std::process::id()));
+    let _fixture = FixtureDirectory(root.clone());
+    for (path, text) in [
+        ("scripts/seeds/mcp/secret-egress/server.json", "{}"),
+        (
+            "scripts/guard/__pycache__/oauth_token_claims.cpython-312.pyc",
+            "x",
+        ),
+        ("scripts/guard/oauth_token_claims.py", "ordinary"),
+        ("scripts/docker-lab/.dockerignore", "ordinary"),
+        ("deploy/prod-secrets/db.json", "{}"),
+        ("deploy/run.sh", "ordinary"),
+    ] {
+        let file = root.join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, text).unwrap();
+    }
+    let root = std::fs::canonicalize(root).unwrap();
+    for harness in ["omp", "zcode", "claude-code"] {
+        for (command, expected) in [
+            ("grep -rln ordinary scripts", true),
+            ("grep -rn ordinary scripts/seeds", true),
+            ("grep -rn ordinary deploy", false),
+        ] {
+            let result = evaluate_pre_tool_envelope_with_context(
+                harness,
+                "PreToolUse",
+                &json!({"toolName":"Bash", "toolInput":{"command":command}}),
+                None,
+                None,
+                root.to_str(),
+                root.to_str(),
+            );
+            assert_eq!(
+                result.minimum_action == "allow",
+                expected,
+                "{harness}: {command}: {}",
+                result.reason_code
+            );
+        }
+    }
+}

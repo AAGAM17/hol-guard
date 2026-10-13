@@ -5,9 +5,8 @@
 //! message CPython raises, because the bridge writes it into the hook reason.
 
 #[cfg(unix)]
-use std::fs::File;
-use std::fs::{self, Metadata};
-#[cfg(unix)]
+use std::fs::Metadata;
+use std::fs::{self, File};
 use std::io::Read;
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
@@ -26,7 +25,6 @@ pub(crate) const LOOPBACK_HOSTS: [&str; 3] = ["127.0.0.1", "localhost", "::1"];
 const DISCOVERY_PROTOCOL_VERSION: i64 = 1;
 const CHALLENGE_TTL_MS: i128 = 5_000;
 /// Discovery files are a few hundred bytes; anything this large is not one.
-#[cfg(unix)]
 const PRIVATE_FILE_MAX_BYTES: u64 = 4 * 1024 * 1024;
 const GENERATION_FIELDS: [&str; 6] = [
     "state_id",
@@ -92,6 +90,7 @@ pub(crate) fn private_file_text(path: &Path, label: &str) -> Result<String, Stri
 
 /// The directory and file metadata of a private file, refused unless the
 /// directory is a directory and the file is a regular file (not a link).
+#[cfg(unix)]
 fn private_file_metadata(path: &Path, label: &str) -> Result<(Metadata, Metadata), String> {
     let unavailable = || format!("{label} is unavailable");
     let parent = fs::symlink_metadata(parent_of(path)).map_err(|_| unavailable())?;
@@ -108,12 +107,8 @@ fn private_file_metadata(path: &Path, label: &str) -> Result<(Metadata, Metadata
 /// [`private_file_text`] without the strip: the file's UTF-8 text as is.
 #[cfg(windows)]
 pub(crate) fn private_file_raw(path: &Path, label: &str) -> Result<String, String> {
-    private_file_metadata(path, label)?;
-    // TODO(windows-private-file): verify the file and its directory are
-    // owned by and private to the current user (owner SID and DACL). Until
-    // that check exists every file is refused as not private, so nothing
-    // trusts a Guard token or discovery key read on Windows.
-    Err(format!("{label} permissions are not owner-only"))
+    let file = crate::claude_hook_bridge_auth_windows::open_private_file(path, label)?;
+    read_private_text(file, label)
 }
 
 /// [`private_file_text`] without the strip: the file's UTF-8 text as is.
@@ -139,6 +134,12 @@ pub(crate) fn private_file_raw(path: &Path, label: &str) -> Result<String, Strin
     if opened.dev() != metadata.dev() || opened.ino() != metadata.ino() {
         return Err(unreadable());
     }
+    read_private_text(file, label)
+}
+
+/// Read a checked private file, capped, as UTF-8.
+fn read_private_text(file: File, label: &str) -> Result<String, String> {
+    let unreadable = || format!("{label} is unreadable");
     let mut bytes = Vec::new();
     file.take(PRIVATE_FILE_MAX_BYTES + 1)
         .read_to_end(&mut bytes)
@@ -153,7 +154,6 @@ pub(crate) fn private_file_raw(path: &Path, label: &str) -> Result<String, Strin
 }
 
 /// The `UnicodeDecodeError` text `read_text(encoding="utf-8")` raises.
-#[cfg(unix)]
 fn utf8_error_message(bytes: &[u8], error: std::str::Utf8Error) -> String {
     let start = error.valid_up_to();
     let (end, reason) = match error.error_len() {

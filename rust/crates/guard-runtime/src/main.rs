@@ -83,6 +83,8 @@ mod claim_reuse_vectors_tests;
 mod claude_guard_question;
 mod claude_hook_bridge;
 mod claude_hook_bridge_auth;
+#[cfg(windows)]
+mod claude_hook_bridge_auth_windows;
 #[cfg(all(test, unix))]
 mod claude_hook_bridge_fixture;
 mod claude_hook_bridge_http;

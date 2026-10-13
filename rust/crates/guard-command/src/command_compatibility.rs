@@ -21,7 +21,9 @@ mod git;
 mod github;
 
 pub use catalog::compatibility_rule_ids;
-pub(crate) use environment::{code_or_redirect_environment_name, inert_environment_name};
+pub(crate) use environment::{
+    code_or_redirect_environment_name, inert_environment_name, plain_printed_name,
+};
 
 pub(crate) fn github_arguments_are_read_only(arguments: &[String], text: &str) -> bool {
     github::arguments_are_read_only(arguments, text)

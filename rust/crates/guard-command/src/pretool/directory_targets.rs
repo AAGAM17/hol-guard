@@ -337,13 +337,23 @@ impl<'a> super::PathContext<'a> {
         let npm_config_inert = match execution_environment {
             Some(environment) => {
                 environment.has_valid_shape()
-                    && !environment
-                        .environment_names
-                        .iter()
-                        .any(|name| npm_selector(name))
+                    && !environment.environment_names.iter().any(|name| {
+                        npm_selector(name)
+                            && !super::npm_environment::inert_npm_config_name(name)
+                            && !super::npm_environment::trusted_stamped_loader(
+                                environment,
+                                name,
+                                home_dir,
+                                cwd.as_slice(),
+                            )
+                    })
             }
-            None => !std::env::vars_os()
-                .any(|(name, value)| !value.is_empty() && npm_selector(&name.to_string_lossy())),
+            None => !std::env::vars_os().any(|(name, value)| {
+                let name = name.to_string_lossy();
+                !value.is_empty()
+                    && npm_selector(&name)
+                    && !super::npm_environment::inert_npm_config_name(&name)
+            }),
         };
         // The shell expands `~` from its own HOME: the stamped one, or the
         // runtime's when no environment was stamped.

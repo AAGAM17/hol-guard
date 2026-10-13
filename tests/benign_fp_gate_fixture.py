@@ -176,6 +176,14 @@ def _node_toolchain(workspace: Path) -> None:
         shim.symlink_to(Path("..") / name / "bin" / f"{name}.js")
 
 
+def _bun_lockfile(project: Path, packages: dict[str, str]) -> None:
+    """A text ``bun.lock`` pinning registry packages, as ``bun install`` writes it."""
+    manifest = {"devDependencies": {name: f"^{version}" for name, version in packages.items()}}
+    locked = {name: [f"{name}@{version}", "", {}, "sha512-fixture"] for name, version in packages.items()}
+    lockfile = {"lockfileVersion": 1, "workspaces": {"": manifest}, "packages": locked}
+    _write(project / "bun.lock", json.dumps(lockfile, indent=2) + "\n")
+
+
 def _session_worktree(org: Path, home: Path) -> None:
     """Feature worktree of ``app-portal`` outside ``org``, plus the plan notes a session reads first."""
     portal = org / "app-portal"
@@ -194,6 +202,9 @@ def _session_worktree(org: Path, home: Path) -> None:
     _git(portal, "worktree", "add", "--quiet", "-b", "fix/report-lane", str(worktree), home=home)
     _write(worktree / "scripts" / "report.ts", "console.log(process.env.REPORT_WINDOW ?? '7d');\n")
     _git(worktree, "commit", "--quiet", "-am", "widen report window", home=home)
+    portal_manifest = {"name": "app-portal", "private": True, "devDependencies": {"vite": "^7.1.5"}}
+    _write(worktree / "package.json", json.dumps(portal_manifest) + "\n")
+    _bun_lockfile(worktree, {"vite": _NODE_PACKAGES["vite"]})
     for name in ("findings", "prd", "todo"):
         _write(home / ".codex" / "plans" / f"remediation-{name}.md", f"# Remediation {name}\nSynthetic plan notes.\n")
     _write(home / ".codex" / "plans" / "remediation-evidence.json", '{"cases": []}\n')
@@ -248,6 +259,7 @@ def build_fixture(root: Path) -> BenignFixture:
     _git(parent, "commit", "--quiet", "-m", "fixture base", home=home)
     _git(parent, "worktree", "add", "--quiet", "-b", "feature", str(worktree), home=home)
     _node_toolchain(worktree)
+    _bun_lockfile(worktree, _NODE_PACKAGES)
     _write(worktree / "test_calc.py", "assert 1 + 1 == 2\nprint('ok')\n")
     _write(worktree / "scripts" / "rebuild.sh", "#!/bin/sh\necho rebuilt\n")
     # Worktree package borrowing the canonical checkout's installed node_modules through a symlink.

@@ -4,18 +4,10 @@
   "pending_fix": {
     "gauntlet-python-local-test-script@cursor": "native_command_review_required",
     "pytest-quiet@cursor": "native_command_review_required",
-    "session-bun-x-vite-build-tail@claude-code": "native_package_review",
-    "session-bun-x-vite-build-tail@codex": "native_package_review",
-    "session-bun-x-vite-build-tail@omp": "native_package_review",
-    "session-bun-x-vite-build-tail@zcode": "native_package_review",
     "session-cd-semicolon-ls@claude-code": "native_command_review_required",
     "session-cd-semicolon-ls@codex": "native_command_review_required",
     "session-cd-semicolon-ls@omp": "native_command_review_required",
     "session-cd-semicolon-ls@zcode": "native_command_review_required",
-    "session-cd-tmp-sibling-bun-version@claude-code": "native_package_review",
-    "session-cd-tmp-sibling-bun-version@codex": "native_package_review",
-    "session-cd-tmp-sibling-bun-version@omp": "native_package_review",
-    "session-cd-tmp-sibling-bun-version@zcode": "native_package_review",
     "session-echo-add-commit-message-init@claude-code": "native_command_review_required",
     "session-echo-add-commit-message-init@codex": "native_command_review_required",
     "session-echo-add-commit-message-init@omp": "native_command_review_required",
@@ -32,10 +24,6 @@
     "session-jq-filter-tmp-sibling@codex": "native_command_review_required",
     "session-jq-filter-tmp-sibling@omp": "native_command_review_required",
     "session-jq-filter-tmp-sibling@zcode": "native_command_review_required",
-    "session-linked-modules-bun-x-vite@claude-code": "native_package_review",
-    "session-linked-modules-bun-x-vite@codex": "native_package_review",
-    "session-linked-modules-bun-x-vite@omp": "native_package_review",
-    "session-linked-modules-bun-x-vite@zcode": "native_package_review",
     "session-ls-bun-global-modules@claude-code": "native_command_review_required",
     "session-ls-bun-global-modules@codex": "native_command_review_required",
     "session-ls-bun-global-modules@omp": "native_command_review_required",
@@ -52,10 +40,6 @@
     "session-ls-nvm-global-modules@codex": "native_command_review_required",
     "session-ls-nvm-global-modules@omp": "native_command_review_required",
     "session-ls-nvm-global-modules@zcode": "native_command_review_required",
-    "session-npx-vitest-file@claude-code": "native_command_review_required",
-    "session-npx-vitest-file@codex": "native_command_review_required",
-    "session-npx-vitest-file@omp": "native_command_review_required",
-    "session-npx-vitest-file@zcode": "native_command_review_required",
     "session-rm-workspace-file@cursor": "native_command_extension_review",
     "session-sed-inplace-workspace-file@cursor": "native_command_review_required",
     "session-sibling-cd-vite-build-workspace@claude-code": "native_command_review_required",
@@ -65,8 +49,7 @@
     "session-sibling-cd-vite-build@claude-code": "native_command_review_required",
     "session-sibling-cd-vite-build@codex": "native_command_review_required",
     "session-sibling-cd-vite-build@omp": "native_command_review_required",
-    "session-sibling-cd-vite-build@zcode": "native_command_review_required",
-    "shell-printenv-named-plain-variables@cursor": "native_command_review_required"
+    "session-sibling-cd-vite-build@zcode": "native_command_review_required"
   },
   "cases": [
     {
@@ -335,6 +318,54 @@
         "command": "bun --version"
       },
       "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-bun-install-frozen-ignore-scripts",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "bun install --frozen-lockfile --ignore-scripts 2>&1 | tail -8"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-cd-sibling-bun-install-frozen-ignore-scripts",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cd ${ORG_WT} && bun install --frozen-lockfile --ignore-scripts 2>&1 | tail -8"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-bun-install-cwd-frozen",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "bun install --cwd ${ORG_WT} --frozen-lockfile --ignore-scripts"
+      },
+      "cwd": "org",
       "expect": "allow"
     },
     {
@@ -4622,6 +4653,86 @@
       "expect": "not_allow"
     },
     {
+      "id": "neg-bun-install-frozen-with-scripts",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "bun install --frozen-lockfile 2>&1 | tail -8"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-bun-add-package",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "bun add left-pad"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-bun-install-cwd-without-lockfile",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "bun install --cwd ${HOME}/acme-plain --frozen-lockfile --ignore-scripts"
+      },
+      "cwd": "org",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-npx-uninstalled-tool",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "npx cowsay hi"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-bun-x-pinned-version",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "bun x vite@5.0.0 build"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
       "id": "neg-bash-process-subst-download",
       "fix_area": "negative",
       "harnesses": [
@@ -4961,18 +5072,10 @@
   "pending_pr": {
     "gauntlet-python-local-test-script@cursor": "unassigned",
     "pytest-quiet@cursor": "unassigned",
-    "session-bun-x-vite-build-tail@claude-code": "unassigned",
-    "session-bun-x-vite-build-tail@codex": "unassigned",
-    "session-bun-x-vite-build-tail@omp": "unassigned",
-    "session-bun-x-vite-build-tail@zcode": "unassigned",
     "session-cd-semicolon-ls@claude-code": "unassigned",
     "session-cd-semicolon-ls@codex": "unassigned",
     "session-cd-semicolon-ls@omp": "unassigned",
     "session-cd-semicolon-ls@zcode": "unassigned",
-    "session-cd-tmp-sibling-bun-version@claude-code": "unassigned",
-    "session-cd-tmp-sibling-bun-version@codex": "unassigned",
-    "session-cd-tmp-sibling-bun-version@omp": "unassigned",
-    "session-cd-tmp-sibling-bun-version@zcode": "unassigned",
     "session-echo-add-commit-message-init@claude-code": "unassigned",
     "session-echo-add-commit-message-init@codex": "unassigned",
     "session-echo-add-commit-message-init@omp": "unassigned",
@@ -4989,10 +5092,6 @@
     "session-jq-filter-tmp-sibling@codex": "unassigned",
     "session-jq-filter-tmp-sibling@omp": "unassigned",
     "session-jq-filter-tmp-sibling@zcode": "unassigned",
-    "session-linked-modules-bun-x-vite@claude-code": "unassigned",
-    "session-linked-modules-bun-x-vite@codex": "unassigned",
-    "session-linked-modules-bun-x-vite@omp": "unassigned",
-    "session-linked-modules-bun-x-vite@zcode": "unassigned",
     "session-ls-bun-global-modules@claude-code": "unassigned",
     "session-ls-bun-global-modules@codex": "unassigned",
     "session-ls-bun-global-modules@omp": "unassigned",
@@ -5009,10 +5108,6 @@
     "session-ls-nvm-global-modules@codex": "unassigned",
     "session-ls-nvm-global-modules@omp": "unassigned",
     "session-ls-nvm-global-modules@zcode": "unassigned",
-    "session-npx-vitest-file@claude-code": "unassigned",
-    "session-npx-vitest-file@codex": "unassigned",
-    "session-npx-vitest-file@omp": "unassigned",
-    "session-npx-vitest-file@zcode": "unassigned",
     "session-rm-workspace-file@cursor": "unassigned",
     "session-sed-inplace-workspace-file@cursor": "unassigned",
     "session-sibling-cd-vite-build-workspace@claude-code": "unassigned",
@@ -5022,8 +5117,7 @@
     "session-sibling-cd-vite-build@claude-code": "unassigned",
     "session-sibling-cd-vite-build@codex": "unassigned",
     "session-sibling-cd-vite-build@omp": "unassigned",
-    "session-sibling-cd-vite-build@zcode": "unassigned",
-    "shell-printenv-named-plain-variables@cursor": "unassigned"
+    "session-sibling-cd-vite-build@zcode": "unassigned"
   },
   "pending_always": {}
 }

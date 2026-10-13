@@ -98,8 +98,13 @@ const REGISTRY_VERBS: &[&str] = &[
 /// Whether every package-manager segment is a Node manager running a local
 /// verb. A registry verb anywhere before `--` keeps the whole command out, so
 /// option spellings that hide the verb from a parser cannot slip one through.
-pub(super) fn local_package_work(model: &CanonicalCommandV1) -> bool {
+/// With `installed_runners`, the caller has proved every package runner starts
+/// an installed project tool, so those segments count as local work.
+pub(super) fn local_package_work(model: &CanonicalCommandV1, installed_runners: bool) -> bool {
     model.segments.iter().all(|segment| {
+        if installed_runners && super::runner::runner_arguments(segment).is_some() {
+            return true;
+        }
         let Some(executable) = segment.executable.as_deref() else {
             return false;
         };

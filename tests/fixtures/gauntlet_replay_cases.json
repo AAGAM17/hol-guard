@@ -7,6 +7,7 @@
     "pytest-quiet@pi": "native_command_review_required",
     "python-run-test-script@cursor": "native_command_review_required",
     "session-bash-workspace-script-tail@pi": "native_command_review_required",
+    "session-bun-x-vite-build-tail@pi": "native_package_review",
     "session-cd-vite-build-tail@pi": "native_command_review_required",
     "session-chmod-workspace-script@pi": "native_command_review_required",
     "session-ci-prefix-npm-test@pi": "native_package_review",
@@ -18,6 +19,7 @@
     "session-git-pull-ff-only@pi/realistic": "native_command_review_required",
     "session-git-pull-ff-only@zcode/realistic": "native_command_review_required",
     "session-git-rebase-origin@pi": "native_command_review_required",
+    "session-linked-modules-bun-x-vite@pi": "native_package_review",
     "session-linked-modules-node-vite-entry@pi": "native_command_review_required",
     "session-linked-modules-vite-build-tail@pi": "native_command_review_required",
     "session-linked-modules-vitest-file@pi": "native_command_review_required",
@@ -25,6 +27,7 @@
     "session-node-vite-entry-build-tail@pi": "native_command_review_required",
     "session-npm-run-build@pi": "native_package_review",
     "session-npm-test-tail@pi": "native_package_review",
+    "session-npx-vitest-file@pi": "native_command_review_required",
     "session-port-prefix-vitest@pi": "native_command_review_required",
     "session-printf-gitignore-dotfile@pi": "native_command_review_required",
     "session-python-unittest@pi": "native_command_review_required",
@@ -35,7 +38,6 @@
     "session-vitest-run-tail@pi": "native_command_review_required",
     "session-which-type-echo@pi": "native_command_review_required",
     "session-which-type-guard@pi": "native_command_review_required",
-    "shell-printenv-named-plain-variables@pi": "native_command_review_required",
     "vitest-local-bin@cursor": "native_command_review_required"
   },
   "cases": [

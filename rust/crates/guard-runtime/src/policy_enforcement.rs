@@ -119,12 +119,19 @@ const MAX_FACT_NODES: usize = 2_048;
 /// command authority's; every other floor and intrinsic review still applies.
 fn package_scripts_disabled(payload: &Value, result: &PreToolResultV1) -> bool {
     result.action.action_type == PreToolActionTypeV1::Package
-        && result.reason_code == "native_package_review"
-        && guard_command::pretool::generic::extract_untrusted_command_context(payload)
-            .ok()
-            .and_then(|context| context.command)
-            .is_some_and(|command| guard_command::pretool::no_script_install_command(&command))
+        && (result.reason_code == LOCKFILE_INSTALL_REASON
+            || (result.reason_code == "native_package_review"
+                && guard_command::pretool::generic::extract_untrusted_command_context(payload)
+                    .ok()
+                    .and_then(|context| context.command)
+                    .is_some_and(|command| {
+                        guard_command::pretool::no_script_install_command(&command)
+                    })))
 }
+
+/// The native allow for a frozen install whose lockfile pins every package
+/// and integrity hash and whose lifecycle scripts are off.
+const LOCKFILE_INSTALL_REASON: &str = "native_exact_safe_lockfile_install";
 
 pub(crate) fn apply_pre_tool_policy(
     snapshot: &AdmittedPolicySnapshot,
@@ -259,6 +266,19 @@ pub(crate) fn apply_pre_tool_policy(
                 }
             }
         }
+    }
+    // A proven frozen install fetches only the packages and integrity hashes
+    // the project already committed, and runs none of their code, so it
+    // chooses no new publisher. That proof satisfies the default unknown
+    // publisher review; a stronger publisher action and every other floor
+    // still apply.
+    if result.reason_code == LOCKFILE_INSTALL_REASON
+        && result.action.action_type == PreToolActionTypeV1::Package
+        && facts.publisher.is_none()
+        && facts.artifact.is_none()
+        && snapshot.effective_policy.unknown_publisher_action == "review"
+    {
+        facts.publisher_relevant = false;
     }
     let (policy_floor, floor_cause) = policy_floor_with_cause(
         &snapshot.effective_policy,

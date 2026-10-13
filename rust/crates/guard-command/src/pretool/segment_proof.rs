@@ -82,7 +82,8 @@ pub(super) fn exact_safe_cwd_compound(
         );
     }
     model.segments[1..].iter().all(|segment| {
-        cwd_read_executable(segment.executable.as_deref())
+        (cwd_read_executable(segment.executable.as_deref())
+            || super::version_probes::lone_probe_segment(segment))
             && exact_safe_segment_with_context(
                 model,
                 segment,
@@ -428,6 +429,7 @@ pub(super) fn exact_safe_segment_with_context(
         "date" => safe_reads::safe_date_arguments(&segment.arguments),
         "sleep" => safe_reads::safe_sleep_arguments(&segment.arguments),
         "uptime" => segment.arguments.is_empty(),
+        "printenv" => super::safe_scalar::safe_printenv_arguments(&segment.arguments),
         "pgrep" => super::safe_scalar::safe_pgrep_arguments(&segment.arguments),
         "ps" => super::safe_scalar::safe_ps_arguments(&segment.arguments),
         "ls" => {

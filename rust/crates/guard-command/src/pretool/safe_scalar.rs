@@ -2,6 +2,16 @@
 /// bound the shell secret-read walk already treats as a pure delay.
 pub(super) const MAX_SAFE_SLEEP_SECONDS: f64 = 3600.0;
 
+/// `printenv` naming only location, identity or display variables prints
+/// those values and nothing else. A bare `printenv`, an option, or any name
+/// that could hold a credential stays reviewed.
+pub(super) fn safe_printenv_arguments(arguments: &[String]) -> bool {
+    !arguments.is_empty()
+        && arguments
+            .iter()
+            .all(|name| crate::command_compatibility::plain_printed_name(name))
+}
+
 pub(super) fn safe_sleep_arguments(arguments: &[String]) -> bool {
     sleep_seconds(arguments).is_some()
 }

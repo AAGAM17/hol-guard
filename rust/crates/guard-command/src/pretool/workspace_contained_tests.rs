@@ -1,7 +1,7 @@
 use crate::native_command_controls::CompiledNativeCommandControls;
 use crate::native_command_program::packaged_command_program;
 use guard_contracts::NativeCommandControlBindingV1;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn controls() -> CompiledNativeCommandControls {
     let program = packaged_command_program().unwrap();
@@ -16,7 +16,7 @@ fn controls() -> CompiledNativeCommandControls {
     CompiledNativeCommandControls::new(&binding).unwrap()
 }
 
-fn workspace(name: &str, git: bool) -> PathBuf {
+pub(super) fn workspace(name: &str, git: bool) -> PathBuf {
     let root = std::env::temp_dir().join(format!("guard-ws-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
@@ -28,7 +28,7 @@ fn workspace(name: &str, git: bool) -> PathBuf {
     root.canonicalize().unwrap()
 }
 
-fn reason(harness: &str, command: &str, cwd: &std::path::Path, with_controls: bool) -> String {
+pub(super) fn reason(harness: &str, command: &str, cwd: &Path, with_controls: bool) -> String {
     let controls = controls();
     crate::pretool::evaluate_pre_tool_envelope_with_context(
         harness,
@@ -42,7 +42,7 @@ fn reason(harness: &str, command: &str, cwd: &std::path::Path, with_controls: bo
     .reason_code
 }
 
-const CONTAINED: &str = "native_workspace_containment_required";
+pub(super) const CONTAINED: &str = "native_workspace_containment_required";
 
 #[test]
 fn unproven_local_commands_run_in_the_workspace_sandbox_on_macos() {
@@ -361,7 +361,7 @@ fn git_commands_that_write_sandbox_denied_metadata_stay_out_of_the_sandbox() {
 }
 
 /// Whether this host runs the workspace sandbox at all.
-fn host() -> bool {
+pub(super) fn host() -> bool {
     cfg!(target_os = "macos") || crate::restricted_pytest::linux_workspace_sandbox_available()
 }
 

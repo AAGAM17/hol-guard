@@ -170,7 +170,7 @@ pub(super) fn absent_listing_operand(value: &str, context: super::PathContext<'_
                 ]
                 .contains(&c)
         })
-        || value.split(['/', '\\']).any(|part| part == "..")
+        || !parent_steps_lead(value)
         || super::sensitive_read_path_argument(value)
         || !safe_reads::verified_path_context(context.home_dir, context.cwd)
     {
@@ -209,10 +209,7 @@ pub(super) fn absent_listing_operand(value: &str, context: super::PathContext<'_
                         // leaf prints only an error and reveals no content.
                         !name.starts_with('.') || (index == 0 && name == ".git")
                     })
-                    && ancestor.to_str().is_some_and(|parent| {
-                        safe_reads::bounded_read_target(parent, context.home_dir, context.cwd, true)
-                            || search::skill_listing_root(parent, context)
-                    });
+                    && listable_ancestor(ancestor, context);
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 let Some(name) = ancestor.file_name() else {
@@ -224,6 +221,36 @@ pub(super) fn absent_listing_operand(value: &str, context: super::PathContext<'_
         }
     }
     false
+}
+
+/// `..` may only lead a relative operand (`../sibling/missing`). A parent
+/// step after any other name, or behind a rooted or `~` spelling, is refused.
+fn parent_steps_lead(value: &str) -> bool {
+    value
+        .split(['/', '\\'])
+        .skip_while(|part| *part == "..")
+        .all(|part| part != "..")
+}
+
+/// The nearest existing ancestor must be a directory a listing may name. The
+/// kernel resolves `..` physically, so a spelling with parent steps is judged
+/// by its canonical directory, never by its lexical text.
+fn listable_ancestor(ancestor: &std::path::Path, context: super::PathContext<'_>) -> bool {
+    let parent_steps = ancestor
+        .components()
+        .any(|component| component == std::path::Component::ParentDir);
+    let resolved = if parent_steps {
+        match std::fs::canonicalize(ancestor) {
+            Ok(canonical) if canonical.is_dir() => canonical,
+            _ => return false,
+        }
+    } else {
+        ancestor.to_path_buf()
+    };
+    resolved.to_str().is_some_and(|parent| {
+        safe_reads::bounded_read_target(parent, context.home_dir, context.cwd, true)
+            || (!parent_steps && search::skill_listing_root(parent, context))
+    })
 }
 
 fn is_recursive_flag(argument: &str) -> bool {

@@ -179,7 +179,10 @@ def peel_contained_wrapper(
     repository (see `sibling_project_root`). A relative target is accepted only
     when it names a sibling repository's root from `cwd`, such as a linked
     worktree beside the checkout; after a cd into a sibling root, the core may
-    be an `&&` list of plain commands, which is re-authorized there. Raises
+    be an `&&` list of plain commands, which is re-authorized there. Only a cd
+    into a sibling root may end in `;`: the directory is resolved here and
+    nothing runs when it is gone, so the core never falls back to the
+    session directory the way the shell would after a failed cd. Raises
     ValueError (or OSError for a missing cd target) for shapes native
     authority never upgrades.
     """
@@ -197,8 +200,9 @@ def peel_contained_wrapper(
     output = None
     sibling_root = False
     if tokens[:1] == [("cd", False)]:
-        if len(tokens) < 4 or tokens[1][1] or tokens[2] != ("&&", True):
+        if len(tokens) < 4 or tokens[1][1] or tokens[2] not in (("&&", True), (";", True)):
             raise ValueError("unsupported cd prefix")
+        sequenced = tokens[2] == (";", True)
         spelled = tokens[1][0]
         # Only an unquoted leading `~` expands, as the native proof requires.
         # `~//x` is home/x. Joining home with a leading slash would drop home,
@@ -220,6 +224,8 @@ def peel_contained_wrapper(
         sibling_root = sibling_project_root(directory, home=home) == directory and not _path_is_within(
             directory, inside
         )
+        if sequenced and not sibling_root:
+            raise ValueError("unsupported cd prefix")
         tokens, wrapped = tokens[3:], True
         joined = _joined_list(tokens) if sibling_root else None
         if joined is not None:

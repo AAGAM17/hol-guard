@@ -4,10 +4,6 @@
   "pending_fix": {
     "gauntlet-python-local-test-script@cursor": "native_command_review_required",
     "pytest-quiet@cursor": "native_command_review_required",
-    "session-echo-add-commit-message-init@claude-code": "native_command_review_required",
-    "session-echo-add-commit-message-init@codex": "native_command_review_required",
-    "session-echo-add-commit-message-init@omp": "native_command_review_required",
-    "session-echo-add-commit-message-init@zcode": "native_command_review_required",
     "session-ls-echo-cd-repo-git-status-remote-log@claude-code": "native_git_execution_context_review",
     "session-ls-echo-cd-repo-git-status-remote-log@codex": "native_git_execution_context_review",
     "session-ls-echo-cd-repo-git-status-remote-log@omp": "native_git_execution_context_review",
@@ -8201,10 +8197,6 @@
   "pending_pr": {
     "gauntlet-python-local-test-script@cursor": "unassigned",
     "pytest-quiet@cursor": "unassigned",
-    "session-echo-add-commit-message-init@claude-code": "unassigned",
-    "session-echo-add-commit-message-init@codex": "unassigned",
-    "session-echo-add-commit-message-init@omp": "unassigned",
-    "session-echo-add-commit-message-init@zcode": "unassigned",
     "session-ls-echo-cd-repo-git-status-remote-log@claude-code": "unassigned",
     "session-ls-echo-cd-repo-git-status-remote-log@codex": "unassigned",
     "session-ls-echo-cd-repo-git-status-remote-log@omp": "unassigned",

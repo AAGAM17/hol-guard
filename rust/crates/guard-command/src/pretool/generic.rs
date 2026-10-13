@@ -411,7 +411,17 @@ fn evaluate_envelope(
             execution_environment,
             false,
         );
-        {
+        // A chain that writes a workspace file beside local Git writes keeps
+        // the review unless the Git proof and the written paths both hold.
+        if projection.git_chain.as_deref().is_none_or(|targets| {
+            redirect_projection::git_chain::settled(
+                &projected,
+                targets,
+                context,
+                deadline,
+                execution_environment,
+            )
+        }) {
             let raw = evaluate_envelope(
                 harness,
                 event,

@@ -6,6 +6,12 @@
 
 use crate::CommandModelRequestV1;
 use guard_contracts::PreToolResultV1;
+use targets::{bounded_write, safe_output_target};
+
+#[path = "redirect_git_chain.rs"]
+pub(super) mod git_chain;
+#[path = "redirect_targets.rs"]
+mod targets;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct RedirectProjection {
@@ -14,6 +20,9 @@ pub(super) struct RedirectProjection {
     /// Every file the redirects write passes the check a file-edit tool's
     /// write gets.
     pub(super) bounded_writes: bool,
+    /// The files written beside local Git writes when [`git_chain::admits`]
+    /// takes a chain; `None` for every other projection.
+    pub(super) git_chain: Option<Vec<String>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -36,7 +45,7 @@ pub(super) fn project(
     let mut heredocs: Vec<(String, bool)> = Vec::new();
     let mut saw_heredoc = false;
     let mut removed = false;
-    let mut writes_file = false;
+    let mut targets: Vec<String> = Vec::new();
     let mut bounded_writes = true;
     let mut temporary_writes = true;
     let mut index = 0usize;
@@ -84,7 +93,7 @@ pub(super) fn project(
                     index,
                     &mut out,
                     context,
-                    &mut writes_file,
+                    &mut targets,
                     &mut bounded_writes,
                     &mut temporary_writes,
                 )?;
@@ -105,6 +114,7 @@ pub(super) fn project(
     if !removed || quote != Quote::None || escaped || !heredocs.is_empty() {
         return None;
     }
+    let writes_file = !targets.is_empty();
     let command = out.trim().to_owned();
     // Only kept descriptor copies (`2>&1`, `2>/dev/null`) were seen. The
     // parser models those, and the command as written already gets the full
@@ -123,10 +133,13 @@ pub(super) fn project(
     // An earlier segment could cd or create a symlink before the shell opens
     // a target, so a chain may only write absolute temp files beside peers.
     let temporary_chain = temporary_writes && super::super::chain_temporary::peers_only(&model);
+    let chain = writes_file && model.segments.len() != 1 && !temporary_chain;
+    let git_chain =
+        (chain && bounded_writes && git_chain::admits(&model, &targets)).then_some(targets);
     if model.confidence != "exact"
         || model.uncertainty_reason.is_some()
         || model.segments.is_empty()
-        || (writes_file && model.segments.len() != 1 && !temporary_chain)
+        || (chain && git_chain.is_none())
     {
         return None;
     }
@@ -144,6 +157,7 @@ pub(super) fn project(
         command,
         writes_file,
         bounded_writes,
+        git_chain,
     })
 }
 
@@ -239,7 +253,7 @@ fn remove_output_redirect(
     start: usize,
     out: &mut String,
     context: super::super::PathContext<'_>,
-    writes_file: &mut bool,
+    targets: &mut Vec<String>,
     bounded_writes: &mut bool,
     temporary_writes: &mut bool,
 ) -> Option<usize> {
@@ -294,13 +308,13 @@ fn remove_output_redirect(
     if !safe_output_target(&target, context) {
         return None;
     }
-    *writes_file = true;
     *bounded_writes &= bounded_write(&target, context);
     *temporary_writes &= super::super::chain_temporary::temporary_file_target(
         &target,
         context.home_dir,
         context.cwd,
     );
+    targets.push(target);
     out.push(' ');
     Some(index)
 }
@@ -389,109 +403,6 @@ pub(super) fn trailing_word(out: &str) -> &str {
 
 pub(super) fn boundary(value: Option<&char>) -> bool {
     value.is_none_or(|value| value.is_whitespace() || matches!(value, ';' | '|' | '&'))
-}
-
-fn posix_temp_file(target: &str) -> bool {
-    let Some(rest) = target
-        .strip_prefix("/tmp/")
-        .or_else(|| target.strip_prefix("/private/tmp/"))
-    else {
-        return false;
-    };
-    !rest.is_empty()
-        && !rest.contains('/')
-        && !rest.contains("..")
-        && rest
-            .chars()
-            .all(|value| value.is_ascii_alphanumeric() || "._-+@%,=".contains(value))
-}
-
-fn safe_output_target(target: &str, context: super::super::PathContext<'_>) -> bool {
-    if target.is_empty()
-        || target.len() > 4096
-        || target.starts_with(['-', '~'])
-        || !target
-            .chars()
-            .all(|value| value.is_ascii_alphanumeric() || "._-/+@%,=:".contains(value))
-        || super::super::sensitive_command(target)
-    {
-        return false;
-    }
-    let path = std::path::Path::new(target);
-    // Windows does not treat `/tmp/file` as absolute, so the host path walk
-    // never sees the POSIX temp directory. A single literal temp segment is
-    // still a bounded file write and keeps the review floor.
-    if !path.is_absolute() && posix_temp_file(target) {
-        return true;
-    }
-    // A POSIX-rooted path other than the bounded temp-file exception cannot
-    // be resolved safely with Windows host path semantics.
-    #[cfg(windows)]
-    if target.starts_with('/') {
-        return false;
-    }
-    // Hidden components cover dotfiles, `.git/hooks`, and `.env` targets.
-    if path.components().any(|component| match component {
-        std::path::Component::Normal(name) => {
-            name.to_str().is_none_or(|name| name.starts_with('.'))
-        }
-        std::path::Component::RootDir | std::path::Component::CurDir => false,
-        _ => true,
-    }) {
-        return false;
-    }
-    let cwd = context
-        .cwd
-        .map(std::path::Path::new)
-        .filter(|cwd| cwd.is_absolute());
-    if path.is_absolute() {
-        if let Some(base) = ["/tmp", "/private/tmp"]
-            .into_iter()
-            .map(std::path::Path::new)
-            .find(|base| path.starts_with(base) && path != *base)
-        {
-            return path
-                .strip_prefix(base)
-                .is_ok_and(|rest| no_symlink_components(base, rest));
-        }
-        return cwd.is_some_and(|cwd| {
-            path != cwd
-                && path
-                    .strip_prefix(cwd)
-                    .is_ok_and(|rest| no_symlink_components(cwd, rest))
-        });
-    }
-    cwd.is_some_and(|cwd| no_symlink_components(cwd, path))
-}
-
-fn bounded_write(target: &str, context: super::super::PathContext<'_>) -> bool {
-    use super::super::safe_writes::{
-        bounded_native_file_write_target, bounded_native_temporary_write_target,
-    };
-    // Home is outside the workspace even when it sits below a temporary
-    // directory, as it does for disposable and CI accounts.
-    let path = std::path::Path::new(target);
-    let under = |base: Option<&str>| base.is_some_and(|base| path.starts_with(base));
-    if path.is_absolute() && under(context.home_dir) && !under(context.cwd) {
-        return false;
-    }
-    bounded_native_file_write_target(target, context.home_dir, context.cwd)
-        || bounded_native_temporary_write_target(target, context.home_dir, context.cwd)
-}
-
-/// Writing through an existing symlink could reach any file the user owns.
-fn no_symlink_components(base: &std::path::Path, relative: &std::path::Path) -> bool {
-    let mut current = base.to_path_buf();
-    for component in relative.components() {
-        current.push(component);
-        match std::fs::symlink_metadata(&current) {
-            Ok(metadata) if metadata.file_type().is_symlink() => return false,
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return true,
-            Err(_) => return false,
-        }
-    }
-    true
 }
 
 #[cfg(test)]

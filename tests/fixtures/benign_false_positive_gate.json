@@ -3306,6 +3306,231 @@
       "expect": "allow"
     },
     {
+      "id": "sibling-grep-workflow-glob",
+      "fix_area": "shell",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "grep -rn \"node\\|test\" ${ORG}/service-api/.github/workflows/*.yml | head -4"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "sibling-relative-grep-workflow-glob",
+      "fix_area": "shell",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "grep -rn node ../service-api/.github/workflows/*.yml"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "sibling-ls-workflow-glob",
+      "fix_area": "shell",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${ORG}/service-api/.github/workflows/*.yml"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "sibling-wc-source-glob",
+      "fix_area": "shell",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "wc -l ${ORG}/service-api/src/*.ts"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "sibling-cat-source-glob",
+      "fix_area": "shell",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cat ${ORG}/service-api/src/*.ts"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "org-ls-readme-dir-glob",
+      "fix_area": "shell",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${ORG}/*/README.md"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "org-relative-ls-readme-dir-glob",
+      "fix_area": "shell",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ../*/README.md"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "org-ls-worktree-config-probe-glob",
+      "fix_area": "shell",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${ORG_WT}/vitest.config.* ${ORG_WT}/vite.config.*"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-grep-sibling-env-glob",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "grep -rn KEY ${ORG}/service-api/.env*"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-ls-org-env-dir-glob",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${ORG}/*/.env"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-cat-org-git-config-dir-glob",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cat ${ORG}/*/.git/config"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-grep-org-git-config-dir-glob",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "grep -rn url ${ORG}/*/.git/config"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-ls-glob-above-org",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ../../*/README.md"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-grep-pattern-file-sibling-env",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "grep -rn -f ${ORG}/service-api/.env node ${ORG}/service-api/.github/workflows/*.yml"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-grep-pattern-file-long-sibling-env",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "grep -rn --file=${ORG}/service-api/.env node ${ORG}/service-api/.github/workflows/*.yml"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
       "id": "queue-sibling-rg-src-and-github",
       "fix_area": "queue",
       "harnesses": [

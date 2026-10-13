@@ -1,13 +1,15 @@
 //! Shell glob expansion for read operands, done here component by component.
 //!
-//! A relative glob expands below the cwd. An absolute or `~/` glob expands
-//! below its literal prefix only when that prefix is a directory inside a git
-//! working tree below home, the same layout `git -C` and `rg` sibling routes
-//! accept. The literal prefix must then be plain: no hidden or `..`
-//! components, and no links between the repository root and any match.
+//! `glob_scope` decides where expansion starts and how strictly it matches.
+//! The literal prefix and every literal component must be plain: no `..`
+//! after the prefix, no hidden name other than benign project metadata, and
+//! no links between the screening root and any match.
+#[path = "glob_scope.rs"]
+mod glob_scope;
+
 use super::{
-    home_relative, real_allowed_directory, ReadContext, HAZARDS, MAX_GLOB_ENTRIES,
-    MAX_GLOB_MATCHES, MAX_WALK_DEPTH, SECRET_EXTENSIONS,
+    hidden_allowed, ReadContext, HAZARDS, MAX_GLOB_ENTRIES, MAX_GLOB_MATCHES, MAX_WALK_DEPTH,
+    SECRET_EXTENSIONS,
 };
 use crate::pretool::search::glob_matches;
 use std::path::{Path, PathBuf};
@@ -24,6 +26,19 @@ const GLOB_CHARACTERS: [char; 3] = ['*', '?', '['];
 /// and a single `*` without it. A wildcard before the last component only
 /// descends into directories, as the shell does.
 pub(super) fn expand_glob_matches(value: &str, context: ReadContext<'_>) -> Option<Vec<PathBuf>> {
+    expand(value, context, false)
+}
+
+/// [`expand_glob_matches`] under the strict superset model, so an empty list
+/// proves that no shell option can make the pattern match anything.
+pub(super) fn expand_glob_matches_strict(
+    value: &str,
+    context: ReadContext<'_>,
+) -> Option<Vec<PathBuf>> {
+    expand(value, context, true)
+}
+
+fn expand(value: &str, context: ReadContext<'_>, strict: bool) -> Option<Vec<PathBuf>> {
     if value.is_empty()
         || value.len() > 4096
         || value.contains(HAZARDS)
@@ -33,24 +48,24 @@ pub(super) fn expand_glob_matches(value: &str, context: ReadContext<'_>) -> Opti
     {
         return None;
     }
-    let (base, root, pattern) = if value.starts_with(['/', '~']) {
-        repository_glob_base(value, context)?
-    } else {
-        let cwd = home_relative(context.cwd?, context.home_dir)?;
-        (real_allowed_directory(&cwd, context)?, cwd, value)
-    };
-    let components: Vec<&str> = pattern
+    let scope = glob_scope::glob_base(value, context)?;
+    let strict = strict || scope.strict;
+    let components: Vec<&str> = scope
+        .pattern
         .split('/')
         .filter(|part| !part.is_empty() && *part != ".")
         .collect();
-    let mut current = vec![base];
+    let mut current = vec![scope.base.clone()];
     let mut inspected = 0_usize;
     for (index, component) in components.iter().enumerate() {
-        if *component == ".." || component.starts_with('.') {
-            return None;
-        }
         let last = index + 1 == components.len();
         let is_pattern = component.contains(GLOB_CHARACTERS);
+        if *component == ".."
+            || (component.starts_with('.') && (is_pattern || !hidden_allowed(component)))
+            || (strict && is_pattern && (component.contains('[') || component.contains("**")))
+        {
+            return None;
+        }
         let mut next = Vec::new();
         for directory in &current {
             if !is_pattern {
@@ -73,7 +88,7 @@ pub(super) fn expand_glob_matches(value: &str, context: ReadContext<'_>) -> Opti
                 }
                 let name = entry.ok()?.file_name();
                 let name = name.to_str()?;
-                if name.starts_with('.') || !glob_matches(component.as_bytes(), name.as_bytes()) {
+                if !component_matches(component, name, strict)? {
                     continue;
                 }
                 let path = directory.join(name);
@@ -89,12 +104,35 @@ pub(super) fn expand_glob_matches(value: &str, context: ReadContext<'_>) -> Opti
     }
     let mut matches = Vec::new();
     for path in current {
-        if !screened_match(&path, &root, context)? {
+        let sibling =
+            !scope.siblings || glob_scope::in_sibling_repository(&path, &scope.root, context)?;
+        if !sibling || !screened_match(&path, &scope.root, context)? {
             return None;
         }
         matches.push(path);
     }
     Some(matches)
+}
+
+/// Whether one directory entry matches one pattern component. The strict
+/// model matches ASCII names regardless of case and refuses (`None`) a hidden
+/// entry the pattern could match under `dotglob` or a non-ASCII name, where
+/// `?` means a byte or a character depending on the locale.
+fn component_matches(component: &str, name: &str, strict: bool) -> Option<bool> {
+    if !strict {
+        return Some(!name.starts_with('.') && glob_matches(component.as_bytes(), name.as_bytes()));
+    }
+    if !name.is_ascii() {
+        return None;
+    }
+    let matched = glob_matches(
+        component.to_ascii_lowercase().as_bytes(),
+        name.to_ascii_lowercase().as_bytes(),
+    );
+    if matched && name.starts_with('.') {
+        return None;
+    }
+    Some(matched)
 }
 
 /// Every match is a regular file or a real directory reached through real
@@ -132,44 +170,6 @@ fn screened_match(path: &Path, root: &Path, context: ReadContext<'_>) -> Option<
                 context.cwd,
             ),
     )
-}
-
-/// `(base, repository root, pattern)` for an absolute or `~/` glob whose
-/// literal prefix is a real directory inside a git working tree below home.
-/// Paths outside such a repository, such as home itself or the directory
-/// holding several checkouts, are not expanded.
-fn repository_glob_base<'a>(
-    value: &'a str,
-    context: ReadContext<'_>,
-) -> Option<(PathBuf, PathBuf, &'a str)> {
-    if value.starts_with('~') && !value.starts_with("~/") {
-        return None;
-    }
-    let first_pattern = value.find(GLOB_CHARACTERS)?;
-    let prefix_end = value[..first_pattern].rfind('/')?;
-    let (prefix, pattern) = (&value[..prefix_end], &value[prefix_end + 1..]);
-    // `/*` leaves an empty prefix, which would otherwise resolve to the cwd.
-    if !(prefix.starts_with('/') || prefix == "~" || prefix.starts_with("~/"))
-        || prefix
-            .split('/')
-            .skip(1)
-            .any(|part| part == ".." || part.starts_with('.'))
-    {
-        return None;
-    }
-    let base = super::expanded_operand(prefix, context)?;
-    let base = real_allowed_directory(&base, context)?;
-    let canonical = std::fs::canonicalize(&base).ok()?;
-    if !crate::pretool::git_routes::repository_below_home(&canonical, context)
-        || super::inside_agent_state(&base, context)
-    {
-        return None;
-    }
-    let root = base
-        .ancestors()
-        .find(|path| std::fs::symlink_metadata(path.join(".git")).is_ok())?
-        .to_path_buf();
-    Some((base, root, pattern))
 }
 
 /// Whether the shell continues below this path: `Some(true)` for a real

@@ -60,6 +60,8 @@ fn glob_operands_inside_a_sibling_repository_are_allowed() {
         format!("rg -n fixture {sibling}/src/*.rs"),
         "rg -n fixture ~/Code/org/service-api/src/*.rs".to_owned(),
         format!("grep -rn fixture {sibling}/*"),
+        // Every match lies in a sibling repository of the session's own.
+        format!("grep -n fixture {}/*/src/*.rs", layout.org.display()),
     ] {
         assert_decision(&cwd, &layout.home, &command, true);
     }
@@ -81,7 +83,8 @@ fn globs_outside_a_repository_or_matching_sensitive_files_stay_reviewed() {
         format!("grep -n fixture {sibling}/src/*.pem"),
         format!("rg -n fixture {sibling}/src/*.pem"),
         format!("grep -n fixture {sibling}/.git/*"),
-        format!("grep -n fixture {org}/*/src/*.rs"),
+        // The match lies in a directory beside the repositories, not in one.
+        format!("grep -n fixture {org}/*/todo.md"),
         format!("grep -n fixture {org}/plain-notes/*.md"),
         "grep -n fixture ~/*".to_owned(),
         "rg -n fixture /*".to_owned(),

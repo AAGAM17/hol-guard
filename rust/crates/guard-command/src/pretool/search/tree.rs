@@ -164,11 +164,29 @@ pub(in crate::pretool) fn safe_glob_operand(
 /// directory must clear the quoted-literal screens. A class that could match
 /// a leading dot under `dotglob`, including through a range, does not qualify,
 /// nor does syntax this matcher would close at the wrong `]`.
-pub(in crate::pretool) fn safe_unmatched_bracket_operand(
+///
+/// A `*` or `?` operand qualifies when the strict expansion proves that it
+/// matches nothing under any shell option: the program then receives either
+/// the literal word, which names no file, or no operand under `nullglob`. So
+/// `ls ~/code/app/vite.config.*` probes for an optional file.
+pub(in crate::pretool) fn safe_unmatched_glob_operand(
     value: &str,
     context: ReadContext<'_>,
     recursive: bool,
 ) -> bool {
+    if !value.contains('[') {
+        // Only the last component may be a pattern, inside a real directory.
+        let directory = value
+            .rsplit_once('/')
+            .map_or(".", |(directory, _)| directory);
+        let directory = if directory.is_empty() { "/" } else { directory };
+        return !directory.contains(['*', '?'])
+            && expanded_operand(directory, context)
+                .and_then(|path| std::fs::symlink_metadata(path).ok())
+                .is_some_and(|metadata| metadata.is_dir())
+            && glob_expand::expand_glob_matches_strict(value, context)
+                .is_some_and(|matches| matches.is_empty());
+    }
     !value.contains(['*', '?', '!'])
         && !super::glob_class::bracket_fallback_unsafe(value)
         && expand_glob_matches(value, context).is_some_and(|matches| matches.is_empty())

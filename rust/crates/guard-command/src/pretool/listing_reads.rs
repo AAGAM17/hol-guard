@@ -141,7 +141,7 @@ pub(super) fn safe_listing_segment(
                 surviving += 1;
                 true
             }
-            Operand::Glob => search::safe_unmatched_bracket_operand(argument, context, recursive),
+            Operand::Glob => search::safe_unmatched_glob_operand(argument, context, recursive),
         };
         if !allowed {
             return false;

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 from .action_lattice import guard_action_severity
 from .project_identity import (
@@ -117,17 +118,23 @@ class StorePortableProjectMemoryMixin:
         memory_command: str | None,
         memory_artifact_type: str | None,
         memory_artifact_name: str | None,
-    ) -> tuple[dict[str, object] | None, dict[str, object] | None]:
+        current_action: str,
+    ) -> dict[str, Any] | None:
         """Peek saved decisions for several ``(artifact_id, artifact_hash)`` probes in one resident call.
 
         Each probe composes its direct, exact-command and memory ids most
         restrictive (with the portable Git workspace); across probes a strictly
-        more severe decision wins. Nothing is consumed. Returns the decision and
-        the ignored local-integrity evidence.
+        more severe decision wins. Nothing is consumed. The first probe names
+        the current action: the resident also checks a saved allow's context
+        token against its hash, explains a miss, and composes the reuse verdict
+        for ``current_action``. Returns ``decision``, ``ignored_local_integrity``,
+        ``reuse`` (the verdict payload), ``saved_present`` and
+        ``saved_artifact_hash``. ``None`` means the home serves no saved
+        authority, so there is no saved decision to compose.
         """
         evidence = self.policy_lookup_evidence()
         if evidence.degraded_trust_status is not None:
-            return None, None
+            return None
         groups: list[dict[str, object]] = []
         for artifact_id, artifact_hash in probes:
             exact_ids, memory_id = memory_lookup_candidates(
@@ -144,11 +151,12 @@ class StorePortableProjectMemoryMixin:
                     "candidate_artifact_ids": [artifact_id, *exact_ids, *([memory_id] if memory_id else [])],
                 }
             )
+        current_id, current_hash = probes[0]
         request = self.policy_decision_lookup_request(
             evidence,
             harness=harness,
-            artifact_id=None,
-            artifact_hash=None,
+            artifact_id=current_id,
+            artifact_hash=current_hash,
             workspace=workspace,
             publisher=publisher,
             runtime_exact_match_context=runtime_exact_match_context,
@@ -157,9 +165,9 @@ class StorePortableProjectMemoryMixin:
         request["probe_groups"] = {
             "portable_workspace": self._portable_project_workspace(workspace),
             "groups": groups,
+            "reuse": {"current_action": current_action, "current_token": current_hash},
         }
-        payload = self.send_policy_decision_lookup(request)
-        return payload.get("decision"), payload.get("ignored_local_integrity")
+        return self.send_policy_decision_lookup(request)
 
     def mcp_policy_lookup_input(
         self,

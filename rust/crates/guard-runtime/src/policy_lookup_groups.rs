@@ -6,6 +6,7 @@
 //! Git-workspace composition; the candidates of a group compose most
 //! restrictive, and across groups a strictly more severe decision replaces the
 //! earlier one. Nothing here consumes a one-shot approval or writes the store.
+//! With `reuse`, the approval-reuse verdict is composed on the same connection.
 
 use guard_contracts::{PolicyDecisionLookupRequestV1, PolicyLookupProbeGroupsV1};
 use serde_json::{json, Value};
@@ -13,6 +14,7 @@ use serde_json::{json, Value};
 use crate::context_digest::python_strip;
 use crate::mcp_tool_policy_lookup::{most_restrictive, severity, without_permission_elevation};
 use crate::policy_decision_lookup_op::{evaluate_non_consuming, open_lookup_connection};
+use crate::policy_lookup_reuse::{compose_reuse, diagnose_miss};
 
 const ERR_INVALID: &str = "native_policy_decision_lookup_invalid";
 const MAX_GROUPS: usize = 4;
@@ -30,7 +32,7 @@ pub(crate) fn evaluate(
         return Err(ERR_INVALID.to_owned());
     }
     let connection = open_lookup_connection(&request.store_path)?;
-    compose_groups(
+    let saved = compose_groups(
         groups,
         request.workspace.as_deref(),
         |artifact_id, artifact_hash, workspace| {
@@ -41,7 +43,11 @@ pub(crate) fn evaluate(
             probe.workspace = workspace.map(str::to_owned);
             evaluate_non_consuming(&probe, &connection)
         },
-    )
+    )?;
+    Ok(match &groups.reuse {
+        Some(reuse) => compose_reuse(saved, reuse, || diagnose_miss(request, &connection)),
+        None => saved,
+    })
 }
 
 /// Probe every group and return `{decision, ignored_local_integrity}`.

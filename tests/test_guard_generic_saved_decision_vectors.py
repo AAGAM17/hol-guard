@@ -3,8 +3,8 @@
 The vectors were recorded from the former Python composition of the generic
 hook's saved-decision probes. The Rust resident replays the same vectors in
 ``policy_lookup_groups_tests.rs``; here the request Python builds must carry the
-recorded groups and portable workspace, and the resident answer is returned
-unchanged.
+recorded groups and portable workspace with the current action's reuse
+request, and the resident answer is returned unchanged with its reuse verdict.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import pytest
 
 from codex_plugin_scanner.guard import store_portable_project_memory
 from codex_plugin_scanner.guard.cli import commands_hook_native_generic
+from codex_plugin_scanner.guard.runtime.approval_reuse import _decision_from_native_payload
 from codex_plugin_scanner.guard.store import GuardStore
 from codex_plugin_scanner.guard.store_policy import PolicyLookupEvidence
 
@@ -32,6 +33,14 @@ _FIXTURE = (
 )
 _VECTORS = json.loads(gzip.decompress(_FIXTURE.read_bytes()))["vectors"]
 _DEGRADED_TRUST = {"remembered_rules": "disabled_degraded", "trusted": False}
+_REUSE = {
+    "action": "review",
+    "status": "not-applicable",
+    "reason_code": "approval_reuse_no_saved_decision",
+    "current_action": "review",
+    "saved_action": None,
+    "should_claim": False,
+}
 
 
 @pytest.mark.parametrize("vector", _VECTORS[::8], ids=lambda vector: vector["name"])
@@ -52,7 +61,7 @@ def test_generic_saved_decision_ships_recorded_groups(vector, monkeypatch, tmp_p
 
     def send(_store: GuardStore, request: dict[str, object]) -> dict[str, Any]:
         requests.append(request)
-        return vector["expected"]
+        return {**vector["expected"], "reuse": _REUSE, "saved_present": True, "saved_artifact_hash": None}
 
     monkeypatch.setattr(store_portable_project_memory, "memory_lookup_candidates", memory_lookup_candidates)
     monkeypatch.setattr(GuardStore, "policy_lookup_evidence", lambda _store, **_kwargs: evidence)
@@ -61,11 +70,25 @@ def test_generic_saved_decision_ships_recorded_groups(vector, monkeypatch, tmp_p
         GuardStore, "_portable_project_workspace", staticmethod(lambda _ws: vector["portable_workspace"])
     )
     monkeypatch.setattr(commands_hook_native_generic, "_generic_hook_memory_command", lambda _payload: "echo")
+    diagnosed: list[tuple[object, ...]] = []
+    evaluated: list[tuple[object, ...]] = []
+
+    def diagnostic(_store: GuardStore, *args: object) -> tuple[str, None]:
+        diagnosed.append(args)
+        return "approval_reuse_integrity_failure", None
+
+    def evaluate(*args: object, **kwargs: object) -> object:
+        evaluated.append((*args, kwargs))
+        return _decision_from_native_payload(_REUSE)
+
+    monkeypatch.setattr(GuardStore, "approval_reuse_diagnostic", diagnostic)
+    monkeypatch.setattr(commands_hook_native_generic, "evaluate_approval_reuse", evaluate)
 
     result = commands_hook_native_generic._generic_hook_saved_decision(
         artifact_hash=vector["artifact_hash"],
         artifact_id=vector["artifact_id"],
         artifact_name="Bash",
+        current_action="review",
         harness="claude-code",
         legacy_artifact_hash=vector["legacy_artifact_hash"],
         payload={"tool_name": "Bash", "tool_input": {"command": "echo"}},
@@ -74,15 +97,31 @@ def test_generic_saved_decision_ships_recorded_groups(vector, monkeypatch, tmp_p
         store=GuardStore(tmp_path / "home"),
     )
 
+    decision, ignored, reuse, saved_present = result
     if vector["degraded"]:
         assert requests == []
-        assert result == (None, None)
+        # A degraded home still explains the miss and fails closed on saved rows.
+        assert (decision, ignored, saved_present) == (None, None, True)
+        assert diagnosed == [("claude-code", vector["artifact_id"], vector["artifact_hash"], vector["workspace"], None)]
+        assert evaluated == [
+            (
+                "review",
+                "allow",
+                {"saved_decision_present": True, "validation_reason": "approval_reuse_integrity_failure"},
+            )
+        ]
+        assert reuse == _decision_from_native_payload(_REUSE)
         return
+    assert diagnosed == [] and evaluated == []
     [request] = requests
     assert request["consume_one_shot"] is False
     assert request["workspace"] == vector["workspace"]
+    assert (request["artifact_id"], request["artifact_hash"]) == (vector["artifact_id"], vector["artifact_hash"])
     assert request["probe_groups"] == {
         "portable_workspace": vector["portable_workspace"],
         "groups": vector["groups"],
+        "reuse": {"current_action": "review", "current_token": vector["artifact_hash"]},
     }
-    assert result == (vector["expected"]["decision"], vector["expected"]["ignored_local_integrity"])
+    assert (decision, ignored) == (vector["expected"]["decision"], vector["expected"]["ignored_local_integrity"])
+    assert reuse == _decision_from_native_payload(_REUSE)
+    assert saved_present is True

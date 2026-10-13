@@ -1,4 +1,4 @@
-import { bg as fetchLocalCliApi, r as reactExports, bh as fetchExtensionCatalog, bi as normalizeExtensionCatalogSummary, bj as normalizeExtensionPermission, bk as ExtensionControlProtocolError, bl as ExtensionControlApiError, bm as normalizeExtensionCatalogItem, bn as guardApiCacheScope, bo as fetchExtensionCatalogV2Api, bp as localPermissionDraftState, bq as setLocalPermissionDraftState, br as newExtensionPolicyDraftIdentity, bs as extensionPolicyDraftIsDirty, bt as setLocalPermissionDraftStates, bu as buildExtensionPolicyDraftMutation, bv as previewExtensionMutation, bw as isCurrentExtensionPolicyDraft, bx as applyExtensionMutation, by as fetchEffectiveExtensionControls, bz as fetchExtensionControlHistory, j as jsxRuntimeExports, F as HiMiniSparkles, s as HiMiniCheckCircle, bA as HiMiniNoSymbol, ay as HiMiniLockClosed, R as HiMiniExclamationTriangle, aG as isApprovalProofSubmitDisabled, I as HiMiniXMark, aF as ApprovalProofFieldInputs, bB as useResolvedApprovalGate, aE as HiMiniArrowPath, y as HiMiniShieldCheck, bC as HiMiniInformationCircle, aH as buildApprovalProofCredentials, bD as GenIcon, T as HiMiniBolt, bE as HiMiniGlobeAlt, bF as HiMiniCube, M as HiMiniCloud, bG as HiMiniServerStack, b as HiMiniCommandLine, bH as HiMiniFolder, bI as FaWindows, bJ as FaAws, c as HiMiniChevronRight, K as HiMiniChevronDown, bK as approvalProofRecentlySatisfied, bL as isBulkApproveGateReady, bM as HiMiniArrowLeft, bN as HiMiniPlus, bO as startGuardCloudConnect, bP as HiMiniArrowTopRightOnSquare, bQ as fetchExtensionControlApi, ao as HiMiniClipboardDocumentCheck, ap as HiMiniClipboard, ar as ApprovalProofModal, bR as guardAwareHref, b0 as HiMiniMagnifyingGlass, aA as HiMiniAdjustmentsHorizontal, bS as HiMiniCheck, a$ as WorkspacePageHeader, bT as acknowledgeDegradedExtensionControlAuthority, bU as recoverExtensionControlAuthority } from "../guard-dashboard.js";
+import { bi as fetchLocalCliApi, r as reactExports, bj as fetchExtensionCatalog, bk as normalizeExtensionCatalogSummary, bl as normalizeExtensionPermission, bm as ExtensionControlProtocolError, bn as ExtensionControlApiError, bo as normalizeExtensionCatalogItem, bp as guardApiCacheScope, bq as fetchExtensionCatalogV2Api, br as localPermissionDraftState, bs as setLocalPermissionDraftState, bt as newExtensionPolicyDraftIdentity, bu as extensionPolicyDraftIsDirty, bv as setLocalPermissionDraftStates, bw as buildExtensionPolicyDraftMutation, bx as previewExtensionMutation, by as isCurrentExtensionPolicyDraft, bz as applyExtensionMutation, bA as fetchEffectiveExtensionControls, bB as fetchExtensionControlHistory, j as jsxRuntimeExports, F as HiMiniSparkles, s as HiMiniCheckCircle, bC as HiMiniNoSymbol, ay as HiMiniLockClosed, R as HiMiniExclamationTriangle, aG as isApprovalProofSubmitDisabled, I as HiMiniXMark, aF as ApprovalProofFieldInputs, bD as useResolvedApprovalGate, aE as HiMiniArrowPath, y as HiMiniShieldCheck, bE as HiMiniInformationCircle, aH as buildApprovalProofCredentials, bF as GenIcon, T as HiMiniBolt, bG as HiMiniGlobeAlt, bH as HiMiniCube, M as HiMiniCloud, bI as HiMiniServerStack, b as HiMiniCommandLine, bJ as HiMiniFolder, bK as FaWindows, bL as FaAws, c as HiMiniChevronRight, K as HiMiniChevronDown, bM as approvalProofRecentlySatisfied, bN as isBulkApproveGateReady, bO as HiMiniArrowLeft, bP as HiMiniPlus, bQ as startGuardCloudConnect, bR as HiMiniArrowTopRightOnSquare, bS as fetchExtensionControlApi, ao as HiMiniClipboardDocumentCheck, ap as HiMiniClipboard, ar as ApprovalProofModal, b2 as guardAwareHref, b0 as HiMiniMagnifyingGlass, aA as HiMiniAdjustmentsHorizontal, bT as HiMiniCheck, a$ as WorkspacePageHeader, bU as acknowledgeDegradedExtensionControlAuthority, bV as recoverExtensionControlAuthority } from "../guard-dashboard.js";
 import { u as useConfirmDialog } from "./confirm-dialog.js";
 const EXTENSION_ID_PATTERN = /^command\.[a-z0-9]+(?:[.-][a-z0-9]+)*$/;
 const RULE_ID_PATTERN = /^command\.[a-z0-9]+(?:[.-][a-z0-9]+)*$/;
@@ -6737,7 +6737,7 @@ const DEFAULT_TERMINAL_COMMANDS = {
   recover_authority: "hol-guard command controls recover-authority"
 };
 const GATE_SETUP_SUFFIX = " Enable Ask for proof and set an Approval password in Settings > Approval gate, then return here.";
-function authorityNoticeView(health, approvalGateReady, terminalCommands) {
+function authorityNoticeView(health, approvalGateReady, terminalCommands, approvalConfigured) {
   const commands = terminalCommands ?? DEFAULT_TERMINAL_COMMANDS;
   const terminalName = terminalCommands?.shell === "powershell" ? "PowerShell" : "your terminal";
   switch (health) {
@@ -6805,10 +6805,10 @@ function authorityNoticeView(health, approvalGateReady, terminalCommands) {
       if (!approvalGateReady) {
         return {
           tone: "info",
-          title: "Set up local approval before enrollment",
-          body: "Extension controls require this device's local approval gate. Guard Cloud sign-in and account MFA are separate and do not enable this gate. In Settings > Approval gate, enable Ask for proof on allow decisions and set an Approval password, then return here to enroll. Optionally connect an Authenticator app; once enabled, its code replaces the Approval password for every protected action and disables cooldown.",
+          title: approvalConfigured ? "Local approval is off" : "Set up local approval",
+          body: approvalConfigured ? "Enable local approval to change extension permissions. Your password stays on this device; Guard Cloud is not required." : "Choose a password to protect changes to extension permissions. It stays on this device; Guard Cloud is not required.",
           action: { kind: "configure-approval" },
-          actionLabel: "Set up approval",
+          actionLabel: "Open approval settings",
           actionDetail: null,
           command: "",
           commandLabel: "",
@@ -6818,8 +6818,8 @@ function authorityNoticeView(health, approvalGateReady, terminalCommands) {
       }
       return {
         tone: "info",
-        title: "Finish setting up protection",
-        body: "Command protection settings are not enrolled on this device yet. One command in your terminal creates this device's trusted settings. Local command checking already runs without them.",
+        title: "Finish extension setup",
+        body: "Run this command to save this device's trusted extension settings. Guard is already checking commands locally.",
         action: { kind: "none" },
         actionLabel: null,
         actionDetail: null,
@@ -6833,7 +6833,7 @@ function authorityNoticeView(health, approvalGateReady, terminalCommands) {
 function ProtectionAuthorityNotice(props) {
   const health = props.effective.health;
   const approvalGateReady = props.approvalGate === null ? null : props.approvalGate.configured && props.approvalGate.enabled;
-  const view = authorityNoticeView(health, approvalGateReady, props.effective.terminal_commands);
+  const view = authorityNoticeView(health, approvalGateReady, props.effective.terminal_commands, props.approvalGate?.configured === true);
   const [proofOpen, setProofOpen] = reactExports.useState(false);
   const [pendingAction, setPendingAction] = reactExports.useState(null);
   const [copyState, setCopyState] = reactExports.useState("idle");
@@ -6910,7 +6910,7 @@ function ProtectionAuthorityNotice(props) {
               ]
             }
           ) : null,
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
+          view.action.kind !== "configure-approval" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
             "button",
             {
               type: "button",
@@ -6922,7 +6922,7 @@ function ProtectionAuthorityNotice(props) {
               className: "inline-flex min-h-11 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-brand-dark hover:border-brand-blue/40 disabled:opacity-60",
               children: checkPending ? "Checking…" : "Check again"
             }
-          )
+          ) : null
         ] }),
         props.busy ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", className: `mt-3 text-sm font-medium ${warning ? "text-amber-950" : "text-brand-dark"}`, children: pendingAction === "acknowledge" ? "Confirming the limited state…" : "Repairing local protection…" }) : null,
         checkPending ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { role: "status", "aria-live": "polite", className: `mt-3 text-sm font-medium ${warning ? "text-amber-950" : "text-brand-dark"}`, children: "Checking current protection status…" }) : null,
@@ -9048,7 +9048,7 @@ function ProtectionCenterWorkspace(props) {
     if (protectionResult.status === "rejected") throw protectionResult.reason;
   }, [refreshApprovalGate, refreshProtection, recoveryCommand, recoveryTerminal]);
   const handleOpenApprovalSettings = reactExports.useCallback(() => {
-    props.onNavigate("/settings?section=approval");
+    props.onNavigate("/settings?section=approval&returnTo=extensions");
   }, [props.onNavigate]);
   const authorityNeedsAttention = state.kind === "ready" && state.effective.health !== "protected";
   reactExports.useEffect(() => {

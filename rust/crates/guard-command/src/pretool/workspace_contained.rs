@@ -70,6 +70,7 @@ const UNRECOVERABLE_RULES: &[&str] = &[
 const REMOTE_RULES: &[&str] = &["command.git.force-push", "command.git.remote-branch-delete"];
 const SHELL_DESTRUCTION: &str = "command.shell-mutations.destructive-shell";
 const CONTAINABLE_RISKS: &[&str] = &["local_secret_read", "destructive_shell"];
+const EXTENSION_REVIEW: &str = "native_command_extension_review";
 /// What the sandbox executes for one authorized command.
 pub(crate) struct Shape {
     /// Arguments for a trusted `git init`, run before the sandbox starts
@@ -395,12 +396,17 @@ pub(super) fn convert(
     } else {
         "native_command_review_required"
     };
-    let generic = result.reason_code == floor_reason && result.minimum_action == "review";
+    // An extension rule can raise an otherwise allowed command such as
+    // `rm notes.txt` to review; `extensions_contain` still requires every
+    // matched rule to carry only risks the sandbox bounds.
+    let reviewable =
+        |reason: &str| reason == floor_reason || (!package && reason == EXTENSION_REVIEW);
+    let generic = reviewable(result.reason_code.as_str()) && result.minimum_action == "review";
     // The Git floor existed because unsandboxed helpers could run; inside the
     // sandbox the configuration is write-denied and helpers stay contained.
     let git_floor = result.reason_code == "native_git_execution_context_review"
         && pre_floor.1 == "review"
-        && (pre_floor.0 == floor_reason || pre_floor.0 == "native_git_helper_context_review");
+        && (reviewable(pre_floor.0.as_str()) || pre_floor.0 == "native_git_helper_context_review");
     if !generic && !git_floor {
         return;
     }

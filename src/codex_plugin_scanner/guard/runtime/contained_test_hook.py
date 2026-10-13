@@ -219,10 +219,31 @@ def run_authorized_contained_test(
         raise _reject()
     if cwd is None:
         cwd = workspace
+
+    def run_workspace(receipt: object) -> int | None:
+        """Run in the workspace sandbox when Rust issued that profile, else None."""
+        if not receipt_matches(receipt) or not isinstance(receipt, Mapping):
+            return None
+        return run_workspace_contained(
+            payload,
+            workspace=workspace,
+            cwd=cwd,
+            authorize=authorize,
+            first_receipt=receipt,
+            home_dir=home_dir,
+            timeout_seconds=timeout_seconds,
+            merge_stderr=merge_stderr,
+        )
+
     try:
         peeled = peel_contained_wrapper(tool_input["command"], workspace=workspace, home=home_dir)
     except (OSError, RuntimeError, ValueError) as error:
-        raise _reject() from error
+        # Pipelines and lists the wrapper cannot peel (`| grep`, `&&`) still
+        # run as issued when Rust chose the workspace sandbox for them.
+        exit_code = run_workspace(authorize(payload))
+        if exit_code is None:
+            raise _reject() from error
+        return exit_code
     if peeled is not None:
         # The wrapped original must carry the receipt; the core is then
         # re-authorized in its resolved directory by the recursive call.
@@ -251,21 +272,6 @@ def run_authorized_contained_test(
         sys.stdout.write(status_line)
         sys.stdout.flush()
         return 0
-
-    def run_workspace(receipt: object) -> int | None:
-        """Run in the workspace sandbox when Rust issued that profile, else None."""
-        if not receipt_matches(receipt) or not isinstance(receipt, Mapping):
-            return None
-        return run_workspace_contained(
-            payload,
-            workspace=workspace,
-            cwd=cwd,
-            authorize=authorize,
-            first_receipt=receipt,
-            home_dir=home_dir,
-            timeout_seconds=timeout_seconds,
-            merge_stderr=merge_stderr,
-        )
 
     try:
         core, assignments = _split_command_prefix(shlex.split(tool_input["command"], posix=True))

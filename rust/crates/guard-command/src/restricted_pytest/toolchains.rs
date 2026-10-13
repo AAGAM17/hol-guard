@@ -4,8 +4,29 @@
 use super::*;
 use std::os::unix::fs::MetadataExt;
 
-const DEVELOPER_LINK: &str = "/private/var/db/xcode_select_link";
+/// Where `xcode-select -s` records the developer directory: the current
+/// location first, then the one older macOS releases used.
+const DEVELOPER_LINKS: &[&str] = &[
+    "/private/var/select/developer_dir",
+    "/private/var/db/xcode_select_link",
+];
+/// What `/usr/bin` shims use when no developer directory was selected.
+const DEFAULT_DEVELOPER_DIRS: &[&str] = &[
+    "/Applications/Xcode.app/Contents/Developer",
+    "/Library/Developer/CommandLineTools",
+];
 const DEVELOPER_PREFIXES: &[&str] = &["/Library/Developer", "/Applications"];
+/// Frameworks that a trusted prefix links its binaries into, such as
+/// python.org's `/usr/local/bin/python3`.
+const LINKED_FRAMEWORKS: &[(&str, &str)] =
+    &[("/usr/local", "/Library/Frameworks/Python.framework")];
+/// macOS gives the `admin` group write access to Homebrew and python.org
+/// installs. Its members can already administer the machine, so that write
+/// bit does not let anyone else plant code.
+#[cfg(target_os = "macos")]
+const TRUSTED_WRITER_GROUPS: &[u32] = &[0, 80];
+#[cfg(not(target_os = "macos"))]
+const TRUSTED_WRITER_GROUPS: &[u32] = &[0];
 /// Version-manager prefixes under HOME. `true` grants the version directory
 /// that owns a `bin` entry; `false` grants only the `bin` directory, because
 /// its parent can hold credentials.
@@ -19,7 +40,8 @@ const MANAGED_HOME_PREFIXES: &[(&str, bool)] = &[
 /// Package-manager prefixes whose binaries are symlinks into these siblings.
 const PACKAGE_SIBLINGS: &[&str] = &["Cellar", "opt"];
 
-/// Owned by root or the caller and not writable by group or others.
+/// Owned by root or the caller, not writable by others, and writable by its
+/// group only when that group is root's or the administrators'.
 fn owned_and_sealed(path: &Path) -> bool {
     let Ok(metadata) = path.metadata() else {
         return false;
@@ -27,7 +49,8 @@ fn owned_and_sealed(path: &Path) -> bool {
     let uid = nix::unistd::geteuid().as_raw();
     metadata.is_dir()
         && (metadata.uid() == 0 || metadata.uid() == uid)
-        && metadata.mode() & 0o022 == 0
+        && metadata.mode() & 0o002 == 0
+        && (metadata.mode() & 0o020 == 0 || TRUSTED_WRITER_GROUPS.contains(&metadata.gid()))
 }
 
 fn forbidden(path: &Path, home: Option<&Path>) -> bool {
@@ -72,6 +95,12 @@ fn accept_entry(entry: &Path, home: Option<&Path>) -> Option<Vec<PathBuf>> {
         .find(|root| path_is_within(&canonical, root))
     {
         let mut roots = vec![canonical.clone()];
+        for (owner, framework) in LINKED_FRAMEWORKS {
+            let framework = Path::new(framework);
+            if prefix.as_path() == Path::new(owner) && owned_and_sealed(framework) {
+                roots.extend(framework.canonicalize().ok());
+            }
+        }
         for sibling in PACKAGE_SIBLINGS {
             let candidate = prefix.join(sibling);
             if candidate.exists() {
@@ -109,15 +138,35 @@ fn accept_entry(entry: &Path, home: Option<&Path>) -> Option<Vec<PathBuf>> {
     None
 }
 
-/// The Xcode/CommandLineTools directory `/usr/bin` shims forward into.
+/// The Xcode or CommandLineTools root `/usr/bin` shims forward into. Inside
+/// an app bundle the whole bundle is granted, because the developer
+/// directory loads frameworks and `Info.plist` from beside it.
 fn developer_dir() -> Option<PathBuf> {
-    let target = fs::read_link(DEVELOPER_LINK).ok()?;
-    let resolved = target.canonicalize().ok()?;
-    (DEVELOPER_PREFIXES
+    let selected = DEVELOPER_LINKS
         .iter()
-        .any(|prefix| path_is_within(&resolved, Path::new(prefix)))
-        && owned_and_sealed(&resolved))
-    .then_some(resolved)
+        .find_map(|link| fs::read_link(link).ok());
+    let target = match selected {
+        Some(target) => target,
+        None => DEFAULT_DEVELOPER_DIRS
+            .iter()
+            .map(PathBuf::from)
+            .find(|candidate| candidate.is_dir())?,
+    };
+    let resolved = target.canonicalize().ok()?;
+    let root = developer_root(&resolved)?;
+    owned_and_sealed(&root).then_some(root)
+}
+
+fn developer_root(resolved: &Path) -> Option<PathBuf> {
+    let prefix = DEVELOPER_PREFIXES
+        .iter()
+        .map(Path::new)
+        .find(|prefix| path_is_within(resolved, prefix))?;
+    if prefix != Path::new("/Applications") {
+        return Some(resolved.to_path_buf());
+    }
+    let bundle = prefix.join(resolved.strip_prefix(prefix).ok()?.components().next()?);
+    (bundle.extension() == Some(OsStr::new("app"))).then_some(bundle)
 }
 
 /// Executable roots and the sandbox PATH for `search_path`, plus the developer
@@ -203,6 +252,37 @@ mod tests {
         assert!(sensitive_for_exec(sealed.0.parent().unwrap(), &sealed.0));
         assert!(sensitive_for_exec(&sealed.0.join(".ssh"), &sealed.0));
         assert!(!sensitive_for_exec(&sealed.0.join("tool"), &sealed.0));
+    }
+
+    #[test]
+    fn group_write_is_trusted_only_for_administrator_groups() {
+        let shared = dir_with(0o775);
+        let gid = shared.0.metadata().unwrap().gid();
+        assert_eq!(
+            owned_and_sealed(&shared.0),
+            TRUSTED_WRITER_GROUPS.contains(&gid)
+        );
+        assert!(!owned_and_sealed(&dir_with(0o757).0));
+    }
+
+    #[test]
+    fn developer_directories_grant_their_app_bundle() {
+        assert_eq!(
+            developer_root(Path::new("/Applications/Xcode-beta.app/Contents/Developer")),
+            Some(PathBuf::from("/Applications/Xcode-beta.app"))
+        );
+        assert_eq!(
+            developer_root(Path::new("/Library/Developer/CommandLineTools")),
+            Some(PathBuf::from("/Library/Developer/CommandLineTools"))
+        );
+        assert_eq!(
+            developer_root(Path::new("/Applications/Tools/Developer")),
+            None
+        );
+        assert_eq!(
+            developer_root(Path::new("/opt/Xcode.app/Contents/Developer")),
+            None
+        );
     }
 
     #[test]

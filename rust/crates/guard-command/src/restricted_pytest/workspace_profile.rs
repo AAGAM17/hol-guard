@@ -29,6 +29,31 @@ const PRIVILEGE_NAMES: &[&str] = &[
     "killall",
     "pkill",
 ];
+/// Root-level links (`/var` -> `/private/var`) that system tools name.
+/// xcode-select reads `/var/select/developer_dir`; without metadata on the
+/// link it fails with EPERM instead of falling back to its default.
+const ROOT_LINKS: &[&str] = &["/etc", "/tmp", "/var"];
+/// Configuration the granted toolchains read at startup: the developer
+/// directory link, Xcode's license acceptance, Homebrew Git's system
+/// config (which the classifier already evaluates for write denials), and
+/// the OpenSSL config and CA bundles. Node and LibreSSL tools exit with an
+/// OpenSSL configuration error when they cannot open their config.
+const TOOLCHAIN_FILES: &[&str] = &[
+    "/private/var/select/developer_dir",
+    "/private/var/db/xcode_select_link",
+    "/Library/Preferences/com.apple.dt.Xcode.plist",
+    "/opt/homebrew/etc/gitconfig",
+    "/usr/local/etc/gitconfig",
+    "/opt/homebrew/etc/openssl@3/openssl.cnf",
+    "/opt/homebrew/etc/openssl@3/cert.pem",
+    "/opt/homebrew/etc/ca-certificates/cert.pem",
+    "/usr/local/etc/openssl@3/openssl.cnf",
+    "/usr/local/etc/openssl@3/cert.pem",
+    "/usr/local/etc/ca-certificates/cert.pem",
+    "/private/etc/ssl/openssl.cnf",
+    "/private/etc/ssl/cert.pem",
+    "/System/Library/OpenSSL/openssl.cnf",
+];
 const PROTECTED_DIRECTORIES: &[&str] = &[
     ".agents",
     ".claude",
@@ -216,6 +241,9 @@ pub(super) fn compose(
     roots.extend(extra_reads.iter().cloned());
     let mut metadata = vec![PathBuf::from("/")];
     metadata.extend(ancestor_paths(&roots));
+    metadata.extend(existing(ROOT_LINKS));
+    let mut files = files.to_vec();
+    files.extend(existing(TOOLCHAIN_FILES));
     let mut executable = vec![workspace.clone()];
     executable.extend(existing(&["/bin", "/usr/bin"]));
     executable.extend(input.exec_roots.iter().cloned());
@@ -244,7 +272,7 @@ pub(super) fn compose(
         format!(
             "(allow file-read* {} {})",
             filter(&roots, "subpath"),
-            filter(files, "literal")
+            filter(&files, "literal")
         ),
         format!(
             "(allow file-write* {} (literal \"/dev/null\"))",

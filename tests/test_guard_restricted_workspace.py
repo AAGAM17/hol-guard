@@ -104,6 +104,38 @@ def test_a_workspace_receipt_runs_what_the_read_only_parsers_reject(
     assert len(ran) == 1
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "node --test 2>&1 | grep -A10 'user.test' | head -20",
+        "git status --short && git add -A 2>&1; echo EXIT=$?",
+        "cd /nonexistent && npm test",
+    ],
+)
+def test_a_workspace_receipt_runs_shapes_the_wrapper_cannot_peel(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, command: str
+) -> None:
+    ran: list[object] = []
+    monkeypatch.setattr(sink, "run_workspace_contained", lambda *args, **kwargs: ran.append(args[0]) or 0)
+    assert (
+        sink.run_authorized_contained_test(
+            payload(command), workspace=tmp_path, timeout_seconds=20, authorize=lambda original: receipt()
+        )
+        == 0
+    )
+    assert ran == [payload(command)]
+    for denied in (None, receipt(observe_mode=True), receipt(required_execution_profile="pytest-readonly-v2")):
+        with pytest.raises(RestrictedPytestError) as error:
+            sink.run_authorized_contained_test(
+                payload(command),
+                workspace=tmp_path,
+                timeout_seconds=20,
+                authorize=lambda original, denied=denied: denied,
+            )
+        assert error.value.reason_code == "contained_test_authorization_failed"
+    assert len(ran) == 1
+
+
 def test_changed_evidence_before_launch_never_starts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(workspace_sink, "restricted_native", lambda *args, **kwargs: plan(tmp_path))
     started: list[object] = []

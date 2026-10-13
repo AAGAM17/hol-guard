@@ -247,3 +247,31 @@ fn reopened_reflog_cannot_become_a_bare_repository() {
         )));
     }
 }
+
+#[test]
+fn system_links_and_toolchain_config_stay_readable() {
+    let profile = workspace_profile::compose(&input("/w/proj"), &[], &[]).unwrap();
+    let metadata = profile
+        .lines()
+        .find(|line| line.starts_with("(allow file-read-metadata"))
+        .unwrap();
+    for link in ["/etc", "/tmp", "/var"] {
+        if Path::new(link).exists() {
+            assert!(
+                metadata.contains(&format!("(literal \"{link}\")")),
+                "{link}"
+            );
+        }
+    }
+    for file in [
+        "/private/var/select/developer_dir",
+        "/opt/homebrew/etc/gitconfig",
+        "/opt/homebrew/etc/openssl@3/openssl.cnf",
+        "/private/etc/ssl/openssl.cnf",
+    ] {
+        if Path::new(file).exists() {
+            assert!(profile.contains(&format!("(literal \"{file}\")")), "{file}");
+        }
+    }
+    assert!(!profile.contains("(subpath \"/private/var\")"));
+}

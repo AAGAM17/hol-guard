@@ -1451,10 +1451,6 @@
     max-width: var(--container-7xl);
   }
 
-  .max-w-56 {
-    max-width: calc(var(--spacing) * 56);
-  }
-
   .max-w-\[3\.25rem\] {
     max-width: 3.25rem;
   }
@@ -2757,10 +2753,6 @@
 
   .bg-\[\#059669\] {
     background-color: #059669;
-  }
-
-  .bg-\[\#e8f7ee\] {
-    background-color: #e8f7ee;
   }
 
   .bg-\[\#f8fafc\] {

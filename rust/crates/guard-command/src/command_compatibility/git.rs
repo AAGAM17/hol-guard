@@ -304,9 +304,17 @@ pub(super) fn observe_with_context(
         && inspection.is_some_and(|remaining| {
             crate::pretool::git_hash_object::read_operands(&remaining[1..]).is_some()
         });
+    // `init` is a built-in, so no alias can replace it. Creating a repository
+    // in the current directory with only a quiet flag or an initial branch
+    // name touches none of the porcelain owners above. Templates, separate
+    // git directories and other targets keep every owner uncertain.
+    let plain_init = command_index == 0
+        && command == "init"
+        && crate::pretool::init_arguments(&arguments[1..]).is_some();
     if plumbing
         || branch_listing
         || hash_read
+        || plain_init
         || (command_index == 0 && bounded_inspection(arguments))
         || inspection.is_some_and(bounded_inspection)
     {
@@ -371,103 +379,5 @@ pub(super) fn observe_with_context(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn observations(command: &str) -> CompatibilityObservations {
-        let model = crate::parse_command(
-            &serde_json::from_value(serde_json::json!({"command": command})).unwrap(),
-        )
-        .unwrap();
-        let mut result = CompatibilityObservations::default();
-        observe_with_context(
-            &model.segments[0],
-            0,
-            &mut result,
-            crate::pretool::PathContext::default(),
-        );
-        result
-    }
-
-    #[test]
-    fn fixed_read_only_inspections_do_not_invent_unrelated_git_owners() {
-        for command in [
-            "git rev-parse --show-toplevel",
-            "git rev-parse --git-dir",
-            "git rev-parse --abbrev-ref HEAD",
-            "git merge-base HEAD origin/main",
-            "git show-ref --verify refs/heads/main",
-            "git for-each-ref '--format=%(refname)' refs/heads",
-            "git rev-list --count HEAD",
-            "git ls-tree -r HEAD",
-            "git symbolic-ref --short HEAD",
-            "git config --get remote.origin.url",
-            "git config --global --get user.email",
-            "git config --list --show-origin",
-            "git apply --check workspace/patches/change.patch",
-        ] {
-            assert!(observations(command).rule_matches.is_empty(), "{command}");
-        }
-    }
-
-    #[test]
-    fn bounded_cached_diffs_leave_the_index_owner_to_the_read_proof() {
-        let owns_index = |command: &str| {
-            observations(command)
-                .rule_matches
-                .iter()
-                .any(|item| item.rule_id == "command.git.index-inspection")
-        };
-        for command in [
-            "git diff --cached",
-            "git diff --staged",
-            "git diff --cached --check",
-            "git diff --cached --numstat",
-            "git diff --cached --quiet",
-            "git diff --cached --stat",
-            "git diff --staged --name-only",
-            "git diff --cached --name-status HEAD",
-            "git diff --cached -U3 -- src/main.rs",
-            "git diff --no-ext-diff --cached --quiet",
-        ] {
-            assert!(!owns_index(command), "{command}");
-        }
-        for command in [
-            "git diff --staged --output=patch",
-            "git diff --cached -o patch",
-            "git diff --cached --ext-diff",
-            "git diff --cached --textconv",
-            "git diff --cached origin/main",
-            "git diff --cached src/main.rs",
-            "git -c diff.external=payload diff --cached",
-        ] {
-            assert!(owns_index(command), "{command}");
-        }
-    }
-
-    #[test]
-    fn inspection_exemption_does_not_cover_execution_routing_or_mutation() {
-        for command in [
-            "git -C workspace status",
-            "git -c alias.apply=payload apply --check change.patch",
-            "git -c core.pager=payload rev-parse HEAD",
-            "git config user.name payload",
-            "git config --unset user.name",
-            "git config --file /home/user/.aws/credentials --list",
-            "git config --get --file other.cfg key",
-            "git symbolic-ref HEAD refs/heads/other",
-            "git cat-file --textconv HEAD:file",
-            "git apply change.patch",
-            "git apply --check --unsafe-paths change.patch",
-            "git apply --check ../change.patch",
-            "git apply --check -",
-        ] {
-            let result = observations(command);
-            assert!(!result.rule_matches.is_empty(), "{command}");
-            assert!(
-                result.rule_matches.iter().all(|item| item.uncertainty),
-                "{command}"
-            );
-        }
-    }
-}
+#[path = "git_tests.rs"]
+mod tests;

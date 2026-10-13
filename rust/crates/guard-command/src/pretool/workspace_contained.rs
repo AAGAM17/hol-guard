@@ -103,7 +103,10 @@ fn branch_name(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '/' | '-'))
 }
 
-fn init_arguments(arguments: &[String]) -> Option<Vec<String>> {
+/// The canonical arguments of a `git init` that creates a repository in the
+/// current directory, or None for any other form (template, separate git
+/// directory, another target directory, unknown options).
+pub(crate) fn init_arguments(arguments: &[String]) -> Option<Vec<String>> {
     let mut result = Vec::new();
     let mut index = 0;
     while index < arguments.len() {

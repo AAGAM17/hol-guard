@@ -141,7 +141,10 @@ pub(super) fn submodules_are_inert(
     ]);
     let (status, bytes) = output(&mut index, deadline, LISTING_LIMIT)?;
     if !status.success() {
-        return None;
+        // Outside any repository there is no index and no gitlink, and
+        // status or diff stops during repository setup. Any other listing
+        // failure (a corrupt index, a timeout) stays unproven.
+        return outside_repository(base, deadline)?.then_some(true);
     }
     // Gitlinks may launch children whose local configuration is unprobed.
     Some(
@@ -154,6 +157,14 @@ pub(super) fn submodules_are_inert(
                     .any(|mode| record.starts_with(*mode))
             }),
     )
+}
+
+/// Whether Git, in the same environment and directory, finds no repository.
+fn outside_repository(base: &Command, deadline: Instant) -> Option<bool> {
+    let mut lookup = copy_command(base)?;
+    lookup.args(["--no-pager", "rev-parse", "--git-dir"]);
+    let (status, _) = output(&mut lookup, deadline, 4096)?;
+    Some(status.code() == Some(128))
 }
 
 /// Copy only the explicit lookup environment and directory, never ambient state.

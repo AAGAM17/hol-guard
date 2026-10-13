@@ -516,10 +516,9 @@
         "path": [
           "src/codex_plugin_scanner/guard/runtime/data_flow.py",
           "src/codex_plugin_scanner/guard/runtime/github_actions_read_workflow.py",
-          "src/codex_plugin_scanner/guard/runtime/github_command_capabilities.py",
-          "src/codex_plugin_scanner/guard/runtime/kubernetes_*.py"
+          "src/codex_plugin_scanner/guard/runtime/github_command_capabilities.py"
         ],
-        "reason": "Reviewed and retained in runtime scope: cli/commands_support_runtime_artifacts imports these at module load to recognise non-executing GitHub Actions reads and Kubernetes secret reads when it builds runtime artifacts. github_actions_read_workflow imports github_command_capabilities, which returns unknown when the native GitHub classifier is unavailable and never re-derives a capability in Python. The sensitive-request classifiers that used to reach them eagerly now run in the resident, so they are reached through that lazily loaded artifact module and stay counted."
+        "reason": "Reviewed and retained in runtime scope: cli/commands_support_runtime_artifacts imports these at module load to recognise non-executing GitHub Actions reads when it builds runtime artifacts. github_actions_read_workflow imports github_command_capabilities, which returns unknown when the native GitHub classifier is unavailable and never re-derives a capability in Python. The sensitive-request classifiers that used to reach them eagerly now run in the resident, so they are reached through that lazily loaded artifact module and stay counted."
       },
       {
         "path": "src/codex_plugin_scanner/guard/retry_lineage.py",

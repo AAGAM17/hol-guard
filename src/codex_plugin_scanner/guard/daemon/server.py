@@ -27,7 +27,6 @@ from urllib.parse import parse_qs, parse_qsl, urlparse
 
 from ...version import __version__
 from ..adapters import get_adapter
-from ..adapters.base import HarnessContext
 from ..aibom_cli import _AIBOM_AUTO_SYNC_INTERVAL_SECONDS, sync_aibom_snapshots_if_due
 from ..approval_gate import (
     ApprovalGateError,
@@ -44,7 +43,6 @@ from ..directory_path_authority import (
     DirectoryPathTrustError,
     trusted_guard_directory_roots,
     validate_guard_directory_path,
-    validated_owned_temporary_workspace,
 )
 from ..fork_safety import forget_in_child
 from ..json_transport import escape_json_for_html
@@ -98,9 +96,6 @@ from ..runtime.runner import (
 from ..runtime.surface_server import GuardSurfaceRuntime
 from ..runtime_artifact_reconciliation import (
     reconcile_runtime_artifacts,
-)
-from ..shims import (
-    package_shim_status,
 )
 from ..sqlite_recovery import quarantined_store_summary
 from ..store import GuardStore
@@ -198,20 +193,6 @@ class _HookPathValidationError(ValueError):
         parameter_slug = parameter.replace("-", "_")
         super().__init__(f"invalid_hook_{parameter_slug}_path")
         self.code = f"invalid_hook_{parameter_slug}_path"
-
-
-def _build_snapshot_payload(context: HarnessContext) -> dict[str, object]:
-    """Return a lightweight snapshot dict including package manager shim coverage."""
-    status = package_shim_status(context)
-    return {
-        "package_manager_coverage": {
-            "detected_managers": status.get("detected_managers", []),
-            "path_active": status.get("active_managers", []),
-            "shims_installed": status.get("active_managers", []),
-            "undetected_managers": status.get("undetected_managers", []),
-            "unsupported_managers": [],
-        }
-    }
 
 
 _MAX_CONCURRENT_DAEMON_REQUESTS = 32
@@ -2713,14 +2694,6 @@ class _GuardDaemonHandler(
         except DirectoryPathTrustError as error:
             raise _HookPathValidationError(parameter, error.reason) from error
 
-    @staticmethod
-    def _is_owned_temporary_hook_workspace(candidate: str) -> bool:
-        return _GuardDaemonHandler._validated_owned_temporary_hook_workspace(candidate) is not None
-
-    @staticmethod
-    def _validated_owned_temporary_hook_workspace(candidate: str) -> Path | None:
-        return validated_owned_temporary_workspace(candidate)
-
     def _validated_hook_guard_home(self, value: str | None) -> str | None:
         if value is None:
             return None
@@ -3295,13 +3268,6 @@ class GuardDaemonServer:
         if self._command_activity_maintenance_thread.is_alive():
             raise RuntimeError("command activity maintenance is still stopping")
         self._command_activity_maintenance_thread = None
-
-    def _join_command_activity_maintenance(self) -> None:
-        if self._command_activity_maintenance_thread is None:
-            return
-        self._command_activity_maintenance_thread.join(timeout=5)
-        if not self._command_activity_maintenance_thread.is_alive():
-            self._command_activity_maintenance_thread = None
 
     def _command_activity_maintenance_loop(self) -> None:
         if self._shutdown_started.is_set():

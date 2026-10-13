@@ -110,3 +110,34 @@ def test_extension_failure_keeps_the_native_reason_without_a_generic_hint() -> N
 
 def test_default_deny_text_is_unchanged_without_native_context() -> None:
     assert "safe, permitted alternative" in safe_alternative_reason("Blocked.")
+
+
+def test_unbound_review_does_not_tell_the_agent_to_wait_for_approval() -> None:
+    # No retry binding: a one-time approval cannot match the retry, so waiting sends the agent into a second block.
+    text = safe_alternative_reason(
+        "Blocked.", reason_code="native_command_review_required", approval_queued=True, retry_reuses_approval=False
+    )
+    assert "approving it there will not let you run it" in text
+    assert "Do not retry it." in text
+    assert "Do not retry the same action until it is approved" not in text
+
+
+def test_unbound_review_with_exact_action_names_always_allow_as_the_only_way_through() -> None:
+    text = safe_alternative_reason(
+        "Blocked.",
+        reason_code="native_command_review_required",
+        approval_queued=True,
+        retry_reuses_approval=False,
+        exact_action_allowable=True,
+    )
+    assert "approving it just once will not let you run it" in text
+    assert '"Always allow exact action"' in text
+    assert "Do not retry the same action until it is approved" not in text
+
+
+def test_bound_review_keeps_the_wait_for_approval_text() -> None:
+    text = safe_alternative_reason(
+        "Blocked.", reason_code="native_pre_tool_unknown_review", approval_queued=True, exact_action_allowable=True
+    )
+    assert "Do not retry the same action until it is approved" in text
+    assert "will not let you run it" not in text

@@ -319,6 +319,7 @@ pub(super) fn exact_safe_segment_with_context(
         }
         "sed" => {
             safe_reads::safe_sed_arguments(&segment.arguments, segment.pipeline_index > 0, context)
+                || super::sed_edits::safe_in_place_segment(model, segment, context)
         }
         "python" | "python3" | "node" | "nodejs" => {
             super::safe_scalar::version_probe_arguments(basename, &segment.arguments)

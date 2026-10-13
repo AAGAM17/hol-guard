@@ -190,6 +190,9 @@ def _session_worktree(org: Path, home: Path) -> None:
     _write(portal / "deploy.sh", "#!/bin/sh\n# cronjob rollout\necho deploy\n")
     _write(portal / "scripts" / "report.ts", "console.log(process.env.REPORT_WINDOW ?? '24h');\n")
     _write(portal / ".gitignore", "node_modules/\n.deploy-production.lock.d/\n")
+    _write(
+        portal / "src" / "app" / "page.tsx", "export default function Page() {\n  return <a href={OLD}>Home</a>;\n}\n"
+    )
     _git(portal, "add", "-A", home=home)
     _git(portal, "commit", "--quiet", "-m", "report script", home=home)
     _git(portal, "remote", "add", "origin", "https://github.com/example-org/app-portal.git", home=home)

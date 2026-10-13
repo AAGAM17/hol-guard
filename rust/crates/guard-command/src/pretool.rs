@@ -87,6 +87,7 @@ mod search_scope;
 mod search_scope_filter;
 mod search_scope_glob;
 mod search_scope_ignore;
+pub(crate) mod sed_edits;
 mod segment_proof;
 mod shell_script;
 mod stdin_filters;

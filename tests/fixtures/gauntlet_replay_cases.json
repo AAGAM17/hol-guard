@@ -34,7 +34,6 @@
     "session-printf-gitignore-dotfile@pi": "native_command_review_required",
     "session-python-unittest@pi": "native_command_review_required",
     "session-rm-workspace-file@pi": "native_command_extension_review",
-    "session-sed-inplace-workspace-file@pi": "native_command_review_required",
     "session-tool-help-head@pi": "native_command_review_required",
     "session-vitest-run-tail@pi": "native_command_review_required",
     "session-which-type-echo@pi": "native_command_review_required",

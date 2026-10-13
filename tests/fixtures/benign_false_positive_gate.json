@@ -13,7 +13,6 @@
     "session-ls-echo-cd-repo-git-status-remote-log@omp": "native_git_execution_context_review",
     "session-ls-echo-cd-repo-git-status-remote-log@zcode": "native_git_execution_context_review",
     "session-rm-workspace-file@cursor": "native_command_extension_review",
-    "session-sed-inplace-workspace-file@cursor": "native_command_review_required",
     "session-sibling-cd-vite-build-workspace@claude-code": "native_command_review_required",
     "session-sibling-cd-vite-build-workspace@codex": "native_command_review_required",
     "session-sibling-cd-vite-build-workspace@omp": "native_command_review_required",
@@ -1226,6 +1225,21 @@
       },
       "cwd": "org_app",
       "expect": "not_allow"
+    },
+    {
+      "id": "queue-sed-in-place-workspace-edit",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "sed -i '' 's|href={OLD}|href={next}|' src/app/page.tsx"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
     },
     {
       "id": "git-tmp-worktree-status",
@@ -6196,7 +6210,6 @@
     "session-ls-echo-cd-repo-git-status-remote-log@omp": "unassigned",
     "session-ls-echo-cd-repo-git-status-remote-log@zcode": "unassigned",
     "session-rm-workspace-file@cursor": "unassigned",
-    "session-sed-inplace-workspace-file@cursor": "unassigned",
     "session-sibling-cd-vite-build-workspace@claude-code": "unassigned",
     "session-sibling-cd-vite-build-workspace@codex": "unassigned",
     "session-sibling-cd-vite-build-workspace@omp": "unassigned",

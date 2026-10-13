@@ -8,14 +8,6 @@
     "session-echo-add-commit-message-init@codex": "native_command_review_required",
     "session-echo-add-commit-message-init@omp": "native_command_review_required",
     "session-echo-add-commit-message-init@zcode": "native_command_review_required",
-    "session-git-dir-bare-remote-config-list@claude-code": "native_command_review_required",
-    "session-git-dir-bare-remote-config-list@codex": "native_command_review_required",
-    "session-git-dir-bare-remote-config-list@omp": "native_command_review_required",
-    "session-git-dir-bare-remote-config-list@zcode": "native_command_review_required",
-    "session-git-dir-log@claude-code": "native_command_review_required",
-    "session-git-dir-log@codex": "native_command_review_required",
-    "session-git-dir-log@omp": "native_command_review_required",
-    "session-git-dir-log@zcode": "native_command_review_required",
     "session-ls-echo-cd-repo-git-status-remote-log@claude-code": "native_git_execution_context_review",
     "session-ls-echo-cd-repo-git-status-remote-log@codex": "native_git_execution_context_review",
     "session-ls-echo-cd-repo-git-status-remote-log@omp": "native_git_execution_context_review",
@@ -2866,6 +2858,54 @@
       "expect": "allow"
     },
     {
+      "id": "queue-git-c-sibling-config-set",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${ORG_WT} config rehearsal.probe true"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-git-c-sibling-config-set-unset",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${ORG_WT} config rehearsal.probe true && git -C ${ORG_WT} config --unset rehearsal.probe && echo \"git write OK\""
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-git-init-scratch",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git init -q ${PRIVATE_TMP}/guard-scratch2"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
       "id": "neg-du-ssh",
       "fix_area": "negative",
       "harnesses": [
@@ -4475,6 +4515,22 @@
       "expect": "allow"
     },
     {
+      "id": "queue-git-checkout-new-branch-log",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git checkout -b fix/report-followup origin/main 2>&1 | tail -2 && git log --oneline -1"
+      },
+      "cwd": "org_wt",
+      "expect": "allow"
+    },
+    {
       "id": "session-git-stash",
       "fix_area": "git",
       "harnesses": [
@@ -4574,6 +4630,38 @@
       "expect": "allow"
     },
     {
+      "id": "queue-git-c-sibling-grep-head",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${ORG_WT} grep -l \"SOME_TOKEN_NAME\" HEAD"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-git-c-sibling-grep-pathspec-head",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${ORG_WT} grep -l report HEAD -- scripts | head"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
       "id": "session-git-log-rev-chain",
       "fix_area": "git",
       "harnesses": [
@@ -4585,6 +4673,22 @@
       "tool": "shell",
       "tool_input": {
         "command": "git log --format='%h %ad %s' --date=iso -1 HEAD~1; echo ---; git rev-parse HEAD; echo ---; git log --oneline HEAD~1..HEAD | wc -l"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-git-log-range-name-only",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git log --oneline HEAD~1..HEAD --name-only --diff-filter=A -- 'src/*' '*migration*' 2>/dev/null"
       },
       "cwd": "org_app",
       "expect": "allow"
@@ -5572,14 +5676,6 @@
     "session-echo-add-commit-message-init@codex": "unassigned",
     "session-echo-add-commit-message-init@omp": "unassigned",
     "session-echo-add-commit-message-init@zcode": "unassigned",
-    "session-git-dir-bare-remote-config-list@claude-code": "unassigned",
-    "session-git-dir-bare-remote-config-list@codex": "unassigned",
-    "session-git-dir-bare-remote-config-list@omp": "unassigned",
-    "session-git-dir-bare-remote-config-list@zcode": "unassigned",
-    "session-git-dir-log@claude-code": "unassigned",
-    "session-git-dir-log@codex": "unassigned",
-    "session-git-dir-log@omp": "unassigned",
-    "session-git-dir-log@zcode": "unassigned",
     "session-ls-echo-cd-repo-git-status-remote-log@claude-code": "unassigned",
     "session-ls-echo-cd-repo-git-status-remote-log@codex": "unassigned",
     "session-ls-echo-cd-repo-git-status-remote-log@omp": "unassigned",

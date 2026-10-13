@@ -42,6 +42,7 @@ mod git_config;
 pub(crate) mod git_config_reads;
 pub(crate) mod git_grep;
 pub(crate) mod git_hash_object;
+pub(crate) mod git_init_target;
 mod git_read_floor;
 mod git_reads;
 mod repo_create_reason;
@@ -505,6 +506,14 @@ fn evaluate_single_command(
     }
     if let Some((reason_code, reason)) =
         git_remote_ops::exact_safe_command(&model, context, deadline, execution_environment)
+            .or_else(|| {
+                let environment = execution_environment;
+                git_config_reads::writes::exact_safe_command(&model, context, deadline, environment)
+            })
+            .or_else(|| {
+                let environment = execution_environment;
+                git_init_target::exact_safe_command(&model, context, deadline, environment)
+            })
     {
         return Ok(pretool_decision(model, "allow", reason_code, reason));
     }

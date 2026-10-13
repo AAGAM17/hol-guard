@@ -409,7 +409,9 @@ fn registered_worktree_of_workspace(target: &std::path::Path, workspace: &std::p
         .is_some_and(|backlink| backlink == entry)
 }
 
-/// `git --git-dir=<bare repository>` reads a repository without a work tree.
+/// `git --git-dir=<bare repository>` reads a repository without a work tree,
+/// and `--git-dir=<work tree>/.git` reads the repository of a work tree at
+/// or below the current directory.
 /// The directory must be a real (non-symlink) bare-shaped git directory
 /// (`HEAD`, `objects/`, `refs/`) owned by the current user that clears the
 /// same non-hidden and sensitive-path screens as a `-C` route outside home.
@@ -447,17 +449,28 @@ pub(crate) fn git_dir_route_within_scope(value: &str, context: super::PathContex
             }
         })
     };
+    // A work tree's own `.git` directory passes the screens through its work
+    // tree. Git then takes the current directory as the work tree, so the
+    // repository must sit inside it; a `.git` reached from another checkout
+    // would pair one repository with an unrelated tree.
+    let work_tree_git = git_dir.file_name().is_some_and(|name| name == ".git");
+    let screened = match git_dir.parent() {
+        Some(parent) if work_tree_git => parent,
+        _ => git_dir.as_path(),
+    };
     if git_dir == home
+        || (work_tree_git && !screened.starts_with(&workspace))
+        || screened == home
         || !real("HEAD", false)
         || !real("objects", true)
         || !real("refs", true)
-        || !git_dir.components().all(|part| match part {
+        || !screened.components().all(|part| match part {
             std::path::Component::RootDir => true,
             std::path::Component::Normal(name) => !name.to_string_lossy().starts_with('.'),
             _ => false,
         })
-        || !super::read_paths::resolved_path_allowed(&git_dir, context.home_dir, context.cwd)
-        || super::read_paths::inside_agent_state_tree(&git_dir, context.home_dir)
+        || !super::read_paths::resolved_path_allowed(screened, context.home_dir, context.cwd)
+        || super::read_paths::inside_agent_state_tree(screened, context.home_dir)
     {
         return false;
     }

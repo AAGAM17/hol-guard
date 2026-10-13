@@ -24,7 +24,9 @@ pub(super) fn git_helper_context_required(
 }
 
 /// Whether a Git segment's operation can start a configured helper.
-fn segment_runs_helpers(segment: &crate::CommandSegmentV1, context: PathContext<'_>) -> bool {
+fn segment_runs_helpers(original: &crate::CommandSegmentV1, context: PathContext<'_>) -> bool {
+    let stripped = super::segment_proof::without_stderr_merge(original);
+    let segment = stripped.as_ref().unwrap_or(original);
     segment.executable.as_deref().is_some_and(|executable| {
         executable_basename(executable) == "git"
             // Leading `-C`/`-P` options precede the subcommand.
@@ -78,10 +80,13 @@ pub(super) fn git_helpers_proven_inert(
         cwd: destination.as_deref().or(context.cwd),
         ..context
     };
-    model.segments.iter().enumerate().all(|(index, segment)| {
+    model.segments.iter().enumerate().all(|(index, original)| {
         // `git merge-base ... | xargs git log` runs its Git read as the child.
         let child = super::fanout_reads::git_xargs_child(model, index);
-        let segment = child.as_ref().unwrap_or(segment);
+        let original = child.as_ref().unwrap_or(original);
+        // A trailing `2>&1` is a redirect, not a Git argument.
+        let stripped = super::segment_proof::without_stderr_merge(original);
+        let segment = stripped.as_ref().unwrap_or(original);
         segment.executable.as_deref().is_none_or(|executable| {
             executable_basename(executable) != "git"
                 // The exact-safe proof already cleared Git reads that start no

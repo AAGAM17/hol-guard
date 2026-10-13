@@ -66,9 +66,10 @@ fn count(value: &str) -> bool {
     !value.is_empty() && value.len() <= 6 && value.bytes().all(|byte| byte.is_ascii_digit())
 }
 
-/// Whether `arguments`, the tokens after the `grep` subcommand, stay inside
-/// the read-only grammar.
-pub(crate) fn read_form(arguments: &[String]) -> bool {
+/// The revisions and pathspecs when `arguments`, the tokens after the `grep`
+/// subcommand, stay inside the read-only grammar. Patterns are search text,
+/// not paths, and are left out.
+pub(crate) fn targets(arguments: &[String]) -> Option<&[String]> {
     let mut patterns = 0usize;
     let mut index = 0;
     while let Some(argument) = arguments.get(index) {
@@ -83,9 +84,7 @@ pub(crate) fn read_form(arguments: &[String]) -> bool {
             continue;
         }
         if argument == "-e" {
-            if arguments.get(index).is_none() {
-                return false;
-            }
+            arguments.get(index)?;
             index += 1;
             patterns += 1;
             continue;
@@ -97,58 +96,60 @@ pub(crate) fn read_form(arguments: &[String]) -> bool {
             if name == "--color" && matches!(value, "never" | "auto" | "always") {
                 continue;
             }
-            return false;
+            return None;
         }
         if argument == "--color" {
             continue;
         }
         if COUNTS.contains(&argument.as_str()) {
             if !arguments.get(index).is_some_and(|value| count(value)) {
-                return false;
+                return None;
             }
             index += 1;
             continue;
         }
         if argument.starts_with("--") {
-            return false;
+            return None;
         }
         match short_cluster(&argument[1..]) {
             Some(Short::Complete) => {}
             Some(Short::NeedsCount) => {
                 if !arguments.get(index).is_some_and(|value| count(value)) {
-                    return false;
+                    return None;
                 }
                 index += 1;
             }
             Some(Short::NeedsPattern) => {
-                if arguments.get(index).is_none() {
-                    return false;
-                }
+                arguments.get(index)?;
                 index += 1;
                 patterns += 1;
             }
             Some(Short::AttachedPattern) => patterns += 1,
-            None => return false,
+            None => return None,
         }
     }
-    let mut operands = arguments[index..].iter();
+    let mut start = index;
     if patterns == 0 {
         // The first operand is the pattern.
-        match operands.next() {
-            Some(pattern) if pattern != "--" => {}
-            _ => return false,
+        match arguments.get(start) {
+            Some(pattern) if pattern != "--" => start += 1,
+            _ => return None,
         }
     }
     // Revisions and pathspecs. A later option is an error in Git; refuse it
     // here rather than rely on that.
+    let targets = &arguments[start..];
     let mut paths = false;
-    operands.all(|operand| {
-        if operand == "--" && !paths {
-            paths = true;
-            return true;
-        }
-        !operand.is_empty() && !operand.starts_with('-')
-    })
+    targets
+        .iter()
+        .all(|operand| {
+            if operand == "--" && !paths {
+                paths = true;
+                return true;
+            }
+            !operand.is_empty() && !operand.starts_with('-')
+        })
+        .then_some(targets)
 }
 
 enum Short {
@@ -193,11 +194,11 @@ fn short_cluster(cluster: &str) -> Option<Short> {
 
 #[cfg(test)]
 mod tests {
-    use super::read_form;
+    use super::targets;
 
     fn form(command: &str) -> bool {
         let arguments: Vec<String> = command.split(' ').map(str::to_owned).collect();
-        read_form(&arguments)
+        targets(&arguments).is_some()
     }
 
     #[test]
@@ -220,6 +221,20 @@ mod tests {
             "--color=never --heading --break needle",
         ] {
             assert!(form(command), "{command}");
+        }
+    }
+
+    #[test]
+    fn patterns_are_not_targets() {
+        for (command, expected) in [
+            ("-l SOME_TOKEN_NAME HEAD", &["HEAD"][..]),
+            ("-l SOME_TOKEN_NAME HEAD -- src", &["HEAD", "--", "src"][..]),
+            ("-e SOME_TOKEN_NAME -- .env", &["--", ".env"][..]),
+            ("-n needle", &[][..]),
+        ] {
+            let arguments: Vec<String> = command.split(' ').map(str::to_owned).collect();
+            let expected: Vec<String> = expected.iter().map(|value| (*value).to_owned()).collect();
+            assert_eq!(targets(&arguments), Some(&expected[..]), "{command}");
         }
     }
 

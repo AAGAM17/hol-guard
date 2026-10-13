@@ -30,6 +30,18 @@ pub(super) fn safe_git_arguments(
             Some((subcommand, rest)) if subcommand == "branch" => {
                 return leading_safe && super::git_branch_listing::is_listing(rest);
             }
+            // The pattern is search text, not a path: only the revisions and
+            // pathspecs pass the path screen. Grep pages by default, so the
+            // configuration probe has to clear the pager first.
+            Some((subcommand, rest)) if subcommand == "grep" => {
+                return leading_safe
+                    && allow_helper_context
+                    && super::git_grep::targets(rest).is_some_and(|targets| {
+                        !targets.iter().any(|value| {
+                            value.starts_with(':') || super::sensitive_read_path_argument(value)
+                        })
+                    });
+            }
             Some((subcommand, rest)) if subcommand == "hash-object" => {
                 return leading_safe
                     && super::git_hash_object::safe_read(rest, allow_helper_context, context);
@@ -72,11 +84,6 @@ pub(super) fn safe_git_arguments(
                             | "--fork-point"
                     )
             });
-    }
-    if subcommand == "grep" {
-        // Prints matches only. It pages by default, so the configuration
-        // probe has to clear the pager first.
-        return allow_helper_context && super::git_grep::read_form(&arguments[1..]);
     }
     if subcommand == "config" {
         // Only the configuration probe can prove what the read prints.

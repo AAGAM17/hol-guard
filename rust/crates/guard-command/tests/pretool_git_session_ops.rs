@@ -2,6 +2,9 @@
 
 use crate::git_helper_fixture as fixture;
 
+#[path = "pretool_git_session_ops/context.rs"]
+mod context;
+
 use fixture::{evaluate_pre_tool_envelope_with_context, FixtureCleanup};
 use serde_json::json;
 use std::os::unix::fs::PermissionsExt;

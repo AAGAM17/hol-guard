@@ -36,6 +36,12 @@ pub(super) fn execution_free(
     ) {
         return None;
     }
+    // A plain configuration write is no read; its own proof decides it.
+    if operation == "config"
+        && super::git_config_reads::writes::plain_write(&remaining[1..]).is_some()
+    {
+        return None;
+    }
     let key = (
         executable.to_owned(),
         arguments.to_vec(),

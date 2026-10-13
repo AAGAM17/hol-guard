@@ -36,6 +36,14 @@ pub(super) fn requires_review(
         .zip(&children)
         .map(|(segment, child)| child.as_ref().unwrap_or(segment))
         .collect();
+    // A trailing `2>&1` is a redirect, not a Git argument.
+    let arguments: Vec<Vec<String>> = segments
+        .iter()
+        .map(|segment| {
+            super::segment_proof::without_stderr_merge(segment)
+                .map_or_else(|| segment.arguments.clone(), |stripped| stripped.arguments)
+        })
+        .collect();
     let inspections: Vec<Option<bool>> = segments
         .iter()
         .enumerate()
@@ -47,7 +55,7 @@ pub(super) fn requires_review(
                 .and_then(|executable| {
                     super::git_config::execution_free(
                         executable,
-                        &segment.arguments,
+                        &arguments[index],
                         read_context,
                         deadline,
                         execution_environment,
@@ -83,9 +91,9 @@ pub(super) fn requires_review(
             || super::git_remote_ops::verified_fetch(segment, context)
             || (inspections[prior] == Some(true)
                 && segment.environment_names.is_empty()
-                && (super::git_reads::safe_git_arguments(&segment.arguments, true, read_context)
+                && (super::git_reads::safe_git_arguments(&arguments[prior], true, read_context)
                     || super::git_reads::inspection_writes_nothing(
-                        &segment.arguments,
+                        &arguments[prior],
                         read_context,
                     )))
     };

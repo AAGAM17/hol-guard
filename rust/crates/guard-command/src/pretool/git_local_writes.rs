@@ -1,6 +1,7 @@
 //! Local Git writes that keep every change reachable: `git add`, a non-forced
-//! `git rm`, `git commit -m`, a new branch at `HEAD`, a non-forced branch
-//! rename and a plain stash push.
+//! `git rm`, `git commit -m`, a new branch at `HEAD` or at a start point that
+//! replaces no untracked file, a non-forced branch rename and a plain stash
+//! push, with Git reads the configuration probe proves helper-free around them.
 //! The workspace sandbox runs them in a main checkout, but a linked worktree
 //! keeps its index, refs and objects in the shared Git directory the sandbox
 //! cannot write, and some hosts have no sandbox, so they would stop at review.
@@ -30,6 +31,13 @@ use guard_contracts::{
 };
 use std::time::Instant;
 
+#[path = "git_local_writes_forms.rs"]
+mod forms;
+#[path = "git_local_writes_start.rs"]
+mod start;
+
+use forms::{add, branch_rename, commit, rm};
+
 pub(crate) const REASON: &str = "native_exact_safe_git_local_write";
 pub(crate) const PUBLISH_REASON: &str = "native_exact_safe_git_publish_chain";
 
@@ -56,6 +64,7 @@ const READ_RULES: &[&str] = &[
     "command.git.diff",
     "command.git.show",
     "command.git.ls-files",
+    "command.git.grep",
 ];
 
 const INDEX_HOOKS: &[&str] = &["post-index-change"];
@@ -194,6 +203,7 @@ fn proven(
         ..context
     };
     let mut writes: Vec<(usize, &'static [&'static str])> = Vec::new();
+    let mut starts = Vec::new();
     let mut safe = Vec::new();
     let mut created: Vec<(usize, &str)> = Vec::new();
     let mut moved = false;
@@ -209,8 +219,9 @@ fn proven(
             }
             continue;
         }
-        if let Some(hooks) = write_hooks(segment) {
+        if let Some((hooks, point)) = write_hooks(segment) {
             writes.push((index, hooks));
+            starts.extend(point);
             match created_branch(segment) {
                 Some(name) => created.push((index, name)),
                 None => moved |= moves_head(segment),
@@ -228,7 +239,9 @@ fn proven(
             proposal = true;
             continue;
         }
-        if !super::segment_proof::exact_safe_segment_with_context(model, segment, false, context) {
+        if !super::segment_proof::exact_safe_segment_with_context(model, segment, false, context)
+            && !configured_read(model, index, context, deadline, execution_environment)
+        {
             return None;
         }
         safe.push(index);
@@ -281,7 +294,18 @@ fn proven(
     }
     let probe = Probe::new("git", &[], context, deadline, execution_environment)?;
     let (effective, repository) = probe.config()?;
-    if !inert(&effective, &repository) || !writes.iter().all(|(_, hooks)| probe.hooks_inert(hooks))
+    // A configuration included for the branch a checkout leaves would apply
+    // to the reads after it without having been probed.
+    let branch_scoped = writes.iter().any(|(_, hooks)| *hooks == CHECKOUT_HOOKS)
+        && effective
+            .keys()
+            .any(|key| key.to_ascii_lowercase().starts_with("includeif.onbranch"));
+    if branch_scoped
+        || !inert(&effective, &repository)
+        || !writes.iter().all(|(_, hooks)| probe.hooks_inert(hooks))
+        || !starts
+            .iter()
+            .all(|point| start::replaces_nothing(&probe, point))
     {
         return None;
     }
@@ -336,10 +360,38 @@ fn moves_head(original: &CommandSegmentV1) -> bool {
         .is_none_or(|command| matches!(command.as_str(), "checkout" | "switch" | "branch"))
 }
 
+/// A Git read whose configuration the session probe proves starts no
+/// helper. The writes proven here change no configuration it reads.
+fn configured_read(
+    model: &CanonicalCommandV1,
+    index: usize,
+    context: super::PathContext<'_>,
+    deadline: Option<Instant>,
+    execution_environment: Option<&GuardExecutionEnvironmentV1>,
+) -> bool {
+    let original = &model.segments[index];
+    let stripped = super::segment_proof::without_stderr_merge(original);
+    let segment = stripped.as_ref().unwrap_or(original);
+    segment.executable.as_deref() == Some("git")
+        && segment.environment_names.is_empty()
+        && segment.wrapper_chain.is_empty()
+        && !segment.path_overridden
+        && super::directory_targets::drive_targets_quoted(segment)
+        && super::git_config::execution_free(
+            "git",
+            &segment.arguments,
+            context,
+            deadline,
+            execution_environment,
+            super::git_helper_context::stdout_piped(model, index),
+        ) == Some(true)
+        && super::git_reads::safe_git_arguments(&segment.arguments, true, context)
+}
+
 /// The hooks a proven write form runs, or `None` when `original` is not one.
 /// Leading Git options such as `-c` or `-C` are refused: they can point the
 /// command at another repository or configuration.
-fn write_hooks(original: &CommandSegmentV1) -> Option<&'static [&'static str]> {
+fn write_hooks(original: &CommandSegmentV1) -> Option<(&'static [&'static str], Option<String>)> {
     let stripped = super::segment_proof::without_stderr_merge(original);
     let segment = stripped.as_ref().unwrap_or(original);
     if segment.executable.as_deref() != Some("git")
@@ -352,105 +404,19 @@ fn write_hooks(original: &CommandSegmentV1) -> Option<&'static [&'static str]> {
         return None;
     }
     let words: Vec<&str> = segment.arguments.iter().map(String::as_str).collect();
-    match words.split_first()? {
+    let hooks = match words.split_first()? {
         (&"add", rest) => add(rest).then_some(INDEX_HOOKS),
         (&"rm", rest) => rm(rest).then_some(INDEX_HOOKS),
         (&"commit", rest) => commit(rest).then_some(COMMIT_HOOKS),
         (&"branch", rest) => branch_rename(rest).then_some(BRANCH_HOOKS),
         _ => super::workspace_contained::keeping_arguments(&segment.arguments)
             .then_some(CHECKOUT_HOOKS),
+    };
+    if let Some(hooks) = hooks {
+        return Some((hooks, None));
     }
-}
-
-/// Options `allowed` accepts, then pathspecs, with `--` ending the options.
-fn pathspecs(rest: &[&str], allowed: impl Fn(&str) -> bool) -> bool {
-    let mut options = true;
-    rest.iter().all(|word| {
-        if options && *word == "--" {
-            options = false;
-            true
-        } else if options && word.starts_with('-') {
-            allowed(word)
-        } else {
-            !word.is_empty()
-        }
-    })
-}
-
-fn add(rest: &[&str]) -> bool {
-    pathspecs(rest, |option| {
-        matches!(
-            option,
-            "-A" | "--all"
-                | "-u"
-                | "--update"
-                | "-v"
-                | "--verbose"
-                | "-n"
-                | "--dry-run"
-                | "-N"
-                | "--intent-to-add"
-                | "--ignore-errors"
-        )
-    })
-}
-
-fn rm(rest: &[&str]) -> bool {
-    pathspecs(rest, |option| {
-        matches!(
-            option,
-            "-q" | "--quiet" | "-r" | "--cached" | "-n" | "--dry-run" | "--ignore-unmatch"
-        )
-    })
-}
-
-/// A commit whose message is on the command line, so no editor starts.
-fn commit(rest: &[&str]) -> bool {
-    let (mut message, mut amend, mut no_edit) = (false, false, false);
-    let mut options = true;
-    let mut words = rest.iter();
-    while let Some(word) = words.next() {
-        if !options || !word.starts_with('-') {
-            if word.is_empty() {
-                return false;
-            }
-            continue;
-        }
-        match *word {
-            "--" => options = false,
-            "-m" | "--message" | "-am" => {
-                if words.next().is_none() {
-                    return false;
-                }
-                message = true;
-            }
-            value if value.starts_with("--message=") => message = true,
-            value if value.len() > 2 && value.starts_with("-m") => message = true,
-            "-q" | "--quiet" | "-a" | "--all" | "-s" | "--signoff" | "-n" | "--no-verify"
-            | "--allow-empty" | "--no-gpg-sign" => {}
-            "--amend" => amend = true,
-            "--no-edit" => no_edit = true,
-            _ => return false,
-        }
-    }
-    message || (amend && no_edit)
-}
-
-/// `branch -m NEW` or `branch -m OLD NEW`, options first. A rename moves the
-/// ref with its reflog and refuses an existing target, so nothing becomes
-/// unreachable. `-M`, `--force`, a copy and every other option are refused.
-fn branch_rename(rest: &[&str]) -> bool {
-    let mut moved = false;
-    let mut names = Vec::new();
-    for word in rest {
-        match *word {
-            "-m" | "--move" if !moved && names.is_empty() => moved = true,
-            "-q" | "--quiet" if names.is_empty() => {}
-            name if super::worktree_add::valid_branch_name(name) => names.push(name),
-            _ => return false,
-        }
-    }
-    moved && matches!(names.len(), 1 | 2)
+    let point = start::start_point(&segment.arguments)?;
+    Some((CHECKOUT_HOOKS, Some(point.to_owned())))
 }
 
 /// Whether the effective configuration lets these writes start no program.

@@ -116,6 +116,12 @@ impl Probe {
         line(&output)
     }
 
+    /// Everything a successful query prints, or `None`.
+    pub(super) fn output(&self, arguments: &[&str]) -> Option<Vec<u8>> {
+        let (status, output) = self.run(true, arguments, CONFIG_LIMIT)?;
+        status.success().then_some(output)
+    }
+
     /// Effective and repository-scoped configuration, includes followed.
     pub(super) fn config(
         &self,

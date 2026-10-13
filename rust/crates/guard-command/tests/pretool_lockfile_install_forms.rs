@@ -1,6 +1,8 @@
 #![cfg(unix)]
 
-use crate::pretool_lockfile_install::{Lab, BUN, BUN_LOCK, PACKAGE_JSON};
+use crate::pretool_lockfile_install::{
+    Lab, BUN, BUN_LOCK, NPM, PACKAGE_JSON, PACKAGE_LOCK, PNPM, PNPM_LOCK,
+};
 
 const ALLOWED: &str = "native_exact_safe_lockfile_install";
 
@@ -77,6 +79,28 @@ fn bunfig_lockfile_table_is_inert_only_for_save_and_print() {
             false,
         ),
         ("scalar", "[install]\nlockfile = true\n", false),
+        ("cache-off", "[install.cache]\ndisable = true\n", true),
+        (
+            "release-age",
+            "[install]\nminimumReleaseAge = 259200\n",
+            true,
+        ),
+        (
+            "cache-dir",
+            "[install.cache]\ndir = \"/tmp/elsewhere\"\n",
+            false,
+        ),
+        ("top-preload", "preload = [\"./setup.ts\"]\n", false),
+        (
+            "test-preload",
+            "[test]\npreload = [\"./setup.ts\"]\n",
+            false,
+        ),
+        (
+            "smol",
+            "smol = true\n[install]\nlinker = \"hoisted\"\n",
+            true,
+        ),
         (
             "install-registry",
             "[install]\nregistry = \"https://registry.example.invalid\"\n",
@@ -111,5 +135,51 @@ fn an_inherited_npm_cache_setting_leaves_the_install_proven() {
     ] {
         let result = lab.classify(&portal, BUN, names);
         assert_eq!(result.reason_code == ALLOWED, allowed, "{names:?}");
+    }
+}
+
+#[test]
+fn quiet_flags_follow_the_same_proof() {
+    let lab = Lab::new();
+    let pnpm = lab.project(
+        "pnpm",
+        &[
+            ("package.json", PACKAGE_JSON),
+            ("pnpm-lock.yaml", PNPM_LOCK),
+        ],
+    );
+    let npm = lab.project(
+        "npm",
+        &[
+            ("package.json", PACKAGE_JSON),
+            ("package-lock.json", PACKAGE_LOCK),
+        ],
+    );
+    let cases = [
+        (
+            &pnpm,
+            format!("{PNPM} --reporter=default --loglevel=error"),
+            true,
+        ),
+        (&pnpm, format!("{PNPM} --ignore-pnpmfile"), true),
+        (
+            &pnpm,
+            format!("{PNPM} --registry=https://registry.example.invalid"),
+            false,
+        ),
+        (
+            &npm,
+            format!("{NPM} --loglevel=error --progress=false"),
+            true,
+        ),
+        (&npm, format!("{NPM} --global"), false),
+        (&npm, String::from("npm ci --loglevel=error"), false),
+    ];
+    for (project, command, allowed) in cases {
+        let result = lab.classify(project, &command, &[]);
+        assert_eq!(result.reason_code == ALLOWED, allowed, "{command}");
+        if !allowed {
+            assert_ne!(result.minimum_action, "allow", "{command}");
+        }
     }
 }

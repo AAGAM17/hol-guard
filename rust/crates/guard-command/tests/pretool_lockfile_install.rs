@@ -19,7 +19,7 @@ pub(crate) const BUN_LOCK: &str = r#"{
   }
 }
 "#;
-const PNPM_LOCK: &str = "lockfileVersion: '9.0'
+pub(crate) const PNPM_LOCK: &str = "lockfileVersion: '9.0'
 
 importers:
 
@@ -38,7 +38,7 @@ snapshots:
 
   left-pad@1.3.0: {}
 ";
-const PACKAGE_LOCK: &str = r#"{
+pub(crate) const PACKAGE_LOCK: &str = r#"{
   "name": "fixture",
   "lockfileVersion": 3,
   "requires": true,
@@ -54,8 +54,8 @@ const PACKAGE_LOCK: &str = r#"{
 "#;
 
 pub(crate) const BUN: &str = "bun install --frozen-lockfile --ignore-scripts";
-const PNPM: &str = "pnpm install --frozen-lockfile --ignore-scripts";
-const NPM: &str = "npm ci --ignore-scripts --no-audit";
+pub(crate) const PNPM: &str = "pnpm install --frozen-lockfile --ignore-scripts";
+pub(crate) const NPM: &str = "npm ci --ignore-scripts --no-audit";
 
 /// A project name, the files it holds and the install run in it.
 type Case<'a> = (&'a str, Vec<(&'a str, &'a str)>, &'a str);

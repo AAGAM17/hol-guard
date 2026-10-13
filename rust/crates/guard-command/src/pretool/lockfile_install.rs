@@ -253,6 +253,10 @@ fn install_form(original: &CommandSegmentV1) -> Option<(Manager, Option<String>)
                 "--prod",
                 "--reporter=append-only",
                 "--reporter=silent",
+                "--reporter=default",
+                "--loglevel=error",
+                "--loglevel=warn",
+                "--ignore-pnpmfile",
             ],
         ),
         Manager::Npm => (
@@ -268,6 +272,10 @@ fn install_form(original: &CommandSegmentV1) -> Option<(Manager, Option<String>)
                 "--omit=dev",
                 "--omit=optional",
                 "--allow-git=none",
+                "--loglevel=error",
+                "--loglevel=warn",
+                "--loglevel=silent",
+                "--progress=false",
             ],
         ),
     };

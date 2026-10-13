@@ -60,6 +60,7 @@ pub mod pretool_git_hash_object;
 pub mod pretool_git_helper_config;
 pub mod pretool_git_large_listing;
 pub mod pretool_git_nested_repositories;
+pub mod pretool_git_object_reads;
 pub mod pretool_git_outside_cwd;
 pub mod pretool_git_pager_config;
 pub mod pretool_git_read_sequences;

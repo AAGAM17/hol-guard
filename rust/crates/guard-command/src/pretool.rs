@@ -46,6 +46,7 @@ pub(crate) mod git_config_reads;
 pub(crate) mod git_grep;
 pub(crate) mod git_hash_object;
 pub(crate) mod git_init_target;
+pub(crate) mod git_object_reads;
 mod git_read_floor;
 mod git_reads;
 mod repo_create_reason;

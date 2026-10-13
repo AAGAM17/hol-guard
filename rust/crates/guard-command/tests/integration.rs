@@ -82,6 +82,7 @@ pub mod pretool_guard_diagnostics;
 pub mod pretool_home_aliases;
 pub mod pretool_home_cd;
 pub mod pretool_home_layout_reads;
+pub mod pretool_jq_sibling_filters;
 pub mod pretool_linked_writes;
 pub mod pretool_links_removals;
 pub mod pretool_literal_route_writes;

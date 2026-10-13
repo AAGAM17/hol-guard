@@ -7225,6 +7225,214 @@
       "expect": "allow"
     },
     {
+      "id": "session-jq-keys-org-sibling-worktree",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "jq -r 'keys' ${ORG_WT}/package.json"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "session-jq-length-org-sibling-worktree",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "jq -r 'length' ${ORG_WT}/package.json"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "session-jq-keys-iterate-org-sibling-worktree",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "jq -r '.queries | keys[]' ${ORG_WT}/package.json"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "session-jq-keys-join-org-sibling-worktree",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "jq -r \".queries | keys | join(\\\"\\n\\\")\" ${ORG_WT}/package.json"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "session-jq-to-entries-org-sibling-worktree",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "jq -r \".queries | to_entries[] | .key\" ${ORG_WT}/package.json"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "session-jq-object-has-org-sibling-worktree",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "jq \"{\\\"a\\\": .queries|has(\\\"x\\\"), \\\"b\\\": .queries|has(\\\"y\\\")}\" ${ORG_WT}/package.json"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "session-jq-has-org-sibling-worktree",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "jq -r \".queries | has(\\\"x\\\")\" ${ORG_WT}/package.json"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-jq-env-object-org-sibling-worktree",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "jq -r '{a: env}' ${ORG_WT}/package.json"
+      },
+      "cwd": "org",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-jq-input-filename-org-sibling-worktree",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "jq -r 'input_filename' ${ORG_WT}/package.json"
+      },
+      "cwd": "org",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-jq-rawfile-org-sibling-worktree",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "jq --rawfile a ${ORG_WT}/.env 'keys' ${ORG_WT}/package.json"
+      },
+      "cwd": "org",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-jq-from-file-org-sibling-worktree",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "jq -f ${ORG_WT}/package.json ${ORG_WT}/package.json"
+      },
+      "cwd": "org",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-jq-format-sh-org-sibling-worktree",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "jq -r '.queries | keys[] | @sh' ${ORG_WT}/package.json | sh"
+      },
+      "cwd": "org",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-jq-keys-env-file-org-sibling-worktree",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "jq -r 'keys' ${ORG_WT}/.env"
+      },
+      "cwd": "org",
+      "expect": "not_allow"
+    },
+    {
       "id": "session-git-dir-bare-remote-config-list",
       "fix_area": "git",
       "harnesses": [

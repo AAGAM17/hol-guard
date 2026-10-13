@@ -337,8 +337,8 @@ fn safe_word_count_with_targets(
     saw_target || piped_input
 }
 
-/// `jq <projection> <file>` reads one bounded file through the same
-/// field/index projection the stdin form admits.
+/// `jq <filter> <file>` reads one bounded file through the same filter
+/// grammar the stdin form admits.
 pub(super) fn safe_jq_file_arguments(
     arguments: &[String],
     context: super::PathContext<'_>,
@@ -347,8 +347,7 @@ pub(super) fn safe_jq_file_arguments(
         return false;
     };
     !file.starts_with('-')
-        && rest.last().is_some_and(|filter| filter.starts_with('.'))
-        && safe_jq_stdin_arguments(rest)
+        && safe_jq_filter_arguments(rest)
         && command_read_target(file, context, false)
 }
 
@@ -362,10 +361,23 @@ pub(super) fn jq_filter_position(arguments: &[String], piped_input: bool) -> Opt
     } else {
         last.checked_sub(1)?
     };
+    if piped_input && !arguments[index].starts_with('.') {
+        return None;
+    }
     jq_filter::safe_filter(&arguments[index]).then_some(index)
 }
 
 pub(super) fn safe_jq_stdin_arguments(arguments: &[String]) -> bool {
+    // Stdin may come from a network/API command, so retain the pre-existing
+    // projection-first requirement. Standalone builtins and object output are
+    // admitted only when jq reads a separately screened file operand.
+    arguments
+        .last()
+        .is_some_and(|filter| filter.starts_with('.'))
+        && safe_jq_filter_arguments(arguments)
+}
+
+fn safe_jq_filter_arguments(arguments: &[String]) -> bool {
     let mut filter = None;
     for argument in arguments {
         if filter.is_none()
@@ -460,4 +472,22 @@ fn safe_head_tail_with_targets(
         saw_target = true;
     }
     (saw_target || piped_input) && !expect_count
+}
+
+#[cfg(test)]
+mod jq_stdin_boundary_tests {
+    use super::{jq_filter_position, safe_jq_filter_arguments, safe_jq_stdin_arguments};
+
+    #[test]
+    fn object_filters_and_bare_builtins_do_not_expand_stdin_authority() {
+        for filter in ["keys", "length", "{tests: .tests, total: .total}"] {
+            let args = vec!["-r".to_owned(), filter.to_owned()];
+            assert!(safe_jq_filter_arguments(&args), "{filter}");
+            assert!(!safe_jq_stdin_arguments(&args), "{filter}");
+            assert_eq!(jq_filter_position(&args, true), None, "{filter}");
+        }
+        let projection = vec!["-r".to_owned(), ".tests | keys".to_owned()];
+        assert!(safe_jq_stdin_arguments(&projection));
+        assert_eq!(jq_filter_position(&projection, true), Some(1));
+    }
 }

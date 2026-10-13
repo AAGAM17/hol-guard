@@ -103,48 +103,6 @@ const UNREVIEWABLE_PREFIXES: [&str; 22] = [
 
 const MAX_SETTING_CHARS: usize = 40;
 
-/// Name fragments of settings that point a program, its compiler or its
-/// loader at other code or options (`NODE_OPTIONS`, `NODE_PATH`, `RUSTFLAGS`,
-/// `PYTHONSTARTUP`). Those stay unprojected, so extension controls keep
-/// failing closed on them.
-const CODE_LOADING_MARKERS: &[&str] = &[
-    "ARGS",
-    "BIN",
-    "BROWSER",
-    "CMD",
-    "COMMAND",
-    "CONF",
-    "EDITOR",
-    "EXEC",
-    "FLAGS",
-    "HOME",
-    "HOOK",
-    "IMPORT",
-    "INIT",
-    "LIB",
-    "LOAD",
-    "MODULE",
-    "OPT",
-    "PAGER",
-    "PATH",
-    "PLUGIN",
-    "REQUIRE",
-    "RUSTC",
-    "SCRIPT",
-    "STARTUP",
-    "VISUAL",
-    "WRAPPER",
-    "USERBASE",
-    "GEMFILE",
-    "LESSOPEN",
-    "LESSCLOSE",
-];
-
-/// Toolchain programs a build reads from the environment.
-const CODE_LOADING_NAMES: &[&str] = &[
-    "AR", "AS", "CC", "CPP", "CXX", "FC", "LD", "LINK", "NM", "RANLIB",
-];
-
 /// A command whose leading environment settings were removed although one of
 /// them may change how it runs. It never earns less than review.
 pub(super) struct ReviewedProjection {
@@ -426,10 +384,7 @@ fn reviewable_assignment(name: &str) -> bool {
 }
 
 fn code_loading_name(upper: &str) -> bool {
-    CODE_LOADING_NAMES.contains(&upper)
-        || CODE_LOADING_MARKERS
-            .iter()
-            .any(|marker| upper.contains(marker))
+    crate::command_compatibility::code_or_redirect_environment_name(upper)
 }
 
 /// The first leading setting of any simple command that can load other code,

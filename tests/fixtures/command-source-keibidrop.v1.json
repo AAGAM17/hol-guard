@@ -10735,7 +10735,7 @@
       "rule_id": "command.keibidrop.pull-file"
     },
     {
-      "command": "KD_SAVE_PATH=./received kd pull report.mov",
+      "command": "KD_LOG_LEVEL=debug kd pull report.mov",
       "disabled_permissions": [],
       "enabled_extensions": [
         "command.keibidrop"

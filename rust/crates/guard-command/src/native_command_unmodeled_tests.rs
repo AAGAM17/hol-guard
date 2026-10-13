@@ -282,20 +282,30 @@ fn build_commands_behind_command_time_or_plain_env_are_not_evaluation_failures()
         "RUSTFLAGS='-C linker=./x' cargo build",
         "GOFLAGS=-toolexec=./x go build",
         "CC=./x npm run build",
+        "CXX=./x cargo build",
+        "RUSTC_WRAPPER=./x cargo build",
+        "CARGO_BUILD_RUSTC_WRAPPER=./x cargo build",
+        "RUSTDOC=./x cargo doc",
+        "CARGO_BUILD_RUSTDOC=./x cargo doc",
+        "npm_config_script_shell=./x npm run build",
+        "npm_config_node_options=--require=./x.js npm run build",
+        "LD_LIBRARY_PATH=./x vite build",
+        "DYLD_INSERT_LIBRARIES=./x.dylib bun run build",
+        "GOTOOLCHAIN=go1.99.0 go build",
+        "BASH_ENV=./x.sh npm run build",
     ] {
         assert_eq!(decision(&controls, command).0, "block", "{command}");
     }
-    // Plain application settings cannot load code, so the command itself is
-    // judged and the setting keeps it at review instead of a hard block.
-    for command in [
-        "APP_FLAG=1 bun run build",
-        "PORT=3000 npm run dev",
-        "VITE_BASE=/app/ vite build",
+    // An ordinary application variable cannot load code, so the command keeps
+    // the decision of its unprefixed form.
+    for (command, bare) in [
+        ("APP_FLAG=1 bun run build", "bun run build"),
+        ("PORT=3000 npm run dev", "npm run dev"),
+        ("VITE_BASE=/app/ vite build", "vite build"),
     ] {
-        let (action, reason_code) = decision(&controls, command);
-        assert_ne!(action, "allow", "{command}");
-        assert_ne!(
-            reason_code, "native_command_extension_evaluation_failed",
+        assert_eq!(
+            decision(&controls, command).0,
+            decision(&controls, bare).0,
             "{command}"
         );
     }

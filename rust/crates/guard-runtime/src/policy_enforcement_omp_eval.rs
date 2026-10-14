@@ -1,5 +1,11 @@
-//! Recheck bounded OMP eval reads, result reports and names-only listings after
-//! output scanning.
+//! Recheck bounded OMP eval reads and shell calls, result reports and
+//! names-only listings after output scanning.
+//!
+//! An eval proved as literal tool calls keeps the action type of the calls it
+//! makes: reads stay file reads, and a cell that runs `tool.bash` is a command,
+//! exactly like the same `bash` call made directly. Its output then meets the
+//! same scans and installed floors as that call's output, instead of the
+//! unknown-action floor every unproved eval falls to.
 use guard_contracts::{NativeHookRequestV1, PreToolActionTypeV1};
 use serde_json::Value;
 
@@ -44,6 +50,9 @@ pub(super) fn bounded_output_action(request: &NativeHookRequestV1) -> Option<Pre
         ("native_omp_eval_bounded_tools", PreToolActionTypeV1::FileRead)
         | ("native_omp_directory_listing", PreToolActionTypeV1::FileRead) => {
             Some(PreToolActionTypeV1::FileRead)
+        }
+        ("native_omp_eval_bounded_tools", PreToolActionTypeV1::Command) => {
+            Some(PreToolActionTypeV1::Command)
         }
         ("native_omp_yield_metadata", PreToolActionTypeV1::Harness) => {
             Some(PreToolActionTypeV1::Harness)

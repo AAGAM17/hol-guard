@@ -8,15 +8,7 @@
     "session-ls-echo-cd-repo-git-status-remote-log@codex": "native_git_execution_context_review",
     "session-ls-echo-cd-repo-git-status-remote-log@omp": "native_git_execution_context_review",
     "session-ls-echo-cd-repo-git-status-remote-log@zcode": "native_git_execution_context_review",
-    "session-rm-workspace-file@cursor": "native_command_extension_review",
-    "session-sibling-cd-vite-build-workspace@claude-code": "native_command_review_required",
-    "session-sibling-cd-vite-build-workspace@codex": "native_command_review_required",
-    "session-sibling-cd-vite-build-workspace@omp": "native_command_review_required",
-    "session-sibling-cd-vite-build-workspace@zcode": "native_command_review_required",
-    "session-sibling-cd-vite-build@claude-code": "native_command_review_required",
-    "session-sibling-cd-vite-build@codex": "native_command_review_required",
-    "session-sibling-cd-vite-build@omp": "native_command_review_required",
-    "session-sibling-cd-vite-build@zcode": "native_command_review_required"
+    "session-rm-workspace-file@cursor": "native_command_extension_review"
   },
   "cases": [
     {
@@ -8373,15 +8365,7 @@
     "session-ls-echo-cd-repo-git-status-remote-log@codex": "unassigned",
     "session-ls-echo-cd-repo-git-status-remote-log@omp": "unassigned",
     "session-ls-echo-cd-repo-git-status-remote-log@zcode": "unassigned",
-    "session-rm-workspace-file@cursor": "unassigned",
-    "session-sibling-cd-vite-build-workspace@claude-code": "unassigned",
-    "session-sibling-cd-vite-build-workspace@codex": "unassigned",
-    "session-sibling-cd-vite-build-workspace@omp": "unassigned",
-    "session-sibling-cd-vite-build-workspace@zcode": "unassigned",
-    "session-sibling-cd-vite-build@claude-code": "unassigned",
-    "session-sibling-cd-vite-build@codex": "unassigned",
-    "session-sibling-cd-vite-build@omp": "unassigned",
-    "session-sibling-cd-vite-build@zcode": "unassigned"
+    "session-rm-workspace-file@cursor": "unassigned"
   },
   "pending_always": {}
 }

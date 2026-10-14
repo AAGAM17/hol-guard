@@ -11,6 +11,8 @@
     "session-bun-e-fs-read@pi": "native_command_review_required",
     "session-bun-x-vite-build-tail@pi": "native_package_review",
     "session-cd-vite-build-tail@pi": "native_command_review_required",
+    "session-sibling-cd-vite-build@pi": "native_command_review_required",
+    "session-sibling-cd-vite-build-workspace@pi": "native_command_review_required",
     "session-chmod-workspace-script@pi": "native_command_review_required",
     "session-ci-prefix-npm-test@pi": "native_package_review",
     "session-git-c-wt-push-feature": "native_command_review_required",

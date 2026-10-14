@@ -235,10 +235,11 @@ fn listing(
         }
     }
     let recursive = signals.tool_name.as_deref() == Some("find") || input.contains_key("pattern");
+    let gitignore = input.get("gitignore").and_then(Value::as_bool) != Some(false);
     let targets = search_targets(input_path(input, signals)?.unwrap_or("."), context)?;
     targets
         .into_iter()
-        .all(|target| listing_target_proven(target, signals, recursive, context))
+        .all(|target| listing_target_proven(target, signals, (recursive, gitignore), context))
         .then(|| {
             directory_allow(
                 context,
@@ -251,24 +252,27 @@ fn listing(
 fn listing_target_proven(
     target: &str,
     signals: &GenericSignals,
-    recursive: bool,
+    (recursive, gitignore): (bool, bool),
     context: &OmpContext<'_>,
 ) -> bool {
     if signals.tool_name.as_deref() == Some("glob") && target.contains(['{', '}']) {
         // Below a literal directory the host matches the alternatives
-        // relative to it and returns only names that match one of them, so
-        // each expansion is proven as its own selector. Without that prefix
-        // the host prepends `**/` and searches every depth, which no single
-        // expansion covers.
+        // relative to it. Without that prefix it searches `**/<pattern>` from
+        // the cwd (`parseFindPattern`), so each expansion is proven that way:
+        // the same proof as an unbraced `**/*.sh`, never wider.
         let anchored = target
             .find(['*', '?', '[', '{'])
             .is_some_and(|index| target[..index].contains('/'));
-        return anchored
-            && brace_expansions(target).is_some_and(|expansions| {
-                expansions
-                    .iter()
-                    .all(|expansion| listing_target_proven(expansion, signals, recursive, context))
-            });
+        let (options, walk) = ((recursive, gitignore), (true, gitignore));
+        return brace_expansions(target).is_some_and(|expansions| {
+            expansions.iter().all(|expansion| {
+                if anchored || expansion.starts_with("**/") {
+                    return listing_target_proven(expansion, signals, options, context);
+                }
+                contained_selector(expansion)
+                    && listing_target_proven(&format!("**/{expansion}"), signals, walk, context)
+            })
+        });
     }
     let has_glob_selector =
         signals.tool_name.as_deref() == Some("glob") && target.contains(['*', '?', '[', '{']);
@@ -283,20 +287,23 @@ fn listing_target_proven(
     } else {
         target
     };
-    // A wildcard can traverse hidden or symlinked children even when the
-    // literal prefix is ordinary. Prove the entire reachable prefix tree,
-    // unless the walk starts inside the session folder and the last
-    // component is a literal ordinary name: then every name the host returns
-    // ends in that name.
+    // A wildcard walks below its literal prefix and, like `find`, returns
+    // names only, so the walk from that prefix is held to the same rules.
+    // Outside the workspace no sensitive name may be reachable below it.
+    // The proof is skipped when the walk starts inside the session folder and
+    // the last component is a literal ordinary name: then every name the host
+    // returns ends in that name.
+    let recursive = recursive || has_glob_selector;
     let literal_name = has_glob_selector
         && literal_name_selector(selector)
         && walk_inside_session(target, context);
     if has_glob_selector
         && !literal_name
-        && !super::super::search_scope::unfiltered_directory_scope_proven(
+        && !super::super::search_scope::omp_glob_scope_proven(
             target,
             context.path.home_dir,
             context.path.cwd,
+            gitignore,
         )
     {
         return false;
@@ -608,9 +615,14 @@ fn grep_scope(
     // A single file is proven by the ordinary bounded file-read path. An
     // entry of a list has no such fallback, so it carries the same proof here.
     let list = targets.len() > 1;
+    // A `glob` or `type` override can re-include a gitignored file, so with
+    // either one no ignore file narrows the proof.
+    let gitignore = input.get("gitignore").and_then(Value::as_bool) != Some(false)
+        && !input.contains_key("glob")
+        && !input.contains_key("type");
     let (home, cwd) = (context.path.home_dir, context.path.cwd);
     let proven = |target: &str| {
-        super::super::search_scope::content_search_scope_proven(target, home, cwd)
+        super::super::search_scope::omp_grep_scope_proven(target, home, cwd, gitignore)
             || (list && super::super::read_paths::existing_regular_read_target(target, home, cwd))
     };
     if targets.iter().all(|target| proven(target)) {

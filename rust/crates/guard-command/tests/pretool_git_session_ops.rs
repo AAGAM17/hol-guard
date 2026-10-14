@@ -18,7 +18,8 @@ pub(crate) struct Session {
     _cleanup: FixtureCleanup,
 }
 
-fn default_controls() -> guard_command::native_command_controls::CompiledNativeCommandControls {
+pub(crate) fn default_controls(
+) -> guard_command::native_command_controls::CompiledNativeCommandControls {
     let program = guard_command::native_command_program::packaged_command_program().unwrap();
     let mut binding: guard_contracts::NativeCommandControlBindingV1 =
         serde_json::from_value(json!({

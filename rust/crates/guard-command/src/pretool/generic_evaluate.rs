@@ -348,6 +348,31 @@ pub(super) fn evaluate_signals(
             "The Rust authority proved this web fetch or search is a plain request for public web content; the installed network setting decides the outcome.",
         );
     }
+    if action_type == PreToolActionTypeV1::FileRead
+        && event == "PreToolUse"
+        && matches!(signals.tool_name.as_deref(), Some("Read" | "read"))
+        && !signals.sensitive_target
+        && signals.url_values.is_empty()
+        && signals.command.is_none()
+        && signals.path_values.len() == 1
+        && super::super::safe_reads::missing_read_target(
+            &signals.path_values[0],
+            home_dir,
+            cwd,
+            harness == "omp",
+        )
+    {
+        // Nothing exists to read, so stopping the call costs nothing. Saying
+        // why lets the agent fix the path instead of waiting on an approval.
+        return generic_result(
+            action,
+            "block",
+            MISSING_PATH,
+            "HOL Guard did not run this read because the path does not exist. Check the path, for example by listing its parent directory, and try again with the correct one.",
+        );
+    }
     let (reason_code, reason) = review_reason(action_type);
     generic_result(action, "review", reason_code, reason)
 }
+
+pub(super) const MISSING_PATH: &str = "native_missing_path";

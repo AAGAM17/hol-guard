@@ -274,3 +274,59 @@ fn verified_selector_candidate(
         .filter(|root| std::path::Path::new(root).is_absolute())?;
     Some(std::fs::canonicalize(root).ok()?.join(expanded_path))
 }
+
+/// Whether a structured read names a path that does not exist. The read is
+/// stopped either way; this only lets Guard say why, so the agent can correct
+/// the path instead of waiting on an approval. OMP's `path:selector` form
+/// counts as missing only when the selector base is missing too.
+pub(in crate::pretool) fn missing_read_target(
+    value: &str,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+    selectors: bool,
+) -> bool {
+    let missing = |value: &str| missing_literal_path(value, home_dir, cwd);
+    if !missing(value) {
+        return false;
+    }
+    !selectors
+        || value
+            .rsplit_once(':')
+            .is_none_or(|(base, _)| base.is_empty() || missing(base))
+}
+
+fn missing_literal_path(value: &str, home_dir: Option<&str>, cwd: Option<&str>) -> bool {
+    if value.is_empty()
+        || value.trim() != value
+        || value.len() > 4096
+        || value.chars().any(char::is_control)
+        || value.contains(['$', '`', '*', '?', '[', ']', '{', '}'])
+        || value.contains("://")
+        || !verified_path_context(home_dir, cwd)
+    {
+        return false;
+    }
+    let expanded = if value.starts_with('~') {
+        let Some(expanded) = expand_home_read_path(value, home_dir) else {
+            return false;
+        };
+        expanded
+    } else {
+        value.to_owned()
+    };
+    let path = std::path::Path::new(&expanded);
+    let candidate = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        let Some(root) = cwd.and_then(|root| {
+            expand_home_read_path(root, home_dir).or_else(|| Some(root.to_owned()))
+        }) else {
+            return false;
+        };
+        std::path::Path::new(&root).join(path)
+    };
+    matches!(
+        std::fs::symlink_metadata(&candidate),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound
+    )
+}

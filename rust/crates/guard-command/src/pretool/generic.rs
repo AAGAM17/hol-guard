@@ -14,6 +14,8 @@ mod env_prefix_projection;
 mod extract;
 #[path = "generic_omp.rs"]
 mod omp;
+#[path = "generic_omp_bash_cwd.rs"]
+mod omp_bash_cwd;
 #[path = "open_quote.rs"]
 mod open_quote;
 #[path = "generic_pure_eval.rs"]
@@ -153,6 +155,40 @@ pub fn evaluate_pre_tool_envelope_with_execution_context(
     context: super::PathContext<'_>,
     execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
 ) -> PreToolResultV1 {
+    let mut context = context;
+    let projected_payload;
+    let mut payload = payload;
+    let within;
+    if harness == "omp"
+        && event == "PreToolUse"
+        && payload.get("tool_name").and_then(Value::as_str) == Some("bash")
+    {
+        match omp_bash_cwd::resolve(payload, context.home_dir, context.cwd) {
+            omp_bash_cwd::BashCwd::Session => {}
+            omp_bash_cwd::BashCwd::Within(directory) => {
+                within = directory;
+                context.cwd = Some(within.as_str());
+            }
+            // Outside the session directory the existing `cd` proofs decide,
+            // so the call is judged as if it changed directory first.
+            omp_bash_cwd::BashCwd::Outside(directory) => {
+                let Some(command) = extract_generic_signals(payload)
+                    .ok()
+                    .and_then(|signals| signals.command)
+                else {
+                    return omp_bash_cwd_review(harness, event);
+                };
+                projected_payload = payload_with_command(
+                    payload,
+                    &command,
+                    &format!("cd '{directory}' && {command}"),
+                );
+                payload = &projected_payload;
+            }
+            omp_bash_cwd::BashCwd::Missing => return omp_bash_cwd_missing(harness, event),
+            omp_bash_cwd::BashCwd::Unresolved => return omp_bash_cwd_review(harness, event),
+        }
+    }
     let mut result = super::git_probe::with_memo(|| {
         super::search::with_walk_memo(|| {
             let evaluate = |payload: &Value| {
@@ -202,6 +238,40 @@ pub fn evaluate_pre_tool_envelope_with_execution_context(
         }
     }
     result
+}
+
+fn omp_bash_cwd_review(harness: &str, event: &str) -> PreToolResultV1 {
+    generic_result(
+        generic_action(
+            harness,
+            event,
+            PreToolActionTypeV1::Command,
+            PreToolOperationV1::Execute,
+            false,
+            false,
+        ),
+        "review",
+        "native_omp_bash_cwd_review",
+        "HOL Guard could not resolve the working directory this command runs in, so it requires review. Pass an existing directory as an absolute path, a path relative to the session directory, or a path under ~.",
+    )
+}
+
+// The command cannot start, so stopping it costs nothing. Saying why lets the
+// agent fix the directory instead of waiting on an approval.
+fn omp_bash_cwd_missing(harness: &str, event: &str) -> PreToolResultV1 {
+    generic_result(
+        generic_action(
+            harness,
+            event,
+            PreToolActionTypeV1::Command,
+            PreToolOperationV1::Execute,
+            false,
+            false,
+        ),
+        "block",
+        evaluate::MISSING_PATH,
+        "HOL Guard did not run this command because its working directory does not exist. Check the directory, for example by listing its parent, and try again with the correct one.",
+    )
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -4,8 +4,9 @@
 //! server, and launches the Python proxy instead when the lane is not ready:
 //! otherwise every `tools/call` of the session would defer and be refused.
 //! A lane is ready only when the resident can decide the session's calls at
-//! all (`mcp_relay_decide_session.rs`): a config that prompts or observes,
-//! or a store holding remote policy, hands the session to the proxy too, and
+//! all (`mcp_relay_decide_session.rs`): a config that prompts (in either
+//! mode, observe included) or a store holding remote policy hands the session
+//! to the proxy too, and
 //! so does a server whose catalog the resident has no report of or whose
 //! catalog offers a tool the proxy decides (`mcp_relay_servers.rs`).
 //! The answer is only `ready` or `not_ready` with the lane's defer code. It

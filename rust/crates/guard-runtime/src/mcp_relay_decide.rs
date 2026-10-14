@@ -20,20 +20,21 @@
 //! approval is held for the relay to claim (see `mcp_relay_decide_claim.rs`).
 //!
 //! A call queued under `safe-alternative` blocks (`mcp_relay_decide_queue.rs`).
+//! Under `mode = "observe"` a call that needs approval forwards and records
+//! what Guard would have done (`mcp_relay_decide_observe.rs`).
 //! Every other call defers, and the relay answers it with the proxy's
 //! fail-closed "no native decision" response: remote, bundle or unverifiable
-//! saved policy, a call that needs a prompt (the `ask` mode), an observe
-//! override, and any binding, lane or evidence failure.
+//! saved policy, a call that needs a prompt (the `ask` mode), and any
+//! binding, lane or evidence failure.
 
 use crate::approval_proof_op::Disposition;
 use crate::mcp_tool_policy_decision::Decision;
-use crate::mcp_tool_policy_flow::{evaluate_pass, Ctx, Pass, Phase, Stop};
 use crate::policy_enforcement::AdmittedPolicySnapshot;
 use crate::policy_store::policy_store_direct_lane::DirectLaneBinding;
 use crate::policy_store::PolicySnapshotStore;
 use guard_contracts::{
     McpToolArgumentsV1, McpToolCallBuildV1, McpToolCallHashInputV1, McpToolCallIdentityPayloadV1,
-    McpToolPolicyObservationV1, McpToolPolicyProxyInputV1,
+    McpToolPolicyProxyInputV1,
 };
 use rusqlite::Connection;
 use serde::Deserialize;
@@ -48,8 +49,6 @@ pub(crate) const MCP_RELAY_DECIDE_FEATURE: &str = "mcp-relay-decide-v1";
 const RESULT_SCHEMA: &str = "guard-mcp-relay-decide-result.v1";
 /// The harnesses whose MCP proxy the relay replaces.
 const RELAY_HARNESSES: [&str; 4] = ["codex", "copilot", "cursor", "opencode"];
-/// Saved lookups one decision may name before it is left to the proxy.
-const MAX_POLICY_ROUNDS: usize = 8;
 
 const HARNESS_UNSUPPORTED: &str = "mcp_relay_harness_unsupported";
 const RUNTIME_SUPERSEDED: &str = "mcp_relay_runtime_superseded";
@@ -58,7 +57,6 @@ const EVIDENCE_UNDRAINED: &str = "mcp_relay_evidence_undrained";
 const BINDING_INCOMPLETE: &str = "mcp_relay_binding_incomplete";
 const IDENTITY_FAILED: &str = "mcp_relay_identity_failed";
 const POLICY_NEED: &str = "mcp_relay_policy_need";
-const POLICY_FAILED: &str = "mcp_relay_policy_failed";
 const ROUTE_UNSUPPORTED: &str = "mcp_relay_route_unsupported";
 const EVIDENCE_FULL: &str = "mcp_relay_evidence_full";
 
@@ -152,6 +150,8 @@ enum Routed {
         policy_action: String,
         redaction_level: String,
     },
+    /// Forward and record what Guard would have stopped (`mode = "observe"`).
+    ObserveForward,
 }
 
 pub(crate) fn evaluate(
@@ -218,7 +218,7 @@ fn decide(
         .map(Connection::unchecked_transaction)
         .transpose()
         .map_err(|_| store::STORE_UNREADABLE)?;
-    let resolved = resolve(request, &admitted, connection.as_ref())?;
+    let mut resolved = resolve(request, &admitted, connection.as_ref())?;
     drop(snapshot);
     let proxy = crate::mcp_tool_policy_proxy::proxy_payload(
         &McpToolPolicyProxyInputV1 {
@@ -227,14 +227,26 @@ fn decide(
             package_present: false,
             // Both only steer a call that is neither allowed nor blocked,
             // which is answered only under `safe-alternative`, where the
-            // proxy consults neither; any other mode defers its queue route.
+            // proxy consults neither; any other mode defers its queue or
+            // observe-forward route.
             asks_for_approval: false,
             inline_available: false,
             tool_name: request.build.tool_name.clone(),
         },
         &resolved.decision,
     );
-    match route(&proxy, &resolved.decision)? {
+    let (proxy, downgraded) = observe::downgrade(proxy, &resolved.mode, &resolved.decision)?;
+    let routed = route(&proxy, downgraded.as_ref().unwrap_or(&resolved.decision))?;
+    if routed == Routed::ObserveForward {
+        // `_observe_tool_forward` records the decision without the downgrade.
+        let mode = admitted.binding.review.blocked_request_mode.as_deref();
+        let (routed, append) = observe::forward(mode, &resolved.decision)?;
+        return settle(request, &resolved, routed, append, policy_store);
+    }
+    if let Some(decision) = downgraded {
+        resolved.decision = decision;
+    }
+    match routed {
         Routed::Claim {
             source,
             policy_action,
@@ -391,7 +403,9 @@ fn settle(
                 policy_action,
             )
         }
-        Routed::Claim { .. } | Routed::Queue { .. } => return Err(ROUTE_UNSUPPORTED),
+        Routed::Claim { .. } | Routed::Queue { .. } | Routed::ObserveForward => {
+            return Err(ROUTE_UNSUPPORTED)
+        }
     };
     let mut evidence = json!({
         "kind": "mcp_tool_call",
@@ -463,52 +477,16 @@ fn identity(
     })
 }
 
-/// Run the tool policy, answering each saved lookup it names from the store:
-/// the saved rows when there are any, the empty store's answer otherwise.
-fn run_policy(
-    subject: &guard_contracts::McpToolPolicySubjectV1,
-    saved: Option<&store::Saved<'_>>,
-) -> Result<Decision, &'static str> {
-    let mut observations: Vec<McpToolPolicyObservationV1> = Vec::new();
-    for _ in 0..MAX_POLICY_ROUNDS {
-        let ctx = Ctx {
-            observations: &observations,
-            lookup: None,
-        };
-        match evaluate_pass(&ctx, subject, Phase::Initial, false) {
-            Ok(Pass::Final(decision)) => return Ok(*decision),
-            Ok(Pass::Claimed { .. }) | Err(Stop::Fail(_)) => return Err(POLICY_FAILED),
-            Err(Stop::Need(need)) => {
-                let result = match saved {
-                    Some(saved) => saved.answer(&need)?,
-                    None => empty_store_answer(&need)?,
-                };
-                observations.push(McpToolPolicyObservationV1 { need, result });
-            }
-        }
-    }
-    Err(POLICY_NEED)
-}
-
-/// What the proxy observes for a saved lookup against a store with no saved
-/// policy rows and no one-shot approvals. Any other effect defers.
-fn empty_store_answer(need: &Value) -> Result<Value, &'static str> {
-    match need.get("kind").and_then(Value::as_str) {
-        Some("grant_lookup") => Ok(json!({"decision": null})),
-        Some("policy_lookup") => Ok(json!({
-            "decision": null,
-            "ignored_local_integrity": false,
-            "reuse_diagnostic": {"reason": null},
-        })),
-        _ => Err(POLICY_NEED),
-    }
-}
-
 #[path = "mcp_relay_decide_claim.rs"]
 mod claim;
 pub(crate) use claim::claim;
+#[path = "mcp_relay_decide_observe.rs"]
+mod observe;
 #[path = "mcp_relay_decide_package.rs"]
 mod package;
+#[path = "mcp_relay_decide_policy.rs"]
+mod policy;
+use policy::run_policy;
 #[path = "mcp_relay_decide_queue.rs"]
 mod queue;
 use queue::route;

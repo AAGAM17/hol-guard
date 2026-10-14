@@ -25,8 +25,9 @@ const SAFE_ALTERNATIVE_MODE: &str = "safe-alternative";
 /// The decision source `_queue_approval_center_response` records.
 pub(super) const SAFE_ALTERNATIVE_SOURCE: &str = "policy-safe-alternative";
 
-/// The proxy route for a decided call, when it is a forward, a block or a
-/// queue, or a forward that first claims the pending saved approval.
+/// The proxy route for a decided call, when it is a forward, a block, a
+/// queue or an observe-forward, or a forward that first claims the pending
+/// saved approval. The caller takes out the observe-mode downgrade first.
 pub(super) fn route(proxy: &Value, decision: &Decision) -> Result<Routed, &'static str> {
     if proxy["gate"].get("disable") == Some(&Value::Bool(true)) {
         return Err(ROUTE_UNSUPPORTED);
@@ -46,6 +47,8 @@ pub(super) fn route(proxy: &Value, decision: &Decision) -> Result<Routed, &'stat
         Some("queue") if !pending => Ok(Routed::Queue {
             policy_action: text("policy_action").ok_or(ROUTE_UNSUPPORTED)?,
         }),
+        // `mode = "observe"`, after its downgrade (`mcp_relay_decide_observe.rs`).
+        Some("observe_forward") if !pending => Ok(Routed::ObserveForward),
         Some("allow_and_forward") if route.get("remember") == Some(&Value::Bool(false)) => {
             let source = text("decision_source").ok_or(ROUTE_UNSUPPORTED)?;
             let policy_action = text("policy_action").ok_or(ROUTE_UNSUPPORTED)?;

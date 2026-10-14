@@ -85,11 +85,11 @@ fn tool_name_prefers_identity_then_command_then_name() {
 #[test]
 fn empty_store_answers_only_saved_lookups() {
     assert_eq!(
-        empty_store_answer(&json!({"kind": "grant_lookup"})).unwrap(),
+        policy::empty_store_answer(&json!({"kind": "grant_lookup"})).unwrap(),
         json!({"decision": null})
     );
     assert_eq!(
-        empty_store_answer(&json!({"kind": "policy_lookup"})).unwrap(),
+        policy::empty_store_answer(&json!({"kind": "policy_lookup"})).unwrap(),
         json!({
             "decision": null,
             "ignored_local_integrity": false,
@@ -97,7 +97,10 @@ fn empty_store_answers_only_saved_lookups() {
         })
     );
     for kind in [json!("approval_claim"), json!(null), json!(3)] {
-        assert_eq!(empty_store_answer(&json!({"kind": kind})), Err(POLICY_NEED));
+        assert_eq!(
+            policy::empty_store_answer(&json!({"kind": kind})),
+            Err(POLICY_NEED)
+        );
     }
 }
 

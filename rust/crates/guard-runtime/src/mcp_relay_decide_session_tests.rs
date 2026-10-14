@@ -44,22 +44,27 @@ fn a_safe_alternative_session_without_saved_rows_is_decidable() {
 }
 
 #[test]
-fn an_observing_or_prompting_config_hands_the_session_off() {
-    let home = no_store_home("config");
+fn an_observing_safe_alternative_session_is_decidable() {
+    let home = no_store_home("observe");
     let mut observe = decidable(DirectLaneBinding::empty_for_tests());
     observe.mcp_relay = Some(view("observe", Some("full")));
-    assert_eq!(
-        session_decidable(&observe, &home, "codex"),
-        Err("mcp_relay_session_observe")
-    );
-    for mode in [Some("ask"), None] {
-        let mut prompting = decidable(DirectLaneBinding::empty_for_tests());
-        prompting.review.blocked_request_mode = mode.map(str::to_owned);
-        assert_eq!(
-            session_decidable(&prompting, &home, "codex"),
-            Err("mcp_relay_session_review_mode"),
-            "{mode:?}"
-        );
+    assert_eq!(session_decidable(&observe, &home, "codex"), Ok(()));
+}
+
+#[test]
+fn a_prompting_config_hands_the_session_off() {
+    let home = no_store_home("config");
+    for config_mode in ["enforce", "observe"] {
+        for mode in [Some("ask"), None] {
+            let mut prompting = decidable(DirectLaneBinding::empty_for_tests());
+            prompting.mcp_relay = Some(view(config_mode, Some("full")));
+            prompting.review.blocked_request_mode = mode.map(str::to_owned);
+            assert_eq!(
+                session_decidable(&prompting, &home, "codex"),
+                Err("mcp_relay_session_review_mode"),
+                "{config_mode} {mode:?}"
+            );
+        }
     }
     let mut unbound = decidable(DirectLaneBinding::empty_for_tests());
     unbound.mcp_relay = Some(view("enforce", None));

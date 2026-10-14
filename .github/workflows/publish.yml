@@ -754,7 +754,7 @@ jobs:
       )
     needs: [build, precompile-native]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
+    timeout-minutes: 90
     permissions:
       contents: read
     strategy:

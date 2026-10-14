@@ -1915,19 +1915,6 @@
         "root_function": true
       },
       {
-        "id": "opencode-install-proxy-check",
-        "category": "install_config",
-        "path": "src/codex_plugin_scanner/guard/adapters/opencode_pretool.py",
-        "symbols": [
-          "opencode_config_has_mcp_servers",
-          "_mcp_command_uses_guard_proxy",
-          "opencode_config_uses_guard_proxy"
-        ],
-        "entry_points": [],
-        "reason": "Checking whether OpenCode configuration declares MCP servers and routes them through the Guard proxy, for the native install checks. It reads configuration files during install and doctor, not during a tool call.",
-        "evidence": "The only caller of opencode_config_has_mcp_servers and opencode_config_uses_guard_proxy is cli/native_install_checks.py, which is outside runtime scope. _mcp_command_uses_guard_proxy is reached only from opencode_config_uses_guard_proxy. The retained plugin path, source and install helpers do not reference them, and the report validates this reference closure on every run."
-      },
-      {
         "id": "edge-event-outbox-builders",
         "category": "async_control_plane",
         "path": "src/codex_plugin_scanner/guard/edge_events.py",

@@ -444,6 +444,14 @@ def cases(harness: str) -> list[dict]:
         from grok_vector_cases import grok_cases
 
         return grok_cases()
+    if harness == "opencode":
+        from opencode_vector_cases import opencode_cases
+
+        return opencode_cases()
+    if harness == "cursor":
+        from cursor_vector_cases import cursor_cases
+
+        return cursor_cases()
     if harness == "kimi":
         from kimi_vector_cases import kimi_cases
 

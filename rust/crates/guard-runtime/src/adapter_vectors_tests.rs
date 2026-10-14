@@ -1,5 +1,6 @@
-//! Replays Gemini, Antigravity, Devin, Grok and Kimi detection vectors recorded from the
-//! original Python implementation (see `testdata/gemini/record_adapter_vectors.py`).
+//! Replays Gemini, Antigravity, Devin, Grok, Kimi, OpenCode and Cursor detection
+//! vectors recorded from the original Python implementation (see
+//! `testdata/gemini/record_adapter_vectors.py`).
 //! Fixture trees and expected artifacts, paths and warnings come from Python,
 //! never from Rust output. `<ROOT>` is the fixture root.
 
@@ -14,6 +15,8 @@ const ANTIGRAVITY: &str = include_str!("../testdata/antigravity/vectors.json");
 const DEVIN: &str = include_str!("../testdata/devin/vectors.json");
 const GROK: &str = include_str!("../testdata/grok/vectors.json");
 const KIMI: &str = include_str!("../testdata/kimi/vectors.json");
+const OPENCODE: &str = include_str!("../testdata/opencode/vectors.json");
+const CURSOR: &str = include_str!("../testdata/cursor/vectors.json");
 
 fn check(case: &Value, name: &str, root_text: &str, result: KindResult) -> Result<(), String> {
     if case["refused"] == true {
@@ -93,13 +96,65 @@ fn replays_every_recorded_kimi_detection_case() {
     replay_all(KIMI, "guard-kimi-vectors.v1", crate::kimi_detect::detect);
 }
 
+#[test]
+fn replays_every_recorded_opencode_detection_case() {
+    replay_all(
+        OPENCODE,
+        "guard-opencode-vectors.v1",
+        crate::opencode_detect::detect,
+    );
+}
+
+#[test]
+fn replays_every_recorded_cursor_detection_case() {
+    replay_all(
+        CURSOR,
+        "guard-cursor-vectors.v1",
+        crate::cursor_detect::detect,
+    );
+}
+
 fn valid_request(harness: &str) -> Value {
     let mut valid = json!({"harness": harness, "home": "/nonexistent/home", "workspace": null});
     if harness == "grok" {
         valid["grok_home"] = json!("/nonexistent/grok");
         valid["system_policy_paths"] = json!([]);
     }
+    if harness == "opencode" || harness == "cursor" {
+        valid["configs"] = json!([]);
+    }
+    if harness == "opencode" {
+        valid["skip_verified_mcp_companions"] = json!(true);
+        valid["config_dir"] = json!(null);
+    }
     valid
+}
+
+#[test]
+fn malformed_config_lists_are_refused() {
+    for (harness, detect) in [
+        (
+            "opencode",
+            crate::opencode_detect::detect as fn(&Value) -> KindResult,
+        ),
+        ("cursor", crate::cursor_detect::detect),
+    ] {
+        for configs in [
+            json!(null),
+            json!({}),
+            json!([{"path": "/x/c.json"}]),
+            json!([{"path": 1, "payload": "{}", "scope": "global"}]),
+            json!([{"path": "/x\u{0}", "payload": "{}", "scope": "global"}]),
+            json!([{"path": "/x/c.json", "payload": "{nope", "scope": "global"}]),
+        ] {
+            let mut args = valid_request(harness);
+            args["configs"] = configs.clone();
+            assert!(detect(&args).is_err(), "{harness} configs={configs}");
+        }
+    }
+    let mut args = valid_request("opencode");
+    args["skip_verified_mcp_companions"] = json!("yes");
+    assert!(crate::opencode_detect::detect(&args).is_err());
 }
 
 #[test]
@@ -112,6 +167,8 @@ fn malformed_requests_are_refused() {
         ("antigravity", crate::antigravity_detect::detect),
         ("grok", crate::grok_detect::detect),
         ("kimi", crate::kimi_detect::detect),
+        ("opencode", crate::opencode_detect::detect),
+        ("cursor", crate::cursor_detect::detect),
     ] {
         let valid = valid_request(harness);
         assert!(detect(&valid).is_ok(), "{harness}");

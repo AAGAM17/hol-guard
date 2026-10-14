@@ -28,11 +28,9 @@ from .mcp_servers import (
 from .opencode_artifacts import (
     CONFIG_FILENAMES,
     _command_parts,
-    append_config_artifacts,
-    append_directory_artifacts,
-    append_found_path,
     config_paths,
     configured_config_path,
+    native_artifacts,
     runtime_config_path,
     runtime_overlay,
 )
@@ -153,28 +151,12 @@ class OpenCodeHarnessAdapter(HarnessAdapter):
         return context.home_dir / ".config" / "opencode" / "opencode.json"
 
     def detect(self, context: HarnessContext) -> HarnessDetection:
-        artifacts = []
-        found_paths: list[str] = []
-        seen_artifact_ids: set[str] = set()
+        configs = []
         for config_path in config_paths(context):
             payload, parse_error, _parse_reason = _load_json_or_jsonc(config_path)
-            if parse_error or not payload:
-                continue
-            append_found_path(found_paths, config_path)
-            scope = self._scope_for(context, config_path)
-            append_config_artifacts(
-                artifacts=artifacts,
-                seen_artifact_ids=seen_artifact_ids,
-                scope=scope,
-                config_path=config_path,
-                payload=payload,
-            )
-        append_directory_artifacts(
-            context=context,
-            artifacts=artifacts,
-            found_paths=found_paths,
-            seen_artifact_ids=seen_artifact_ids,
-        )
+            if not parse_error and payload:
+                configs.append((config_path, self._scope_for(context, config_path), payload))
+        artifacts, found_paths = native_artifacts(context, configs)
         detection = HarnessDetection(
             harness=self.harness,
             installed=bool(found_paths) or _command_available(self.executable),

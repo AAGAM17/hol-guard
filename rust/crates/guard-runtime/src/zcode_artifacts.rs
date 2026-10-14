@@ -107,7 +107,7 @@ pub(crate) fn string_pairs(value: &PyVal) -> BTreeMap<String, String> {
     pairs
 }
 
-fn mcp_environment(config: &PyVal) -> BTreeMap<String, String> {
+pub(crate) fn mcp_environment(config: &PyVal) -> BTreeMap<String, String> {
     for field in ["env", "environment"] {
         if let Some(value) = config.get(field).filter(|value| value.as_dict().is_some()) {
             return string_pairs(value);

@@ -184,6 +184,7 @@ mod copilot_detect;
 #[cfg(all(test, unix))]
 mod copilot_vectors_tests;
 mod critical_floor_op;
+mod cursor_detect;
 mod cursor_hook_bridge;
 mod cursor_hook_bridge_response;
 mod cursor_hook_bridge_script;
@@ -471,6 +472,7 @@ mod oci_bundle_vectors_tests;
 mod oci_path;
 mod omp_yield_input_scan;
 mod oneshot;
+mod opencode_detect;
 mod package_approval_hash_op;
 mod package_audit_projection_op;
 mod package_authority_config;

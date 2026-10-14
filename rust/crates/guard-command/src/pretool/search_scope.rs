@@ -219,8 +219,9 @@ pub(super) fn omp_grep_scope_proven(
     unfiltered_directory_root(target, home_dir, cwd).is_some_and(|root| {
         (!super::read_paths::inside_agent_state_tree(&root, home_dir)
             || super::read_paths::agent_state_tree_holds_only_documents(&root, home_dir))
-            && SearchFilter::from_input(&Map::new())
-                .is_some_and(|filter| walk_scope(&root, &filter, Ignores::Gitignore, false, &mut None).is_ok())
+            && SearchFilter::from_input(&Map::new()).is_some_and(|filter| {
+                walk_scope(&root, &filter, Ignores::Gitignore, false, &mut None).is_ok()
+            })
     })
 }
 

@@ -123,14 +123,22 @@ pub(super) fn requires_review(
                 read_context,
             )
     };
-    // A proven Git read or `origin` fetch writes no configuration, so it
-    // cannot change what a later read in the same command would run.
+    // A proven Git read, `origin` fetch or worktree add writes no
+    // configuration, so it cannot change what a later read in the same
+    // command would run.
     let settled = |prior: usize| {
         let segment = segments[prior];
         benign.contains(&prior)
             || write_free(segment)
             || super::git_remote_ops::verified_fetch(segment, read_context)
             || super::git_remote_ops::verified_fetch(segment, context)
+            || super::worktree_add::proven_alone(
+                model,
+                prior,
+                read_context,
+                deadline,
+                execution_environment,
+            )
             || (inspections[prior] == Some(true)
                 && segment.environment_names.is_empty()
                 && (super::git_reads::safe_git_arguments(&arguments[prior], true, read_context)

@@ -140,6 +140,34 @@ pub(super) fn exact_safe_command(
     worktree_seen
 }
 
+/// Whether segment `index` is a `git worktree add` the single-command proof
+/// admits on its own. Such an add writes the new checkout, its
+/// administrative files, a branch and that branch's upstream; it never
+/// writes configuration or hooks a later Git read in the same command uses.
+pub(super) fn proven_alone(
+    model: &CanonicalCommandV1,
+    index: usize,
+    context: super::PathContext<'_>,
+    deadline: Option<Instant>,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> bool {
+    let Some(segment) = model.segments.get(index) else {
+        return false;
+    };
+    if segment.pipeline_index != 0
+        || model
+            .segments
+            .get(index + 1)
+            .is_some_and(|next| next.pipeline_index != 0)
+        || parse(segment).is_none()
+    {
+        return false;
+    }
+    let mut alone = model.clone();
+    alone.segments = vec![segment.clone()];
+    exact_safe_command(&alone, context, deadline, execution_environment)
+}
+
 /// A review reason for a lone `git worktree add` whose new checkout would sit
 /// outside home, where the proof above never admits it. Agents told only that
 /// the command "could not be confirmed read-only" tend to copy the repository

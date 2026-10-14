@@ -197,3 +197,41 @@ fn fetch_inside_a_linked_sibling_worktree_is_quiet() {
         &format!("cd {linked} && git fetch origin fix/report-lane 2>&1 | tail -2"),
     );
 }
+
+/// A proven `git worktree add` writes the new checkout, its administrative
+/// files, a branch and that branch's upstream, never configuration a Git
+/// read uses, so a read after it in the same command keeps its own proof.
+#[test]
+fn git_reads_after_a_proven_worktree_add_keep_their_proof() {
+    let session = session("sibling-add-read");
+    let add = "git worktree add ../app-review -b feat/review-goal origin/main";
+    for command in [
+        format!("{add} && git status --short"),
+        format!("{add}; git status --short && git branch --show-current"),
+    ] {
+        let result = session.evaluate_at(&command, &session.primary);
+        assert_eq!(
+            result.minimum_action, "allow",
+            "{command}: {}",
+            result.reason_code
+        );
+    }
+    for command in [
+        "git worktree add -f ../app-review -b feat/review-goal origin/main && git status --short"
+            .to_string(),
+        "git worktree add ../app-review -b feat/review-goal upstream/main && git status --short"
+            .to_string(),
+        format!("{add} && git config core.pager cat && git status --short"),
+        format!("{add} && git -c core.pager=cat log -1"),
+    ] {
+        let result = session.evaluate_at(&command, &session.primary);
+        assert_ne!(
+            result.minimum_action, "allow",
+            "{command}: {}",
+            result.reason_code
+        );
+    }
+    session.config(&["core.pager", "cat"]);
+    let result = session.evaluate_at(&format!("{add} && git status --short"), &session.primary);
+    assert_ne!(result.minimum_action, "allow", "{}", result.reason_code);
+}

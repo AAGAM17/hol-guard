@@ -8,6 +8,7 @@ pub mod staged_scanner;
 
 mod masked_value;
 mod match_spans;
+mod reference_value;
 
 pub use match_spans::scan_match_spans;
 
@@ -193,18 +194,9 @@ fn suppressible(classifier: &str) -> bool {
 }
 
 fn has_long_alphanumeric_run(token: &str) -> bool {
-    let mut run = 0usize;
-    for character in token.chars() {
-        if character.is_ascii_alphanumeric() {
-            run += 1;
-            if run >= 20 {
-                return true;
-            }
-        } else {
-            run = 0;
-        }
-    }
-    false
+    token
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .any(|run| run.len() >= 20)
 }
 
 fn assignment_value(matched: &str) -> Option<&str> {
@@ -222,6 +214,7 @@ fn assignment_value(matched: &str) -> Option<&str> {
 fn is_sample(
     classifier: &str,
     matched: &str,
+    rest_of_line: &str,
     suppress_samples: bool,
     documentation_sample_context: bool,
 ) -> bool {
@@ -229,9 +222,9 @@ fn is_sample(
         return false;
     }
     if classifier == "credential-assignment"
-        && assignment_value(matched).is_some_and(|value| {
+        && (assignment_value(matched).is_some_and(|value| {
             inert_code_expression_regex().is_match(value) || masked_value::is_masked(value)
-        })
+        }) || reference_value::is_reference(matched, rest_of_line))
     {
         return true;
     }
@@ -262,10 +255,16 @@ fn counted_matches<'t>(
     documentation_sample_context: bool,
 ) -> impl Iterator<Item = regex::Match<'t>> {
     let classifier = PATTERNS[index].classifier;
+    let mut line_end = 0;
     compiled()[index].find_iter(text).filter(move |matched| {
+        if matched.end() > line_end {
+            let rest = &text[matched.end()..];
+            line_end = matched.end() + rest.find(['\r', '\n']).unwrap_or(rest.len());
+        }
         !is_sample(
             classifier,
             matched.as_str(),
+            &text[matched.end()..line_end],
             suppress_samples,
             documentation_sample_context,
         )

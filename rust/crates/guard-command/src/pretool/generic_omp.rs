@@ -324,6 +324,45 @@ fn listing_target_proven(
             context.path.home_dir,
             context.path.cwd,
         )
+        || (!has_glob_selector && project_skill_listing(target, context))
+}
+
+/// A names-only listing of the session's own project skill folders. Only a
+/// literal path with no link component is resolved; the screens are in
+/// `project_skill_listing_directory`.
+fn project_skill_listing(target: &str, context: &OmpContext<'_>) -> bool {
+    let (Some(home), Some(cwd)) = (context.path.home_dir, context.path.cwd) else {
+        return false;
+    };
+    if target.is_empty()
+        || target.trim() != target
+        || target.len() > 4096
+        || target.contains(['\\', '$', '`', '\0', '\n', '\r'])
+        || target.split('/').any(|part| part == "..")
+    {
+        return false;
+    }
+    let candidate = match target.strip_prefix("~/") {
+        Some(rest) => std::path::Path::new(home).join(rest),
+        None if target.starts_with('~') => return false,
+        None => std::path::Path::new(cwd).join(target),
+    };
+    if guard_secure_fs::contains_symlink_component(&candidate) {
+        return false;
+    }
+    let (Ok(canonical), Ok(session)) = (
+        std::fs::canonicalize(&candidate),
+        std::fs::canonicalize(cwd),
+    ) else {
+        return false;
+    };
+    super::super::read_paths::project_skill_listing_directory(&canonical, &session)
+        && super::super::read_paths::resolved_location_allowed(
+            &canonical,
+            context.path.home_dir,
+            context.path.cwd,
+            false,
+        )
 }
 
 /// Whether a glob selector ends in a literal file name, such as
@@ -581,6 +620,49 @@ fn missing_under_searchable_folder(target: &str, home: Option<&str>, cwd: Option
                         && !guard_secure_fs::credential_named_path(path))
             })
 }
+
+/// Why a content search that stays under review was not proven, for the
+/// agent to act on. A search path holding a glob is walked from the folder
+/// before the glob, so the note asks for separate folders. Otherwise it names
+/// the first sensitive file a listed folder would reach. Only names are
+/// inspected; no candidate file is opened.
+pub(super) fn grep_review_note(
+    payload: &Value,
+    signals: &GenericSignals,
+    context: &OmpContext<'_>,
+) -> Option<String> {
+    if context.event != "PreToolUse"
+        || !matches!(context.harness, "omp" | "pi")
+        || signals.tool_name.as_deref() != Some("grep")
+    {
+        return None;
+    }
+    let path = input_path(strict_tool_input(payload)?, signals)?.unwrap_or(".");
+    let globbed = |entry: &str| entry.contains(['*', '?', '[', '{']);
+    let Some(targets) = search_targets(path, context) else {
+        return globbed(path).then(|| GLOB_PATH_NOTE.to_owned());
+    };
+    if targets.iter().any(|target| globbed(target)) {
+        return Some(GLOB_PATH_NOTE.to_owned());
+    }
+    let (home, cwd) = (context.path.home_dir, context.path.cwd);
+    targets.iter().find_map(|target| {
+        let blocker = super::super::search_scope::content_search_blocker(target, home, cwd)?;
+        let blocker = blocker.to_str()?;
+        let shown = match target.trim_end_matches('/') {
+            "" | "." => blocker.to_owned(),
+            folder => format!("{folder}/{blocker}"),
+        };
+        (shown.len() <= 512 && !shown.contains('`') && !shown.chars().any(char::is_control))
+            .then(|| {
+                format!(
+                    "The search would reach `{shown}`, which Guard treats as sensitive. Leave out the folder that holds it, for example by listing the folders you need as `;`-separated paths."
+                )
+            })
+    })
+}
+
+const GLOB_PATH_NOTE: &str = "A search path with a glob is checked against everything under the folder before the glob, so list the folders you need as `;`-separated paths instead.";
 
 /// `skill://<name>[/<relative.md>]` names a skill the host resolves from its
 /// own registered skill roots; the name is a bounded token, never a path.

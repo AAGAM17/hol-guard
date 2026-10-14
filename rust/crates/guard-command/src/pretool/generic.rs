@@ -528,19 +528,16 @@ fn evaluate_envelope(
         && !signals.package_present
         && signals.path_values.is_empty()
         && signals.url_values.is_empty();
-    let omp_result = omp::evaluate(
-        payload,
-        &signals,
-        &omp::OmpContext {
-            yield_report_verified: yield_payload.is_some(),
-            harness,
-            event,
-            controls,
-            deadline,
-            path: context,
-            execution_environment,
-        },
-    );
+    let omp_context = omp::OmpContext {
+        yield_report_verified: yield_payload.is_some(),
+        harness,
+        event,
+        controls,
+        deadline,
+        path: context,
+        execution_environment,
+    };
+    let omp_result = omp::evaluate(payload, &signals, &omp_context);
     let command_decision = signals
         .command
         .as_deref()
@@ -644,6 +641,11 @@ fn evaluate_envelope(
             cwd,
         )
     };
+    if result.reason_code == "native_file_read_review" {
+        if let Some(note) = omp::grep_review_note(payload, &signals, &omp_context) {
+            result.reason = format!("{} {note}", result.reason);
+        }
+    }
     if event == "UserPromptSubmit" {
         let mut classes = Vec::new();
         if result.action.sensitive_target && signals.content_sensitive {

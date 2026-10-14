@@ -270,6 +270,66 @@ fn listings_allow_verified_directories_only() {
 }
 
 #[test]
+fn project_skill_folders_list_by_name() {
+    let f = fixture();
+    write(
+        f.project.join("app/.agents/skills/deploy/SKILL.md"),
+        "synthetic fixture\n",
+    );
+    write(
+        f.project.join(".claude/skills/review/SKILL.md"),
+        "synthetic fixture\n",
+    );
+    write(f.project.join(".claude/settings.local.json"), "{}\n");
+    let absolute = f.project.join(".agents");
+    for tool in ["glob", "find", "ls"] {
+        for path in [
+            ".agents",
+            ".agents/",
+            ".agents/skills",
+            ".agents/skills/example",
+            "app/.agents",
+            ".claude/skills",
+            "~/project/.agents",
+            absolute.to_str().unwrap(),
+        ] {
+            let result = omp(
+                &f,
+                tool,
+                json!({"path": path, "hidden": true, "gitignore": false}),
+            );
+            assert!(allowed(&result), "{tool} {path}: {}", result.reason_code);
+        }
+        for path in [
+            ".agents/skills/.hidden",
+            ".git",
+            ".git/skills",
+            ".claude",
+            "~/.codex",
+            "~/.agents/../project/.agents",
+        ] {
+            let result = omp(&f, tool, json!({"path": path, "hidden": true}));
+            assert!(!allowed(&result), "{tool} {path}");
+        }
+    }
+    // A glob inside the folder keeps the full tree proof.
+    assert!(!allowed(&omp(
+        &f,
+        "glob",
+        json!({"path": ".agents/**/*.py"})
+    )));
+    // A project `.agents` folder holding more than skills may hold agent state.
+    std::fs::create_dir_all(f.project.join(".agents/sessions")).unwrap();
+    for tool in ["glob", "find", "ls"] {
+        assert!(
+            !allowed(&omp(&f, tool, json!({"path": ".agents"}))),
+            "{tool}"
+        );
+    }
+    assert!(allowed(&omp(&f, "ls", json!({"path": ".agents/skills"}))));
+}
+
+#[test]
 fn glob_path_selectors_prove_the_fixed_directory_without_allowing_escape() {
     let f = fixture();
     for path in ["src/**/*.ts", "src/*.rs", "~/clean/*"] {
@@ -386,6 +446,42 @@ fn grep_allows_only_directories_without_reachable_secrets() {
         "grep",
         json!({"pattern": "x", "path": "~/clean"})
     )));
+}
+
+#[test]
+fn grep_reviews_name_the_sensitive_file_or_ask_for_separate_folders() {
+    let f = fixture();
+    write(
+        f.project.join("deploy/base/secret.yaml"),
+        "synthetic fixture\n",
+    );
+    write(
+        f.project.join("deploy/base/service.yaml"),
+        "synthetic fixture\n",
+    );
+    write(f.home.join("suites/tls/server.key"), "synthetic fixture\n");
+    for (path, note) in [
+        ("deploy", "would reach `deploy/base/secret.yaml`"),
+        ("deploy/base/", "would reach `deploy/base/secret.yaml`"),
+        ("src;~/suites", "would reach `~/suites/tls/server.key`"),
+        (
+            "{src,deploy}",
+            "list the folders you need as `;`-separated paths",
+        ),
+        (
+            "deploy/**/*.yaml",
+            "list the folders you need as `;`-separated paths",
+        ),
+    ] {
+        let result = omp(&f, "grep", json!({"pattern": "x", "path": path}));
+        assert!(!allowed(&result), "{path}");
+        assert_eq!(result.reason_code, "native_file_read_review", "{path}");
+        assert!(result.reason.contains(note), "{path}: {}", result.reason);
+    }
+    // A sensitive file named directly keeps its own reason with no note.
+    let result = omp(&f, "grep", json!({"pattern": "x", "path": ".env"}));
+    assert!(!allowed(&result));
+    assert!(!result.reason.contains("would reach"), "{}", result.reason);
 }
 
 #[test]

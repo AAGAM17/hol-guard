@@ -57,7 +57,7 @@ pub(super) fn claude_grep_directory_scope_proven(
         return false;
     };
     !super::read_paths::inside_agent_state_tree(&root, home_dir)
-        && walk_scope(&root, &filter, true).is_ok()
+        && walk_scope(&root, &filter, true, &mut None).is_ok()
 }
 
 /// True when a Claude `Glob` returns only names under a verified directory
@@ -136,9 +136,24 @@ pub(super) fn unfiltered_directory_scope_proven(
         .is_some_and(|root| unfiltered_walk_proven(&root))
 }
 
+/// The first sensitive file an unfiltered content search of `target` would
+/// reach, relative to the searched folder, when that file is why the search
+/// is unproven. Only names are inspected; no candidate file is opened.
+pub(super) fn content_search_blocker(
+    target: &str,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+) -> Option<PathBuf> {
+    let root = unfiltered_directory_root(target, home_dir, cwd)?;
+    let filter = SearchFilter::from_input(&Map::new())?;
+    let mut blocker = None;
+    walk_scope(&root, &filter, false, &mut blocker).err()?;
+    blocker.and_then(|path| path.strip_prefix(&root).ok().map(Path::to_path_buf))
+}
+
 fn unfiltered_walk_proven(root: &Path) -> bool {
     SearchFilter::from_input(&Map::new())
-        .is_some_and(|filter| walk_scope(root, &filter, false).is_ok())
+        .is_some_and(|filter| walk_scope(root, &filter, false, &mut None).is_ok())
 }
 
 /// Canonical directory an unfiltered search walks, with `~/` expanded the
@@ -294,10 +309,13 @@ struct PendingDirectory {
     tiers: Rc<IgnoreTiers>,
 }
 
+/// Walks the modeled search scope. When a sensitive file fails the proof,
+/// `blocker` names it.
 fn walk_scope(
     root: &Path,
     filter: &SearchFilter,
     honor_ignores: bool,
+    blocker: &mut Option<PathBuf>,
 ) -> Result<(), ScopeUnproven> {
     let repository = repository_root(root).filter(|_| honor_ignores);
     let mut tiers = IgnoreTiers::default();
@@ -384,6 +402,7 @@ fn walk_scope(
                     tiers: Rc::clone(&tiers),
                 });
             } else if searched && sensitive_scope_file(&path) {
+                *blocker = Some(path);
                 return Err(ScopeUnproven);
             }
         }

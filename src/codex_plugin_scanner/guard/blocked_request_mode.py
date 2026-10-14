@@ -54,7 +54,7 @@ _REASON_CODE_HINTS = {
         "against every file it can reach, so search a narrower folder or one file, use `rg` "
         "with a `-g` file filter, or find files by name with `find` or `glob`."
     ),
-    "native_pre_tool_unknown_review": "Guard does not recognize this tool call.",
+    "native_pre_tool_unknown_review": "Guard cannot check what this tool call will do before it runs.",
     "native_command_review_required": (
         "Guard could not prove this exact command is read-only. Use a simpler built-in tool where one fits."
     ),

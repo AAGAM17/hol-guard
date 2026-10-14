@@ -305,6 +305,7 @@ fn may_inspect(arguments: &[String]) -> bool {
                         | "cat-file"
                         | "show-ref"
                         | "for-each-ref"
+                        | "rev-list"
                 )
             }
         }

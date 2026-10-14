@@ -1,7 +1,8 @@
-//! Read-only npm queries: `npm view` and `npm ls`.
+//! Read-only npm queries: `npm view`, `npm ls` and `npm cache ls`.
 //!
-//! Neither runs package code. `npm view` fetches public metadata for one
-//! registry package and `npm ls` reads the installed tree. The risk is npm's
+//! None runs package code. `npm view` fetches public metadata for one
+//! registry package, `npm ls` reads the installed tree and `npm cache ls`
+//! lists entries already in the local cache. The risk is npm's
 //! configuration: a `.npmrc` that moves the registry can pair it with an
 //! `${ENV}` auth line and send that secret to another host. So the proof also
 //! needs every `.npmrc` npm could read to leave the fetch, its trust and npm's
@@ -20,6 +21,7 @@ pub(super) fn safe_npm_read(arguments: &[String], context: super::PathContext<'_
     let shape = match subcommand.as_str() {
         "view" | "v" | "info" | "show" => view_arguments(rest),
         "ls" | "list" => list_arguments(rest),
+        "cache" => cache_list_arguments(rest),
         _ => false,
     };
     // npm finds the user config through its own HOME, so the one checked
@@ -80,6 +82,14 @@ fn list_arguments(arguments: &[String]) -> bool {
             argument.strip_prefix("--omit="),
             Some("dev" | "optional" | "peer")
         ) || plain_registry_spec(argument)
+    })
+}
+
+/// `cache ls` and any package names. The other cache subcommands fetch into,
+/// prune or rewrite the cache, so they stay with the package review.
+fn cache_list_arguments(arguments: &[String]) -> bool {
+    arguments.split_first().is_some_and(|(subcommand, specs)| {
+        subcommand == "ls" && specs.iter().all(|spec| plain_registry_spec(spec))
     })
 }
 

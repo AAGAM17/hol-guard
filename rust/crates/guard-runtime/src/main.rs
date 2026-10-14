@@ -220,6 +220,7 @@ mod decision_authority_op;
 mod decision_authority_vectors_tests;
 mod developer_inspection_authority_op;
 mod developer_inspection_host;
+mod devin_detect;
 mod direct_tool_context_op;
 #[cfg(test)]
 mod direct_tool_context_tests;

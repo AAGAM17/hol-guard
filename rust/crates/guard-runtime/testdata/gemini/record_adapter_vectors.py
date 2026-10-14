@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Record Gemini, Antigravity, Grok and Kimi detection vectors from the
-ORIGINAL Python implementation.
+"""Record Gemini, Antigravity, Devin, Grok and Kimi detection vectors from
+the ORIGINAL Python implementation.
 
 Run against a checkout that still holds the original helper `ORIGINALS` names
 for the harness (the base of the commit that introduced its native
@@ -36,7 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from adapter_vector_cases import cases
 
-from codex_plugin_scanner.guard.adapters import antigravity, gemini, grok, grok_config, kimi
+from codex_plugin_scanner.guard.adapters import antigravity, devin, gemini, grok, grok_config, kimi
 from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.adapters.grok_executable import GrokExecutableResolution
 from codex_plugin_scanner.guard.models import GuardArtifact
@@ -44,6 +44,7 @@ from codex_plugin_scanner.guard.models import GuardArtifact
 ADAPTERS = {
     "gemini": gemini.GeminiHarnessAdapter,
     "antigravity": antigravity.AntigravityHarnessAdapter,
+    "devin": devin.DevinHarnessAdapter,
     "grok": grok.GrokHarnessAdapter,
     "kimi": kimi.KimiHarnessAdapter,
 }
@@ -52,11 +53,12 @@ ADAPTERS = {
 ORIGINALS = {
     "gemini": (gemini.GeminiHarnessAdapter, "_entry_hook_command"),
     "antigravity": (antigravity.AntigravityHarnessAdapter, "_mcp_source"),
+    "devin": (devin.DevinHarnessAdapter, "_claude_hooks_overlap"),
     "grok": (grok_config, "append_mcp_artifacts"),
     "kimi": (kimi.KimiHarnessAdapter, "_append_mcp_artifacts"),
 }
 
-for module in (gemini, grok, kimi):
+for module in (gemini, devin, grok, kimi):
     module.extend_detection_with_workspace_aibom = lambda detection, **_: detection
 grok.resolve_trusted_grok_executable = lambda _context: GrokExecutableResolution(None)
 grok.GrokHarnessAdapter._version_probe = staticmethod(lambda _context, _resolution: {})
@@ -156,6 +158,8 @@ def facade_args(harness: str, context: HarnessContext, root: Path) -> dict:
         ]
     if not home.is_absolute() or (workspace is not None and not workspace.is_absolute()):
         request["cwd"] = os.getcwd()
+    if harness == "devin":
+        request["config_dir"] = str(devin.DevinHarnessAdapter._devin_config_dir(context))
     return request
 
 

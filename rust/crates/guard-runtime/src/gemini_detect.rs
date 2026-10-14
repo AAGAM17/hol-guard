@@ -11,7 +11,9 @@ use std::path::Path;
 
 use serde_json::{Map, Value};
 
-use super::adapter_inventory::{carried, json_payload, mcp_fields, Inventory, Request, ERR_NAME};
+use super::adapter_inventory::{
+    carried, json_payload, mcp_fields, Inventory, Request, SkillNaming, ERR_NAME,
+};
 use super::pyjson::PyVal;
 use super::runner_authority_op::KindResult;
 use super::zcode_artifacts::{Fields, Scope};
@@ -187,7 +189,13 @@ pub(crate) fn detect(args: &Value) -> KindResult {
         };
         extensions(&mut inventory, &scope, &gemini.join("extensions"))?;
         settings(&mut inventory, &scope, &settings_path)?;
-        inventory.skills(&scope, "Gemini", &gemini.join("skills"), root)?;
+        inventory.skills(
+            &scope,
+            "Gemini",
+            &SkillNaming::Prefixed,
+            &gemini.join("skills"),
+            root,
+        )?;
     }
     inventory.finish()
 }

@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
-use super::adapter_inventory::{json_document, json_payload, mcp_fields, Inventory, Request};
+use super::adapter_inventory::{
+    json_document, json_payload, mcp_fields, Inventory, Request, SkillNaming,
+};
 use super::aibom_paths::{py_join, py_path};
 use super::pyjson::PyVal;
 use super::runner_authority_op::{KindResult, ERR_INVALID};
@@ -197,7 +199,13 @@ pub(crate) fn detect(args: &Value) -> KindResult {
             harness: HARNESS,
             scope: inventory.scope_for(&skill_root),
         };
-        inventory.skills(&scope, "Antigravity", &skill_root, root)?;
+        inventory.skills(
+            &scope,
+            "Antigravity",
+            &SkillNaming::Prefixed,
+            &skill_root,
+            root,
+        )?;
     }
 
     let mut candidates: Vec<(PathBuf, String, bool)> = OWNED_SETTINGS

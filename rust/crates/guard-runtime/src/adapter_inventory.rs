@@ -1,4 +1,4 @@
-//! Shared pieces of the Gemini, Antigravity, Grok and Kimi detection kinds: the request
+//! Shared pieces of the Gemini, Antigravity, Devin, Grok and Kimi detection kinds: the request
 //! (home and workspace as Python holds them, plus its working directory when
 //! either is relative), the `_json_payload` reader, and an inventory that
 //! keeps found paths unique and walks skill roots with the same native
@@ -108,6 +108,26 @@ impl Request {
             cwd,
         })
     }
+
+    /// A further directory the request names, read from Python's `cwd` when
+    /// it is relative.
+    pub(crate) fn path(&self, args: &Value, key: &str) -> Result<PathBuf, &'static str> {
+        let path = path_arg(args_object(args)?, key)?.ok_or(ERR_INVALID)?;
+        if !path.is_absolute() && self.cwd.is_none() {
+            return Err(ERR_INVALID);
+        }
+        Ok(path)
+    }
+}
+
+/// How a harness names its skill artifacts.
+pub(crate) enum SkillNaming<'a> {
+    /// Gemini and Antigravity: `skills/<dir>` is the id segment and the name,
+    /// and a discovery issue is keyed by its id alone.
+    Prefixed,
+    /// Devin: `<dir>` is the id segment and the name, and a discovery issue is
+    /// keyed by the skill root's label too.
+    Bare { root_label: &'a str },
 }
 
 /// `json.loads(path.read_text(encoding="utf-8"))`: `None` when the file
@@ -268,13 +288,13 @@ impl Inventory {
         }
     }
 
-    /// The skill documents and discovery issues below `skill_root`, as the
-    /// Gemini and Antigravity adapters list them; `label` names the harness in
-    /// warnings and issue names.
+    /// The skill documents and discovery issues below `skill_root`; `label`
+    /// names the harness in warnings and issue names.
     pub(crate) fn skills(
         &mut self,
         scope: &Scope<'_>,
         label: &str,
+        naming: &SkillNaming<'_>,
         skill_root: &Path,
         identity_root: &Path,
     ) -> Result<(), &'static str> {
@@ -297,14 +317,18 @@ impl Inventory {
             self.found(&skill_md);
             let parent = relative.rsplit_once('/').map_or(".", |(parent, _)| parent);
             let relative_id = format!("skills/{parent}");
+            let name = match naming {
+                SkillNaming::Prefixed => relative_id.as_str(),
+                SkillNaming::Bare { .. } => parent,
+            };
             let identity = inspect_skill_directory(&skill_md, &identity_root, &LIMITS);
             if identity.status != "complete" {
                 self.warnings.push(incomplete.clone());
             }
             let metadata = identity_metadata(&identity, &relative_id)?;
             self.artifacts.push(scope.wire(
-                format!("{}:{}:skill:{relative_id}", scope.harness, scope.scope),
-                &relative_id,
+                format!("{}:{}:skill:{name}", scope.harness, scope.scope),
+                name,
                 "skill",
                 &skill_md,
                 Fields::default(),
@@ -325,11 +349,12 @@ impl Inventory {
                 "{label} {} skill discovery is incomplete; approval reuse is disabled.",
                 scope.scope
             ));
+            let key = match naming {
+                SkillNaming::Prefixed => issue.issue_id.clone(),
+                SkillNaming::Bare { root_label } => format!("{root_label}:{}", issue.issue_id),
+            };
             self.artifacts.push(scope.wire(
-                format!(
-                    "{}:{}:skill-discovery:{}",
-                    scope.harness, scope.scope, issue.issue_id
-                ),
+                format!("{}:{}:skill-discovery:{key}", scope.harness, scope.scope),
                 &format!("Incomplete {label} skill discovery"),
                 "skill",
                 &path,

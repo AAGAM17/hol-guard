@@ -1,4 +1,4 @@
-//! Replays Gemini, Antigravity, Grok and Kimi detection vectors recorded from the
+//! Replays Gemini, Antigravity, Devin, Grok and Kimi detection vectors recorded from the
 //! original Python implementation (see `testdata/gemini/record_adapter_vectors.py`).
 //! Fixture trees and expected artifacts, paths and warnings come from Python,
 //! never from Rust output. `<ROOT>` is the fixture root.
@@ -11,6 +11,7 @@ use crate::runner_authority_op::KindResult;
 
 const GEMINI: &str = include_str!("../testdata/gemini/vectors.json");
 const ANTIGRAVITY: &str = include_str!("../testdata/antigravity/vectors.json");
+const DEVIN: &str = include_str!("../testdata/devin/vectors.json");
 const GROK: &str = include_str!("../testdata/grok/vectors.json");
 const KIMI: &str = include_str!("../testdata/kimi/vectors.json");
 
@@ -135,6 +136,56 @@ fn malformed_requests_are_refused() {
         );
         assert!(detect(&json!([])).is_err());
     }
+}
+
+#[test]
+fn replays_every_recorded_devin_detection_case() {
+    replay_all(DEVIN, "guard-devin-vectors.v1", crate::devin_detect::detect);
+}
+
+#[test]
+fn malformed_devin_requests_are_refused() {
+    let valid = json!({
+        "harness": "devin",
+        "home": "/nonexistent/home",
+        "workspace": null,
+        "config_dir": "/nonexistent/home/.config/devin",
+    });
+    assert!(crate::devin_detect::detect(&valid).is_ok());
+    for value in [json!(null), json!(1), json!("/x\u{0}y"), json!("relative")] {
+        let mut args = valid.clone();
+        args["config_dir"] = value.clone();
+        assert!(
+            crate::devin_detect::detect(&args).is_err(),
+            "config_dir={value}"
+        );
+    }
+    let mut args = valid.clone();
+    args.as_object_mut().unwrap().remove("config_dir");
+    assert!(crate::devin_detect::detect(&args).is_err());
+}
+
+/// Python binds a lone surrogate in a configured environment value to an
+/// unbound placeholder digest; the resident refuses the inventory instead.
+#[test]
+fn devin_lone_surrogate_env_value_is_refused() {
+    let root = temp_home("ad-devin-env-surrogate");
+    let config = root.join("home/.config/devin");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(
+        config.join("mcp_config.json"),
+        r#"{"mcpServers": {"s": {"command": "c", "env": {"K": "\udc80"}}}}"#,
+    )
+    .unwrap();
+    let home = root.join("home");
+    let result = crate::devin_detect::detect(&json!({
+        "harness": "devin",
+        "home": home.to_string_lossy(),
+        "workspace": null,
+        "config_dir": config.to_string_lossy(),
+    }));
+    release(&root);
+    assert!(result.is_err());
 }
 
 #[test]

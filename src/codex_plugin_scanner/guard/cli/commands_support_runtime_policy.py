@@ -387,30 +387,6 @@ def _runtime_stored_policy_decision(
     return decision
 
 
-def _runtime_stored_policy_action(
-    *,
-    store: GuardStore,
-    harness: str,
-    artifact: GuardArtifact,
-    artifact_id: str,
-    artifact_hash: str,
-    workspace: str | None,
-    decision_lookup: Mapping[str, object] | None = None,
-    consume_one_shot: bool = True,
-) -> str | None:
-    """Compatibility projection for callers that only need the saved action."""
-
-    decision = _runtime_stored_policy_decision(
-        store=store,
-        harness=harness,
-        artifact=artifact,
-        artifact_id=artifact_id,
-        artifact_hash=artifact_hash,
-        workspace=workspace,
-        decision_lookup=decision_lookup,
-        consume_one_shot=consume_one_shot,
-    )
-    return _optional_string(decision.get("action")) if decision is not None else None
 
 
 def _runtime_saved_allow_validation_reason(
@@ -795,7 +771,7 @@ __all__ = [
     "_native_hook_reason_for_harness", "_runtime_action_data_flow_signals",
     "_runtime_artifact_command_action_floor", "_runtime_artifact_policy_action", "_runtime_artifact_risk_classes",
     "_runtime_data_flow_sink_type", "_runtime_data_flow_summary", "_runtime_detector_perf_payload",
-    "_runtime_detector_registry_payload", "_runtime_stored_policy_action", "_strip_cloud_inbox_urls",
+    "_runtime_detector_registry_payload", "_strip_cloud_inbox_urls",
     "_strip_legacy_approval_center_sentence", "_strip_review_evidence_tail", "_terminal_action_message",
     "_terminalize_runtime_action_copy",
 ]

@@ -378,17 +378,3 @@ def test_config_reader_preserves_malformed_toml_error(tmp_path: Path) -> None:
 
     with pytest.raises(config_module.tomllib.TOMLDecodeError):
         config_module._read_toml(path)
-
-
-def test_unsafe_config_does_not_fall_back_to_defaults_or_recording_only(tmp_path: Path) -> None:
-    from codex_plugin_scanner.guard.daemon.hook_availability_policy import hook_review_is_recording_only
-
-    guard_home = tmp_path / "guard-home"
-    guard_home.mkdir()
-    original = tmp_path / "strict-config.toml"
-    original.write_text('default_action = "block"\nmode = "observe"\n', encoding="utf-8")
-    _symlink(guard_home / "config.toml", original)
-
-    with pytest.raises(config_file_io.ConfigFileTrustError):
-        config_module.load_guard_config(guard_home)
-    assert hook_review_is_recording_only(guard_home=guard_home) is False

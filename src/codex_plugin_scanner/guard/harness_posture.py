@@ -137,26 +137,6 @@ def managed_locks_harness_postures(locked_settings: Iterable[str]) -> bool:
     return bool(HARNESS_POSTURE_LOCK_KEYS & set(locked_settings))
 
 
-def managed_effective_harness_postures(
-    local_postures: Mapping[str, str],
-    *,
-    locked_settings: Iterable[str],
-    managed_settings: Mapping[str, object] | None,
-) -> dict[str, str]:
-    """Apply managed locks to overrides loaded from the user's own config.
-
-    A locked ``harness_postures`` is replaced by the managed map. Any other
-    posture/mode/level lock keeps only strengthening (Extra careful) overrides.
-    """
-
-    locked = set(locked_settings)
-    if HARNESS_POSTURES_KEY in locked:
-        return coerce_loaded_harness_postures((managed_settings or {}).get(HARNESS_POSTURES_KEY))
-    if locked & HARNESS_POSTURE_LOCK_KEYS:
-        return {harness: posture for harness, posture in local_postures.items() if posture == "extra_careful"}
-    return dict(local_postures)
-
-
 def reject_locked_harness_posture_patch(patch: Mapping[str, str | None], locked_settings: Iterable[str]) -> None:
     if not managed_locks_harness_postures(locked_settings):
         return
@@ -359,7 +339,6 @@ __all__ = [
     "harness_posture_summary",
     "harness_watch_auto_revert_due",
     "known_harness_ids",
-    "managed_effective_harness_postures",
     "managed_locks_harness_postures",
     "protection_settings_payload",
     "reject_locked_harness_posture_patch",

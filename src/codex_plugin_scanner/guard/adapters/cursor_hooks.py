@@ -627,16 +627,8 @@ def cursor_native_hook_state(context: HarnessContext) -> dict[str, object]:
     }
 
 
-def _hook_script_mode_is_executable(mode: int) -> bool:
-    """Use POSIX execute bits only on platforms where they govern launch."""
-
-    # Keep this wrapper public so cursor_hooks.os.name monkeypatches still work.
-    return os.name == "nt" or bool(mode & stat.S_IXUSR)
-
-
 __all__ = [
     "HOOK_SCRIPT_NAME",
-    "_hook_script_mode_is_executable",
     "_resolve_guard_cli_command",
     "_strip_managed_hook_entries",
     "_validated_hol_guard_src_path",

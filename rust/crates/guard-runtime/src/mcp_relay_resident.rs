@@ -219,17 +219,16 @@ impl RelayAuthority for ResidentRelayAuthority {
         let id = message.get("id");
         let no_decision = || ToolCallVerdict::Respond(no_decision_response(id, params));
         let Some(facts) = self.facts.as_ref() else {
+            defer::note(defer::FACTS_UNAVAILABLE);
             return no_decision();
         };
         let Some((payload, expected)) = decide_request(facts, params, order, catalog) else {
+            defer::note(defer::REQUEST_UNSENDABLE);
             return no_decision();
         };
         let guard_home = PathBuf::from(&facts.guard_home);
-        match self
-            .exchange(&guard_home, &payload)
-            .as_deref()
-            .and_then(reply)
-        {
+        let output = self.exchange(&guard_home, &payload);
+        match output.as_deref().and_then(reply) {
             Some(Reply::Forward { ticket }) => ToolCallVerdict::Forward(ForwardTicket {
                 message: message.clone(),
                 expected,
@@ -246,7 +245,10 @@ impl RelayAuthority for ResidentRelayAuthority {
                 Some(&message),
                 Some(data),
             )),
-            None => no_decision(),
+            None => {
+                defer::note(&defer::reply_cause(output.as_deref()));
+                no_decision()
+            }
         }
     }
 
@@ -400,6 +402,8 @@ fn send(resident: &Resident, payload: &[u8], deadline: Instant) -> Result<Vec<u8
     .map_err(|error| error.retryable_teardown)
 }
 
+#[path = "mcp_relay_resident_defer.rs"]
+mod defer;
 #[path = "mcp_relay_resident_request.rs"]
 mod request;
 use request::{decide_request, relay_facts};

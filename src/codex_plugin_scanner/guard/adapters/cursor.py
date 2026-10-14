@@ -37,6 +37,7 @@ from .cursor_hooks import cursor_hooks_path
 
 # isort: split
 from .cursor_hooks import install_cursor_hooks, prepare_cursor_hooks, uninstall_cursor_hooks
+from .mcp_relay_native import mcp_proxy_launch, python_proxy_launch
 from .mcp_servers import (
     ManagedMcpServer,
     is_guard_proxy_command,
@@ -654,9 +655,10 @@ class CursorHarnessAdapter(HarnessAdapter):
             home=str(context.home_dir) if context.home_dir.resolve() != Path.home().resolve() else None,
             workspace=str(context.workspace_dir) if context.workspace_dir is not None else None,
         )
+        command, launch_args = mcp_proxy_launch(sys.executable, args)
         entry: dict[str, object] = {
-            "command": sys.executable,
-            "args": args,
+            "command": command,
+            "args": launch_args,
             "type": "stdio",
         }
         env = merge_guard_launcher_env(proxy_process_env(getattr(server, "env", {})))
@@ -669,8 +671,8 @@ class CursorHarnessAdapter(HarnessAdapter):
         refreshed = dict(server_config)
         raw_args = server_config.get("args")
         args = tuple(str(value) for value in raw_args if isinstance(value, str)) if isinstance(raw_args, list) else ()
-        refreshed["command"] = sys.executable
-        refreshed["args"] = list(args)
+        _, python_args = python_proxy_launch(None, args)
+        refreshed["command"], refreshed["args"] = mcp_proxy_launch(sys.executable, python_args)
         return refreshed
 
     @staticmethod

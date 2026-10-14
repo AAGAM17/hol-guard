@@ -15,6 +15,7 @@ from ..models import HarnessDetection
 from ..shims import install_guard_shim, prepare_guard_shim, remove_guard_shim
 from .base import HarnessAdapter, HarnessContext, PreparedHarnessInstall, _command_available, _run_command_probe
 from .hook_python import guard_cli_command
+from .mcp_relay_native import mcp_proxy_command
 from .mcp_servers import (
     GUARD_MCP_COMPANION_PREFIX,
     ManagedMcpServer,
@@ -473,14 +474,16 @@ class OpenCodeHarnessAdapter(HarnessAdapter):
                 continue
             entry: dict[str, object] = {
                 "type": "local",
-                "command": guard_cli_command(
-                    context,
-                    proxy_cli_args(
-                        proxy_command="opencode-mcp-proxy",
-                        guard_home=str(context.guard_home),
-                        server=server,
-                        home=str(context.home_dir) if context.home_dir.resolve() != Path.home().resolve() else None,
-                        workspace=str(context.workspace_dir) if context.workspace_dir is not None else None,
+                "command": mcp_proxy_command(
+                    guard_cli_command(
+                        context,
+                        proxy_cli_args(
+                            proxy_command="opencode-mcp-proxy",
+                            guard_home=str(context.guard_home),
+                            server=server,
+                            home=str(context.home_dir) if context.home_dir.resolve() != Path.home().resolve() else None,
+                            workspace=str(context.workspace_dir) if context.workspace_dir is not None else None,
+                        ),
                     ),
                 ),
                 "enabled": server.enabled,
@@ -791,14 +794,16 @@ def _persisted_mcp_with_guard_companions(
         companion_name = _guard_mcp_companion_name(server.name)
         entry: dict[str, object] = {
             "type": "local",
-            "command": guard_cli_command(
-                context,
-                proxy_cli_args(
-                    proxy_command="opencode-mcp-proxy",
-                    guard_home=str(context.guard_home),
-                    server=server,
-                    home=str(context.home_dir) if context.home_dir.resolve() != Path.home().resolve() else None,
-                    workspace=None,
+            "command": mcp_proxy_command(
+                guard_cli_command(
+                    context,
+                    proxy_cli_args(
+                        proxy_command="opencode-mcp-proxy",
+                        guard_home=str(context.guard_home),
+                        server=server,
+                        home=str(context.home_dir) if context.home_dir.resolve() != Path.home().resolve() else None,
+                        workspace=None,
+                    ),
                 ),
             ),
             "enabled": server.enabled,

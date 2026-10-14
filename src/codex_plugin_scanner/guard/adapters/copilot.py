@@ -35,6 +35,7 @@ from .copilot_state_paths import (
     validated_copilot_state_entries,
 )
 from .hook_payloads import inline_hooks_payload
+from .mcp_relay_native import mcp_proxy_launch, python_proxy_launch
 from .mcp_servers import (
     ManagedMcpServer,
     is_guard_proxy_command,
@@ -400,8 +401,8 @@ def _refresh_guard_proxy_entry(
 ) -> dict[str, object]:
     refreshed = dict(server_config)
     _command, args = _command_parts(server_config)
-    refreshed["command"] = sys.executable
-    refreshed["args"] = list(args)
+    _, python_args = python_proxy_launch(_command, args)
+    refreshed["command"], refreshed["args"] = mcp_proxy_launch(sys.executable, python_args)
     if launcher_env:
         refreshed["env"] = launcher_env
     else:

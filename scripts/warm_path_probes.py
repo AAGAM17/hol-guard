@@ -454,3 +454,21 @@ def run_mcp_phase(
         / max(1, samples),
         "service": after_service,
     }
+
+
+_SAVED_STATE_PROBE = """
+import json, sys
+from pathlib import Path
+from codex_plugin_scanner.guard import native_policy_snapshot_direct_lane_saved as saved
+from codex_plugin_scanner.guard.store import GuardStore
+state = saved._integrity_state(GuardStore(Path(sys.argv[1]), prime_policy_integrity=False))
+print(json.dumps({"environment": saved._environment() is not None, "integrity_state": state}))
+"""
+
+
+def saved_decision_inputs(python: Path, env: dict[str, str], guard_home: Path) -> str:
+    """What the publisher reads to bind saved decisions, which MCP relay decisions require (informational)."""
+
+    probe = [str(python), "-c", _SAVED_STATE_PROBE, str(guard_home)]
+    result = subprocess.run(probe, env=env, capture_output=True, text=True, timeout=60, check=False)
+    return (result.stdout or result.stderr).strip()[-400:]

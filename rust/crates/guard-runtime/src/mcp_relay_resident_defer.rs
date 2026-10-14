@@ -43,7 +43,7 @@ pub(super) fn reply_cause(output: Option<&[u8]>) -> String {
 }
 
 /// `[a-z0-9_]{1,64}`: a code never carries call content.
-fn is_code(text: &str) -> bool {
+pub(super) fn is_code(text: &str) -> bool {
     !text.is_empty()
         && text.len() <= MAX_CODE_BYTES
         && text

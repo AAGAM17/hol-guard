@@ -42,6 +42,7 @@ mod unix {
     use crate::mcp_relay_args::parse;
     use crate::mcp_relay_core::{child_response_timeout, ChildLink, Relay, RelayExit};
     use crate::mcp_relay_host::LineHost;
+    use crate::mcp_relay_lane::{hand_off, note, startup, DaemonKick, Gate, STARTUP_BUDGET};
     use crate::mcp_relay_launch::{inherited_environment, prepare, spawn};
     use crate::mcp_relay_resident::{ProcessFacts, ResidentRelayAuthority};
 
@@ -71,7 +72,21 @@ mod unix {
             Ok(launch) => launch,
             Err(reason) => return fail(&reason, 1),
         };
-        let authority = ResidentRelayAuthority::new(&args, &launch, &ProcessFacts::current());
+        let mut authority = ResidentRelayAuthority::new(&args, &launch, &ProcessFacts::current());
+        // Before any stdin byte is read or the child exists: a session whose
+        // lane is not ready runs as the Python proxy, on untouched stdio.
+        let workspace = authority.lane_workspace().unwrap_or_default().to_owned();
+        let mut kick = DaemonKick::new(&args, python_argv, std::path::Path::new(&workspace));
+        let gate = startup(
+            &mut |deadline| authority.lane_ready(deadline),
+            &mut kick,
+            STARTUP_BUDGET,
+        );
+        note(&gate);
+        if let Gate::HandOff(_) = gate {
+            return hand_off(python_argv);
+        }
+        let authority = authority.with_kick(Box::new(kick));
         let mut child = match spawn(&args, &launch) {
             Ok(child) => child,
             Err(reason) => return fail(&reason, 1),

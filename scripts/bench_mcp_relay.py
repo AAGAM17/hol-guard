@@ -12,6 +12,13 @@ Latency: each round opens one session per launcher (order alternating between
 rounds) and times warm ``safe_echo`` ``tools/call`` round trips. Only calls
 answered with the tool's own reply count toward the percentiles.
 
+Lane: each relay session first asks whether the resident's direct lane is
+bound for its workspace, asks the daemon to bind it when it is not, and runs
+as the Python proxy when the lane is still not ready. Every relay session's
+start line is recorded: ready at start, ready after the daemon bound the lane
+(with the time it took) or handed off with a code. Handed-off sessions run the
+Python proxy, so their calls never count toward the relay's percentiles.
+
 Deferrals: a representative set of ``tools/call`` shapes goes through both
 launchers. A relay answer is ``forward`` (the tool replied), ``block`` (the
 resident decided to refuse) or ``no_decision`` (the fail-closed answer), and
@@ -41,6 +48,7 @@ from warm_path_probes import (
     alive_pids,
     classify_mcp_response,
     clean_env,
+    saved_decision_inputs,
     stop_services,
 )
 from warm_path_stats import describe
@@ -48,6 +56,8 @@ from warm_path_stats import describe
 SCHEMA = "guard.mcp-relay-bench.v1"
 RELAY_COMMAND = "mcp-relay"
 DEFER_LINE_PREFIX = "hol-guard mcp-relay: no native decision: "
+LANE_READY_PREFIX = "hol-guard mcp-relay: lane ready: "
+HAND_OFF_PREFIX = "hol-guard mcp-relay: python proxy: "
 NO_DECISION_MESSAGE = "HOL Guard could not obtain a native decision for this tool call."
 # The daemon's interactive request budget; reported, never relaxed or enforced here.
 INTERACTIVE_BUDGET_MS = 750.0
@@ -161,6 +171,17 @@ class _Session:
         self._notes_seen = len(notes)
         return fresh
 
+    def gate(self) -> dict[str, object] | None:
+        """How a relay session started, from its start line; None for the Python proxy."""
+
+        for line in self.stderr_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith(LANE_READY_PREFIX):
+                how, _, rest = line[len(LANE_READY_PREFIX) :].partition(" ")
+                return {"ready": True, "kicked": how == "kicked", "ms": float(rest.split()[0])}
+            if line.startswith(HAND_OFF_PREFIX):
+                return {"ready": False, "code": line[len(HAND_OFF_PREFIX) :].strip()}
+        return None
+
     def close(self) -> None:
         self.proxy.close()
 
@@ -180,6 +201,7 @@ def classify_call(response: dict[str, object], tool: str) -> str:
 
 
 def _time_session(session: _Session, warmup: int, samples: int) -> dict[str, object]:
+    gate = session.gate()
     for _ in range(warmup):
         session.call("safe_echo", {"text": "guard"})
     timed = []
@@ -195,6 +217,7 @@ def _time_session(session: _Session, warmup: int, samples: int) -> dict[str, obj
         "answered_samples_ms": [elapsed for elapsed, _ in timed],
         "classes": dict(classes),
         "notes": dict(Counter(session.new_notes())),
+        "gate": gate,
     }
 
 
@@ -230,13 +253,31 @@ def deferral_breakdown(rows: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
+def lane_summary(gates: list[dict[str, object] | None]) -> dict[str, object]:
+    """Ready-at-start rate, hand-off rate by code and time-to-ready over relay sessions."""
+
+    total = len(gates)
+    started = [gate or {"ready": False, "code": "no_start_line"} for gate in gates]
+    ready = [gate for gate in started if gate.get("ready")]
+    handed = Counter(str(gate.get("code")) for gate in started if not gate.get("ready"))
+    return {
+        "sessions": total,
+        "ready_at_start_fraction": sum(1 for gate in ready if not gate.get("kicked")) / total if total else 0.0,
+        "ready_after_kick_fraction": sum(1 for gate in ready if gate.get("kicked")) / total if total else 0.0,
+        "hand_off_fraction": sum(handed.values()) / total if total else 0.0,
+        "hand_off_by_code": {code: {"sessions": n, "fraction": n / total} for code, n in handed.most_common()},
+        "time_to_ready_ms": describe([float(gate["ms"]) for gate in ready]),  # type: ignore[arg-type]
+    }
+
+
 def compare(rounds: list[dict[str, object]]) -> dict[str, object]:
     pooled: dict[str, list[float]] = {"python": [], "relay": []}
     answered: dict[str, list[float]] = {"python": [], "relay": []}
     for entry in rounds:
         for launcher in pooled:
             phase = entry.get(launcher)
-            if isinstance(phase, dict) and "samples_ms" in phase:
+            handed_off = launcher == "relay" and isinstance(phase, dict) and not (phase.get("gate") or {}).get("ready")
+            if isinstance(phase, dict) and "samples_ms" in phase and not handed_off:
                 pooled[launcher].extend(phase["samples_ms"])  # type: ignore[arg-type]
                 answered[launcher].extend(phase.get("answered_samples_ms", []))  # type: ignore[arg-type]
     stats = {launcher: describe(values) for launcher, values in pooled.items()}
@@ -293,11 +334,14 @@ def run(python: Path, args: argparse.Namespace) -> dict[str, object]:
                 sessions.append(session)
                 return session
 
-            # A Python session first, so the resident both launchers ask is live.
+            # A relay session first: its start asks the daemon to bind the direct lane.
             document["daemon_ensure_returncode"] = _ensure_daemon(cli, env, home, guard_home, workspace)
-            primer = open_session("python", "primer")
+            primer = open_session("relay", "primer")
             primer.call("safe_echo", {"text": "guard"})
+            document["primer_gate"] = primer.gate()
             document["direct_lane_ack_seconds"] = _wait_for_direct_lane(guard_home)
+            document["saved_decision_inputs"] = saved_decision_inputs(python, env, guard_home)
+            gates: list[dict[str, object] | None] = [document["primer_gate"]]  # type: ignore[list-item]
             rounds = []
             for index in range(args.rounds):
                 order = ["python", "relay"] if index % 2 == 0 else ["relay", "python"]
@@ -311,12 +355,17 @@ def run(python: Path, args: argparse.Namespace) -> dict[str, object]:
                     finally:
                         session.close()
                     entry[launcher] = phase
+                    if launcher == "relay":
+                        gates.append(phase.get("gate"))  # type: ignore[arg-type]
                     print(f"round {index + 1} {launcher}: {json.dumps(phase.get('stats_ms', phase))}", flush=True)
                 rounds.append(entry)
             document["rounds"] = rounds
             cases = {}
             for launcher in ("python", "relay"):
                 session = open_session(launcher, "cases")
+                if launcher == "relay":
+                    document["relay_cases_gate"] = session.gate()
+                    gates.append(document["relay_cases_gate"])  # type: ignore[arg-type]
                 try:
                     cases[launcher] = _run_cases(session)
                 finally:
@@ -324,6 +373,7 @@ def run(python: Path, args: argparse.Namespace) -> dict[str, object]:
             document["cases"] = cases
             document["deferrals"] = deferral_breakdown(cases["relay"])
             document["latency"] = compare(rounds)
+            document["lane"] = lane_summary(gates)
         finally:
             for session in sessions:
                 session.close()
@@ -342,8 +392,23 @@ def markdown(document: dict[str, object]) -> str:
         f"Daemon ensure exit code: `{ensure_returncode}`; "
         f"direct-lane ACK after: `{document.get('direct_lane_ack_seconds')}` s"
     )
+    lines.append(f"First relay session start: `{document.get('primer_gate')}`")
+    lines.append(f"Saved-decision inputs: `{document.get('saved_decision_inputs')}`")
+    lane = document.get("lane")
+    if isinstance(lane, dict) and lane.get("sessions"):
+        ready_ms = lane["time_to_ready_ms"]
+        lines += [
+            "",
+            f"Relay sessions: {lane['sessions']}; ready at start {lane['ready_at_start_fraction']:.0%}, "
+            f"ready after the daemon bound the lane {lane['ready_after_kick_fraction']:.0%}, "
+            f"handed off {lane['hand_off_fraction']:.0%}; time to ready p50 {ready_ms.get('p50', 0):.1f} ms, "
+            f"p95 {ready_ms.get('p95', 0):.1f} ms (informational)",
+        ]
+        for code, row in lane["hand_off_by_code"].items():
+            lines.append(f"- handed off `{code}`: {row['sessions']} ({row['fraction']:.0%})")
     latency = document.get("latency", {})
     stats = latency.get("stats_ms", {}) if isinstance(latency, dict) else {}
+    lines += ["", "Forwarded calls; relay sessions that handed off are excluded:"]
     lines += ["", "| launcher | calls | p50 ms | p95 ms | p99 ms |", "|---|---:|---:|---:|---:|"]
     for launcher in ("python", "relay"):
         row = stats.get(launcher, {})
@@ -369,6 +434,10 @@ def markdown(document: dict[str, object]) -> str:
             row = answered.get(launcher, {})
             lines.append(f"| {launcher} | {row.get('count', 0)} | {row.get('p50', 0):.2f} | {row.get('p95', 0):.2f} |")
     deferrals = document.get("deferrals", {})
+    cases_gate = document.get("relay_cases_gate")
+    if isinstance(cases_gate, dict) and cases_gate.get("ready") is False:
+        code = cases_gate.get("code")
+        lines += ["", f"The relay case session handed off (`{code}`): its outcomes are the Python proxy's."]
     if isinstance(deferrals, dict) and deferrals:
         lines += [
             "",

@@ -409,10 +409,13 @@ mod mcp_relay_decide;
 #[cfg(unix)]
 mod mcp_relay_host;
 #[cfg(unix)]
+mod mcp_relay_lane;
+#[cfg(unix)]
 mod mcp_relay_launch;
 #[cfg(unix)]
 mod mcp_relay_order;
 mod mcp_relay_pending;
+mod mcp_relay_ready;
 #[cfg(unix)]
 mod mcp_relay_resident;
 mod mcp_runtime_evidence_op;

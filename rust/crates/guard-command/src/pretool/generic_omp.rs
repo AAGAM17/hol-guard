@@ -471,27 +471,70 @@ fn grep_scope(
     // A single file is proven by the ordinary bounded file-read path. An
     // entry of a list has no such fallback, so it carries the same proof here.
     let list = targets.len() > 1;
-    targets
-        .into_iter()
-        .all(|target| {
-            super::super::search_scope::content_search_scope_proven(
-                target,
-                context.path.home_dir,
-                context.path.cwd,
-            ) || (list
-                && super::super::read_paths::existing_regular_read_target(
-                    target,
-                    context.path.home_dir,
-                    context.path.cwd,
-                ))
-        })
-        .then(|| {
-            directory_allow(
-                context,
-                "native_bounded_search_scope",
-                "The Rust authority proved this directory search cannot reach a sensitive file.",
-            )
-        })
+    let (home, cwd) = (context.path.home_dir, context.path.cwd);
+    let proven = |target: &str| {
+        super::super::search_scope::content_search_scope_proven(target, home, cwd)
+            || (list && super::super::read_paths::existing_regular_read_target(target, home, cwd))
+    };
+    if targets.iter().all(|target| proven(target)) {
+        return Some(directory_allow(
+            context,
+            "native_bounded_search_scope",
+            "The Rust authority proved this directory search cannot reach a sensitive file.",
+        ));
+    }
+    // A list entry that names nothing is never searched, so stopping the call
+    // costs nothing. Saying why lets the agent fix the path instead of waiting
+    // on an approval. The other entries still need their proof.
+    let missing = |target: &str| {
+        super::super::read_paths::missing_read_target(target, home, cwd, true)
+            && (super::super::read_paths::bounded_file_read_target(target, home, cwd)
+                || missing_under_searchable_folder(target, home, cwd))
+    };
+    (list && targets.iter().all(|target| proven(target) || missing(target))).then(|| {
+        generic_result(
+            generic_action(
+                context.harness,
+                context.event,
+                PreToolActionTypeV1::FileRead,
+                PreToolOperationV1::Read,
+                true,
+                false,
+            ),
+            "block",
+            super::evaluate::MISSING_PATH,
+            "HOL Guard did not run this search because a path in its list does not exist. Check each path, for example by listing its parent directory, and try again with the correct ones.",
+        )
+    })
+}
+
+/// An absolute or `~` name that does not exist cannot resolve as a bounded
+/// read. Its nearest existing folder can: when Guard would let the agent search
+/// that folder, saying the name is missing tells it nothing the search would not.
+/// A folder that is not searchable as a whole still qualifies when it is an
+/// ordinary readable folder other than the filesystem root and the missing
+/// name is not sensitive: a direct read of that name gets the same answer.
+fn missing_under_searchable_folder(target: &str, home: Option<&str>, cwd: Option<&str>) -> bool {
+    if target.split(['/', '\\']).any(|part| part == "..") {
+        return false;
+    }
+    let expanded = super::super::read_paths::expand_home_read_path(target, home)
+        .unwrap_or_else(|| target.to_owned());
+    let path = std::path::Path::new(&expanded);
+    path.is_absolute()
+        && path
+            .ancestors()
+            .skip(1)
+            .find(|folder| std::fs::symlink_metadata(folder).is_ok())
+            .filter(|folder| folder.is_dir())
+            .and_then(std::path::Path::to_str)
+            .is_some_and(|folder| {
+                super::super::search_scope::content_search_scope_proven(folder, home, cwd)
+                    || (std::path::Path::new(folder).parent().is_some()
+                        && super::super::read_paths::bounded_read_target(folder, home, cwd, true)
+                        && guard_secure_fs::sensitive_path_family(path).is_none()
+                        && !guard_secure_fs::credential_named_path(path))
+            })
 }
 
 /// `skill://<name>[/<relative.md>]` names a skill the host resolves from its

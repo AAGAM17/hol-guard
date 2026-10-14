@@ -457,6 +457,101 @@ fn semicolon_path_lists_prove_every_entry() {
 }
 
 #[test]
+fn grep_lists_naming_a_missing_file_say_so_instead_of_asking() {
+    let f = fixture();
+    // The agent spelled a worktree beside the session folder as if it were
+    // inside it. Nothing is searched, so Guard says why rather than queueing
+    // an approval the agent is told not to retry.
+    for path in [
+        "calc.py; missing.py",
+        "app-fix/src/report.ts;app-fix/src/projector.ts",
+        "src/main.rs; app-fix/src/report.ts",
+        "missing.py; ~/missing-directory",
+    ] {
+        let result = omp(
+            &f,
+            "grep",
+            json!({"pattern": "x", "path": path, "gitignore": true}),
+        );
+        assert_eq!(result.minimum_action, "block", "{path}");
+        assert_eq!(result.reason_code, "native_missing_path", "{path}");
+    }
+    // Every other entry keeps its proof, and a missing entry with a
+    // sensitive name keeps its review.
+    for path in [
+        "missing.py; ~/.ssh/id_rsa",
+        "missing.py; ~/secret-dir/.env",
+        "missing.py; src/*.rs",
+        "missing.py; ~/.ssh",
+        "missing.py; missing/.env",
+    ] {
+        let result = omp(&f, "grep", json!({"pattern": "x", "path": path}));
+        assert!(!allowed(&result), "{path}");
+        assert_ne!(result.reason_code, "native_missing_path", "{path}");
+    }
+}
+
+#[test]
+fn grep_lists_naming_a_missing_absolute_file_say_so() {
+    let f = fixture();
+    // After a relative spelling failed, the agent named every file in the
+    // worktree beside the session folder by its absolute path, one of them
+    // wrong. Guard would search that folder, so it says the name is missing.
+    let clean = f.home.join("clean");
+    // A test folder whose fixtures hold a key file is not searchable as a
+    // whole, but a missing test file beside it is still only missing.
+    write(
+        f.project.join("tests/report.test.ts"),
+        "synthetic fixture\n",
+    );
+    write(
+        f.project.join("tests/fixtures/tls/loopback-server.key"),
+        "synthetic fixture\n",
+    );
+    let tests = f.project.join("tests");
+    for path in [
+        format!(
+            "{0}/report.test.ts;{0}/cohort-query.test.ts",
+            tests.display()
+        ),
+        format!("{0}/a.txt;{0}/report-cli.ts", clean.display()),
+        "~/clean/a.txt; ~/clean/missing/report.ts".to_owned(),
+        // A folder Guard would not search as a whole still answers a direct
+        // read of a missing name the same way, so the list does too.
+        "~/clean/a.txt; ~/creds-dir/report.ts".to_owned(),
+        "~/clean/a.txt; ~/report.ts".to_owned(),
+    ] {
+        let result = omp(
+            &f,
+            "grep",
+            json!({"pattern": "x", "path": path, "case": false}),
+        );
+        assert_eq!(result.minimum_action, "block", "{path}");
+        assert_eq!(result.reason_code, "native_missing_path", "{path}");
+    }
+    // A folder Guard would not search keeps the review, as does a spelling
+    // that climbs out of a searchable one.
+    for path in [
+        "~/clean/a.txt; ~/secret-dir/report.ts".to_owned(),
+        "~/clean/a.txt; ~/creds-dir/credentials.yaml".to_owned(),
+        "~/clean/a.txt; ~/clean/../secret-dir/report.ts".to_owned(),
+        format!("{}/a.txt; /nonexistent-root/report.ts", clean.display()),
+    ] {
+        let result = omp(&f, "grep", json!({"pattern": "x", "path": path}));
+        assert!(!allowed(&result), "{path}");
+        assert_ne!(result.reason_code, "native_missing_path", "{path}");
+    }
+    // The existing entries are still searched, so the folder keeps its review.
+    let result = omp(
+        &f,
+        "grep",
+        json!({"pattern": "x", "path": format!("{0}/report.test.ts;{0}", tests.display())}),
+    );
+    assert!(!allowed(&result));
+    assert_ne!(result.reason_code, "native_missing_path");
+}
+
+#[test]
 fn brace_globs_prove_every_alternative() {
     let f = fixture();
     write(f.project.join("app/lib/index.ts"), "synthetic fixture\n");

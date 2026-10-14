@@ -26,9 +26,7 @@ use std::time::{Duration, Instant};
 use crate::bounded_hook_bridge_render::{
     daemon_response_to_native, event_name, failure_output, Rendered, NATIVE_HARNESSES,
 };
-use crate::claude_hook_bridge_auth::{private_file_text, LOOPBACK_HOSTS};
-use crate::claude_hook_bridge_http::{remaining, LoopbackConnection, MAX_DAEMON_RESPONSE_BYTES};
-use crate::claude_hook_bridge_url::assert_loopback_http_url;
+use crate::claude_hook_bridge_http::remaining;
 use crate::hook_bridge_exit::exit_code;
 use crate::hook_env_stamp::{current_environment, stamp_hook_input_text, Stamp};
 use crate::pyjson::{self, PyVal};
@@ -40,6 +38,10 @@ mod input;
 #[path = "bounded_hook_bridge_input_windows.rs"]
 mod input;
 pub(crate) use input::read_hook_input;
+#[path = "bounded_hook_bridge_daemon.rs"]
+mod daemon;
+use daemon::post_hook;
+pub(crate) use daemon::{daemon_target, post_hook_text, transport_deadline};
 
 pub(crate) const BRIDGE_COMMAND: &str = "bounded-hook-bridge";
 pub(crate) const BRIDGE_FEATURE: &str = "bounded-hook-bridge-v1";
@@ -50,8 +52,8 @@ pub(crate) const MAX_HOOK_INPUT_BYTES: usize = 1_000_000;
 const READ_CHUNK: usize = 65_536;
 const MAX_STATE_BYTES: u64 = 64 * 1024;
 const MAX_TOKEN_BYTES: u64 = 4096;
-const DAEMON_BUDGET: Duration = Duration::from_secs(5);
-const PROMPT_DAEMON_BUDGET: Duration = Duration::from_secs(10);
+pub(crate) const DAEMON_BUDGET: Duration = Duration::from_secs(5);
+pub(crate) const PROMPT_DAEMON_BUDGET: Duration = Duration::from_secs(10);
 const STATE_FILE: &str = "daemon-state.json";
 const TOKEN_FILE: &str = "daemon-auth-token";
 const MANAGED_MARKER: &str = "HOL_GUARD_MANAGED_ZCODE";
@@ -159,90 +161,6 @@ pub(crate) fn prepare(raw: &[u8]) -> Option<Prepared> {
     Some(Prepared { data, event_name })
 }
 
-/// `_daemon_hook_endpoint`: the loopback host and port the daemon state
-/// names, after the URL check `try_daemon_hook` applies.
-fn daemon_endpoint(guard_home: &Path, harness: &str) -> Option<(String, u16)> {
-    let path = guard_home.join(STATE_FILE);
-    if std::fs::symlink_metadata(&path).ok()?.len() > MAX_STATE_BYTES {
-        return None;
-    }
-    let text = private_file_text(&path, "Guard daemon state").ok()?;
-    let parsed = pyjson::parse_mapping_lone_surrogates(&text).ok()?;
-    if parsed.mapped {
-        return None;
-    }
-    let host = parsed.value.get("host")?.as_str()?;
-    let Some(PyVal::Int(digits)) = parsed.value.get("port") else {
-        return None;
-    };
-    let port = digits.parse::<u16>().ok().filter(|port| *port >= 1)?;
-    if !LOOPBACK_HOSTS.contains(&host) {
-        return None;
-    }
-    let rendered_host = if host == "::1" {
-        "[::1]".to_owned()
-    } else {
-        host.to_owned()
-    };
-    assert_loopback_http_url(&format!("http://{rendered_host}:{port}/v1/hooks/{harness}")).ok()?;
-    Some((host.to_owned(), port))
-}
-
-/// `load_guard_daemon_auth_token`, limited to tokens urllib sends as is.
-fn daemon_auth_token(guard_home: &Path) -> Option<String> {
-    let path = guard_home.join(TOKEN_FILE);
-    if std::fs::symlink_metadata(&path).ok()?.len() > MAX_TOKEN_BYTES {
-        return None;
-    }
-    let token = private_file_text(&path, "Guard daemon auth token").ok()?;
-    let sendable = token
-        .bytes()
-        .all(|byte| byte == b'\t' || (0x20..=0x7e).contains(&byte));
-    (!token.is_empty() && sendable).then_some(token)
-}
-
-/// `post_hook_json`: the daemon's JSON object, or `None` for any failure.
-fn post_hook(
-    host: &str,
-    port: u16,
-    harness: &str,
-    token: &str,
-    data: &str,
-    deadline: Instant,
-) -> Option<Vec<(String, PyVal)>> {
-    let mut connection = LoopbackConnection::new(host, port);
-    let head = connection
-        .post(
-            &format!("/v1/hooks/{harness}"),
-            &[
-                ("Content-Type", "application/json"),
-                ("Connection", "close"),
-                ("X-Guard-Token", token),
-            ],
-            data.as_bytes(),
-            deadline,
-        )
-        .ok()?;
-    if head.status != 200 {
-        return None;
-    }
-    let body = connection
-        .read_body(&head, deadline, HOOK_DEADLINE, HOOK_DEADLINE)
-        .ok()?;
-    if Instant::now() >= deadline || body.len() > MAX_DAEMON_RESPONSE_BYTES {
-        return None;
-    }
-    if body.starts_with(b"\xef\xbb\xbf") {
-        return None;
-    }
-    let text = std::str::from_utf8(&body).ok()?;
-    let parsed = pyjson::parse_mapping_lone_surrogates(text).ok()?;
-    match parsed.value {
-        PyVal::Dict(entries) if !parsed.mapped => Some(entries),
-        _ => None,
-    }
-}
-
 /// What the native bridge does with one hook.
 #[derive(Debug, PartialEq)]
 pub(crate) enum Route {
@@ -278,25 +196,13 @@ pub(crate) fn route_hook(config: &BridgeConfig, raw: &[u8], deadline: Instant) -
         return route;
     }
     let left = remaining(deadline);
-    let Some((host, port)) = daemon_endpoint(&config.guard_home, &config.harness) else {
+    let Some(target) = daemon_target(&config.guard_home, &config.harness) else {
         return delegate;
     };
-    let Some(token) = daemon_auth_token(&config.guard_home) else {
+    let Some(transport) = transport_deadline(deadline, left, budget) else {
         return delegate;
     };
-    let now = Instant::now();
-    let transport_deadline = deadline.min(now + (left / 2).min(budget));
-    if transport_deadline <= now {
-        return delegate;
-    }
-    let answer = post_hook(
-        &host,
-        port,
-        &config.harness,
-        &token,
-        &prepared.data,
-        transport_deadline,
-    );
+    let answer = post_hook(&target, &config.harness, &prepared.data, transport);
     let rendered = answer.and_then(|response| {
         daemon_response_to_native(&response, &config.harness, &prepared.event_name)
     });

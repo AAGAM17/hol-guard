@@ -15,6 +15,13 @@
 //! exactly run the Python client unchanged, with the hook it already read
 //! and the time it already spent.
 //!
+//! When no live resident answers, the bridge posts the request to the
+//! loopback daemon itself, over the transport, auth token and deadlines the
+//! bounded bridge uses, and renders the daemon's answer the same way. A
+//! daemon that is unreachable, refuses the hook, runs out of time or
+//! answers anything the bridge cannot reproduce leaves the hook to the
+//! Python client, which asks the daemon again on its own terms.
+//!
 //! The client also sends an `after*` observer proof and approval binding in
 //! `hook_env`; the daemon drops `hook_env` before it reviews a hook, so only
 //! the client's CLI fallback reads them, and the bridge reads no key.
@@ -32,8 +39,10 @@ use guard_command::hook_adapter_prepare::{cursor_client_event, first_truthy, pre
 use guard_command::hook_adapter_value::{parse_python_json, OMap, OValue};
 
 use crate::bounded_hook_bridge::{
-    read_hook_input, run_python, write_stdout, Input, MAX_HOOK_INPUT_BYTES,
+    daemon_target, post_hook_text, read_hook_input, run_python, transport_deadline, write_stdout,
+    Input, DAEMON_BUDGET, MAX_HOOK_INPUT_BYTES, PROMPT_DAEMON_BUDGET,
 };
+use crate::claude_hook_bridge_http::remaining;
 use crate::claude_hook_bridge_render::py_strip;
 use crate::codex_hook_bridge_direct::{direct_answer, CURSOR};
 use crate::codex_hook_response::{POST_TOOL_USE, PRE_TOOL_USE};
@@ -44,6 +53,16 @@ use crate::hook_env_stamp::{current_environment, stamp_hook_input_text, Stamp};
 pub(crate) const BRIDGE_COMMAND: &str = "cursor-hook-bridge";
 pub(crate) const BRIDGE_FEATURE: &str = "cursor-hook-bridge-v1";
 const EVENT_FLAG: &str = "--cursor-hook-event";
+/// `_NATIVE_DAEMON_REPLY_FLAG`: hands the client a daemon reply the bridge
+/// received and could not render, so the client never asks again.
+const DAEMON_REPLY_FLAG: &str = "--cursor-native-daemon-reply";
+/// `_NATIVE_DAEMON_REPLY_ACTIONS`: the replies the client takes over.
+const HANDOFF_ACTIONS: [&str; 4] = ["review", "require-reapproval", "sandbox-required", "block"];
+/// A longer reply is not put on the client's command line, which Windows
+/// caps at 32,767 characters; the client then asks the daemon again.
+const MAX_HANDOFF_REPLY_BYTES: usize = 16 * 1024;
+/// The harness name of the client's daemon route, `/v1/hooks/cursor`.
+const DAEMON_HARNESS: &str = "cursor";
 const PROJECT_DIR_ENV: &str = "CURSOR_PROJECT_DIR";
 const AFTER_EVENTS: [&str; 2] = ["aftershellexecution", "aftermcpexecution"];
 /// The names `_prepare_cursor_hook_payload` gives the `after*` observers.
@@ -258,27 +277,95 @@ fn answer(kind: Kind, event: &str, response: &str, guard_home: &Path) -> Option<
     }
 }
 
-/// The exit code once the bridge answered the hook, or `None` to run the
-/// client.
-fn route(client: &Client, raw: &[u8]) -> Option<i32> {
-    let request = prepared_request(client, raw)?;
+/// The body `_daemon_hook_result` accepts from the daemon for `request`,
+/// stripped as the client strips it, or `None` when the daemon cannot be
+/// asked or does not answer within the bridge's share of the deadline. The
+/// client also sends `hook_env`, which the daemon drops unread.
+fn daemon_answer(client: &Client, request: &Request) -> Option<String> {
+    let left = remaining(client.deadline);
+    let target = daemon_target(Path::new(&client.guard_home), DAEMON_HARNESS)?;
+    let budget = match request.kind {
+        Kind::Prompt => PROMPT_DAEMON_BUDGET,
+        Kind::PreToolUse | Kind::After => DAEMON_BUDGET,
+    };
+    let deadline = transport_deadline(client.deadline, left, budget)?;
+    let path = format!("/v1/hooks/{DAEMON_HARNESS}?{}", request.query);
+    let body = post_hook_text(&target, &path, &request.data, deadline)?;
+    Some(py_strip(&body).to_owned())
+}
+
+/// What the bridge does with one hook.
+#[derive(Debug, PartialEq)]
+enum Reply {
+    /// The client's stdout and exit code.
+    Answered(String, i32),
+    /// A daemon reply the client renders without posting the hook again.
+    Handoff(String),
+    /// Run the client.
+    Client,
+}
+
+/// The reply the client takes over once the bridge posted the hook and
+/// cannot render the daemon's answer, so the daemon never reviews the hook
+/// twice: a JSON object whose `policy_action` restricts the action, which
+/// is what `_native_daemon_reply_from_argv` accepts. An observer always
+/// renders, so it is never handed over.
+fn handoff(kind: Kind, body: &str) -> Option<String> {
+    if kind == Kind::After || body.len() > MAX_HANDOFF_REPLY_BYTES {
+        return None;
+    }
+    let OValue::Map(response) = parse_python_json(body).ok()? else {
+        return None;
+    };
+    let action = response.get_str("policy_action")?;
+    HANDOFF_ACTIONS.contains(&action).then(|| body.to_owned())
+}
+
+/// The client's stdout and exit code for the hook, answered by a live
+/// resident or else by the daemon, or `None` to run the client.
+#[cfg(test)]
+fn respond(client: &Client, raw: &[u8]) -> Option<(String, i32)> {
+    match reply(client, raw) {
+        Reply::Answered(stdout, code) => Some((stdout, code)),
+        Reply::Handoff(_) | Reply::Client => None,
+    }
+}
+
+/// The bridge's reply to the hook: a live resident's answer, else the
+/// daemon's. A resident answer the bridge cannot render runs the client
+/// without the daemon; a daemon answer it cannot render is handed to the
+/// client when the client can take it over.
+fn reply(client: &Client, raw: &[u8]) -> Reply {
+    let Some(request) = prepared_request(client, raw) else {
+        return Reply::Client;
+    };
     let event_name = match request.kind {
         Kind::PreToolUse => PRE_TOOL_USE,
         Kind::Prompt => USER_PROMPT_SUBMIT,
         Kind::After => POST_TOOL_USE,
     };
     let guard_home = Path::new(&client.guard_home);
-    let answered = direct_answer(
+    let resident = direct_answer(
         CURSOR,
         guard_home,
         &request.query,
         event_name,
         &request.data,
         client.deadline,
-    )?;
-    let (stdout, code) = answer(request.kind, &request.event, &answered, guard_home)?;
-    write_stdout(&stdout);
-    Some(code)
+    );
+    if let Some(answered) = resident {
+        return answer(request.kind, &request.event, &answered, guard_home)
+            .map_or(Reply::Client, |(stdout, code)| {
+                Reply::Answered(stdout, code)
+            });
+    }
+    let Some(body) = daemon_answer(client, &request) else {
+        return Reply::Client;
+    };
+    match answer(request.kind, &request.event, &body, guard_home) {
+        Some((stdout, code)) => Reply::Answered(stdout, code),
+        None => handoff(request.kind, &body).map_or(Reply::Client, Reply::Handoff),
+    }
 }
 
 /// The ported client the installer's argv runs, or `None` for any other
@@ -317,8 +404,21 @@ pub(crate) fn run(python_argv: &[String]) -> i32 {
         // The client reads an empty hook and answers its unparseable input.
         Input::Failed => Vec::new(),
     };
-    if let Some(code) = route(&client, &raw) {
-        return code;
+    match reply(&client, &raw) {
+        Reply::Answered(stdout, code) => {
+            write_stdout(&stdout);
+            return code;
+        }
+        Reply::Handoff(body) => {
+            let mut argv = python_argv.to_vec();
+            argv.push(DAEMON_REPLY_FLAG.to_owned());
+            argv.push(body);
+            // The daemon already has this hook: a client that cannot start
+            // must not fall back to one that posts it again.
+            return run_python(&argv, Some(&raw), started.elapsed(), false)
+                .unwrap_or_else(|| unavailable(event));
+        }
+        Reply::Client => {}
     }
     run_python(python_argv, Some(&raw), started.elapsed(), false)
         .unwrap_or_else(|| unavailable(event))
@@ -327,3 +427,7 @@ pub(crate) fn run(python_argv: &[String]) -> i32 {
 #[cfg(all(test, unix))]
 #[path = "cursor_hook_bridge_tests.rs"]
 mod tests;
+
+#[cfg(all(test, unix))]
+#[path = "cursor_hook_bridge_daemon_tests.rs"]
+mod daemon_tests;

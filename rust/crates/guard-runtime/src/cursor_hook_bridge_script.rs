@@ -21,7 +21,7 @@ use crate::pyjson::{self, PyVal};
 
 /// SHA-256 of the current template with its placeholders in place.
 pub(crate) const CURSOR_SCRIPT_SHA256: &str =
-    "408da727f1b2f0f6aa5f3ed68be4bb046789fa170f78ca76d7137d354ef31f49";
+    "cddf81bce53b9dfdee687223300aa7277bd7800ef7d128b79515e3ff6d22c414";
 
 const MAX_SCRIPT_BYTES: u64 = 256 * 1024;
 /// Each constant line the renderer writes, as `<name> = <value>`.

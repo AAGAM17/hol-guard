@@ -43,6 +43,7 @@ from .cursor_hook_payload import (
     prepare_cursor_hook_payload,
 )
 from .cursor_hook_script_template_head import HOOK_SCRIPT_TEMPLATE_HEAD
+from .cursor_hook_script_template_native_reply import HOOK_SCRIPT_TEMPLATE_NATIVE_REPLY
 from .cursor_hook_script_template_reason import HOOK_SCRIPT_TEMPLATE_REASON
 from .cursor_hook_script_template_tail import HOOK_SCRIPT_TEMPLATE_TAIL
 from .cursor_native_approval import cursor_hook_attestation_secret_path, ensure_cursor_hook_attestation_secret
@@ -55,7 +56,11 @@ if TYPE_CHECKING:
     from ..runtime_transition import TransitionFile
 
 _HOOK_SCRIPT_TEMPLATE = (
-    HOOK_SCRIPT_TEMPLATE_HEAD + HOOK_SCRIPT_TEMPLATE_REASON + HOOK_SCRIPT_TEMPLATE_RESOLVER + HOOK_SCRIPT_TEMPLATE_TAIL
+    HOOK_SCRIPT_TEMPLATE_HEAD
+    + HOOK_SCRIPT_TEMPLATE_REASON
+    + HOOK_SCRIPT_TEMPLATE_NATIVE_REPLY
+    + HOOK_SCRIPT_TEMPLATE_RESOLVER
+    + HOOK_SCRIPT_TEMPLATE_TAIL
 )
 _INHERIT_ENV_KEYS = (
     "PATH",

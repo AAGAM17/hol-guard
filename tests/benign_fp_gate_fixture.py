@@ -346,6 +346,13 @@ def build_fixture(root: Path) -> BenignFixture:
     _write(tmp_org / "app" / "README.md", "# app\n")
     _write(home / ".nvm" / "versions" / "node" / "v25.2.1" / "lib" / "node_modules" / "npm" / "package.json", "{}\n")
     _write(home / ".bun" / "install" / "global" / "node_modules" / "vite" / "package.json", "{}\n")
+    # Installed dependency and toolchain source under hidden home directories.
+    pipx_site = home / ".local" / "pipx" / "venvs" / "tool" / "lib" / "python3.12" / "site-packages"
+    _write(pipx_site / "pkg" / "mod.py", "_COLD_START = 0.5\n")
+    _write(home / ".local" / "lib" / "python3.12" / "site-packages" / "pkg" / "mod.py", "X = 1\n")
+    _write(home / ".cargo" / "registry" / "src" / "index" / "serde-1.0.0" / "src" / "lib.rs", "pub fn serde() {}\n")
+    rustlib_core = home / ".rustup" / "toolchains" / "stable" / "lib" / "rustlib" / "src" / "rust" / "library" / "core"
+    _write(rustlib_core / "src" / "lib.rs", "//! core\n")
     _write(tmp_org / "app" / "package.json", '{"name": "app", "version": "1.0.0"}\n')
     _write(tmp_org / "app" / "src" / "index.ts", "export const railStage = 1;\n")
     _write(tmp_org / "app" / "tests" / "index.test.ts", "import { railStage } from '../src';\n")

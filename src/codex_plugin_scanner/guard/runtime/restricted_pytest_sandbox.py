@@ -28,6 +28,10 @@ from .restricted_pytest_model import (
 
 _RESOURCE_AVAILABLE = os.name == "posix"
 _MAX_REPLAY_BYTES = 1_048_576
+# Output that names a denied file operation. A failed contained run that
+# prints one of these gets the sandbox's own explanation appended, so the
+# agent can move the write instead of treating the failure as a test bug.
+_WRITE_DENIAL_MARKERS = (b"eperm", b"erofs", b"operation not permitted", b"read-only file system")
 _NODE_VIRTUAL_ADDRESS_BYTES = 16 * 1024 * 1024 * 1024
 if _RESOURCE_AVAILABLE:
     import resource as _resource
@@ -171,6 +175,7 @@ def _run_backend_process(
     stdout_capture: bytearray | None = None,
     node_virtual_address_space: bool = False,
     merge_stderr: bool = False,
+    write_denial_note: str | None = None,
 ) -> int:
     if (
         node_virtual_address_space
@@ -272,7 +277,21 @@ def _run_backend_process(
                 stdout_capture.extend(stdout_file.read(_MAX_REPLAY_BYTES))
             if not merge_stderr:
                 _replay_sandbox_output(stderr_file, sys.stderr)
+        if (
+            write_denial_note is not None
+            and return_code != 0
+            and (_write_denied(stdout_file) or (not merge_stderr and _write_denied(stderr_file)))
+        ):
+            destination = sys.stdout if merge_stderr else sys.stderr
+            destination.write(f"\n[HOL Guard] {write_denial_note}\n")
+            destination.flush()
         return return_code if return_code >= 0 else 128 + abs(return_code)
+
+
+def _write_denied(source: BinaryIO) -> bool:
+    source.seek(0)
+    text = source.read(_MAX_REPLAY_BYTES).lower()
+    return any(marker in text for marker in _WRITE_DENIAL_MARKERS)
 
 
 def _replay_sandbox_output(source: BinaryIO, destination: TextIO) -> None:

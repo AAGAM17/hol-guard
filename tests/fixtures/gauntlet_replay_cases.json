@@ -6,6 +6,8 @@
     "gauntlet-python-local-test-script@pi": "native_command_review_required",
     "pytest-module-quiet@cursor": "native_command_review_required",
     "pytest-quiet@pi": "native_command_review_required",
+    "queue-sibling-dashboard-abs-vite-build@pi": "native_command_review_required",
+    "queue-sibling-dashboard-vite-build-tail@pi": "native_command_review_required",
     "python-run-test-script@cursor": "native_command_review_required",
     "session-bash-workspace-script-tail@pi": "native_command_review_required",
     "session-bun-e-fs-read@pi": "native_command_review_required",

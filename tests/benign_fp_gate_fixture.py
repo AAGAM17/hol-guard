@@ -342,8 +342,13 @@ def build_fixture(root: Path) -> BenignFixture:
             _write(repository / "rust" / "crates" / "catalog" / "src" / "lib.rs", "pub fn catalog_read() {}\n")
             # A real target, so the sibling `.env` negative controls prove a refusal.
             _write(repository / ".env", "TOKEN=synthetic-not-a-secret\n")
+            _write(repository / ".gitignore", "node_modules/\n")
+            _node_toolchain(repository / "dashboard")
         _git(repository, "add", "-A", home=home)
         _git(repository, "commit", "--quiet", "-m", f"{name} base", home=home)
+        if name == "service-api":
+            _git(repository, "remote", "add", "origin", "https://github.com/example-org/service-api.git", home=home)
+            _git(repository, "update-ref", "refs/remotes/origin/main", "HEAD", home=home)
     _session_worktree(org, home)
     # A non-repository parent under /tmp whose repository has a linked worktree beside the parent.
     tmp_org = Path(tempfile.mkdtemp(prefix="org.", dir=_system_tmp())).resolve() / "org"

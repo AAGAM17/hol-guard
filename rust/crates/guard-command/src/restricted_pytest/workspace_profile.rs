@@ -295,6 +295,18 @@ pub(super) fn compose(
     roots.extend(extra_reads.iter().cloned());
     let mut metadata = vec![PathBuf::from("/")];
     metadata.extend(ancestor_paths(&roots));
+    // Bun's resolver lists every directory above the working directory while
+    // it looks for project files and fails outright when it cannot. A listing
+    // shows names, never contents, and the credential denials below still
+    // cover any ancestor they name.
+    let mut listed: Vec<PathBuf> = workspace
+        .ancestors()
+        .skip(1)
+        .map(Path::to_path_buf)
+        .collect();
+    if listed.is_empty() {
+        listed.push(PathBuf::from("/"));
+    }
     metadata.extend(existing(ROOT_LINKS));
     let mut files = files.to_vec();
     files.extend(existing(TOOLCHAIN_FILES));
@@ -319,7 +331,7 @@ pub(super) fn compose(
         format!("(deny process-exec {})", filter(&privileged, "literal")),
         "(allow signal (target self) (target children))".to_owned(),
         "(allow sysctl-read)".to_owned(),
-        "(allow file-read-data (literal \"/\"))".to_owned(),
+        format!("(allow file-read-data {})", filter(&listed, "literal")),
         format!(
             "(allow file-read-metadata {})",
             filter(&metadata, "literal")

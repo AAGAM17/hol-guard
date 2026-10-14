@@ -298,6 +298,24 @@ fn reopened_reflog_cannot_become_a_bare_repository() {
 }
 
 #[test]
+fn directories_above_the_workspace_can_be_listed_but_not_read() {
+    let profile = workspace_profile::compose(&input("/w/team/proj"), &[], &[]).unwrap();
+    let listing = profile
+        .lines()
+        .find(|line| line.starts_with("(allow file-read-data"))
+        .unwrap();
+    assert_eq!(
+        listing,
+        "(allow file-read-data (literal \"/w/team\") (literal \"/w\") (literal \"/\"))"
+    );
+    assert!(!profile.contains("(subpath \"/w/team\")"));
+    assert!(!profile.contains("(subpath \"/w\")"));
+    // The credential denials still come after the listing grant.
+    let at = |needle: &str| profile.find(needle).unwrap();
+    assert!(at("(allow file-read-data") < at("(deny file-read* file-write* (regex"));
+}
+
+#[test]
 fn system_links_and_toolchain_config_stay_readable() {
     let profile = workspace_profile::compose(&input("/w/proj"), &[], &[]).unwrap();
     let metadata = profile

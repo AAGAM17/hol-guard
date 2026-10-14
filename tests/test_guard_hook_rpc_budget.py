@@ -103,7 +103,10 @@ def test_pi_allow_and_deny_hooks_never_use_the_hook_render_op(
     operations = _measured_operations(log_path)
     assert operations
     assert "hook_render" not in operations, sorted(set(operations))
-    assert len(operations) <= requests * _RESIDENT_ROUND_TRIPS_PER_PI_HOOK + 6, len(operations)
+    # The evidence drain runs after the hook answers, off the p95 path, and how
+    # many drains land inside the workload depends on runner timing.
+    hook_operations = [operation for operation in operations if operation not in _BACKGROUND_OPERATIONS]
+    assert len(hook_operations) <= requests * _RESIDENT_ROUND_TRIPS_PER_PI_HOOK + 6, Counter(operations)
 
 
 def test_pi_pre_tool_allow_uses_the_edge_response_not_the_hook_render_op(

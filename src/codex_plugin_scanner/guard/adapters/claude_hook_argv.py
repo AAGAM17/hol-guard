@@ -13,6 +13,7 @@ from .base import HarnessContext
 from .claude_frozen_hook import FROZEN_CLAUDE_HOOK_COMMAND
 from .claude_hook_config import (
     CLAUDE_GUARD_DAEMON_HOOK_MARKER,
+    CLAUDE_GUARD_SESSION_START_CONTEXT,
     CLAUDE_GUARD_SESSION_START_HOOK_MARKER,
 )
 from .native_hook_bridge import native_hook_bridge_executable
@@ -63,7 +64,7 @@ def run_session_start_from_argv(
             {
                 "hookSpecificOutput": {
                     "hookEventName": "SessionStart",
-                    "additionalContext": "HOL Guard protection is active for this workspace.",
+                    "additionalContext": CLAUDE_GUARD_SESSION_START_CONTEXT,
                 }
             },
             separators=(",", ":"),

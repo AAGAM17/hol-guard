@@ -4069,6 +4069,54 @@
       "expect": "allow"
     },
     {
+      "id": "queue-ls-sibling-worktree-bin-tool",
+      "fix_area": "git-sibling-worktree",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${ORG}/app-portal/node_modules/.bin/vitest"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-ls-sibling-worktree-bin-dir",
+      "fix_area": "git-sibling-worktree",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${ORG}/app-portal/node_modules/.bin/"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-ls-sibling-worktree-bin-head",
+      "fix_area": "git-sibling-worktree",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${ORG}/app-portal/node_modules/.bin/vitest 2>&1 | head -1"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "neg-du-files0-from",
       "fix_area": "negative",
       "harnesses": [
@@ -6460,6 +6508,38 @@
       "expect": "allow"
     },
     {
+      "id": "queue-worktree-add-org-sibling",
+      "fix_area": "worktree-add",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git worktree add ${ORG}/app-portal-fixup feat/other-branch"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-worktree-add-parent-pipe-tail",
+      "fix_area": "worktree-add",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git worktree add ${PARENT}/wt-x feat/other-branch 2>&1 | tail -2"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "session-git-worktree-add-chain-log-status",
       "fix_area": "git-sibling-worktree",
       "harnesses": [
@@ -6534,6 +6614,22 @@
         "command": "git worktree add ../app-portal-review"
       },
       "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-worktree-add-into-home-dotdir",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git worktree add ${HOME}/.config/app feat/other-branch"
+      },
+      "cwd": "worktree",
       "expect": "not_allow"
     },
     {

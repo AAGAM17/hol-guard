@@ -165,15 +165,20 @@ def _node_toolchain(workspace: Path) -> None:
     _write(workspace / "package-lock.json", json.dumps({"lockfileVersion": 3, "packages": locked}) + "\n")
     _write(workspace / "tests" / "sample.test.ts", "export const sample = 1;\n")
     for name, version in _NODE_PACKAGES.items():
-        package = workspace / "node_modules" / name
-        manifest = {"name": name, "version": version, "bin": {name: f"./bin/{name}.js"}}
-        _write(package / "package.json", json.dumps(manifest) + "\n")
-        script = package / "bin" / f"{name}.js"
-        _write(script, f"#!/usr/bin/env node\nconsole.log('{name} {version}');\n")
-        script.chmod(0o755)
-        shim = workspace / "node_modules" / ".bin" / name
-        shim.parent.mkdir(parents=True, exist_ok=True)
-        shim.symlink_to(Path("..") / name / "bin" / f"{name}.js")
+        _node_package(workspace, name, version)
+
+
+def _node_package(workspace: Path, name: str, version: str) -> None:
+    """One installed package with its ``node_modules/.bin`` shim, as npm links it."""
+    package = workspace / "node_modules" / name
+    manifest = {"name": name, "version": version, "bin": {name: f"./bin/{name}.js"}}
+    _write(package / "package.json", json.dumps(manifest) + "\n")
+    script = package / "bin" / f"{name}.js"
+    _write(script, f"#!/usr/bin/env node\nconsole.log('{name} {version}');\n")
+    script.chmod(0o755)
+    shim = workspace / "node_modules" / ".bin" / name
+    shim.parent.mkdir(parents=True, exist_ok=True)
+    shim.symlink_to(Path("..") / name / "bin" / f"{name}.js")
 
 
 def _bun_lockfile(project: Path, packages: dict[str, str]) -> None:
@@ -202,7 +207,8 @@ def _session_worktree(org: Path, home: Path) -> None:
     # An existing branch no worktree has checked out, for `git worktree add <path> <branch>`.
     _git(portal, "branch", "feat/discovery-review", home=home)
     (portal / ".deploy-production.lock.d").mkdir()
-    (portal / "node_modules").mkdir()
+    # Installed, gitignored test runner whose `.bin` shim agents list from another checkout.
+    _node_package(portal, "vitest", _NODE_PACKAGES["vitest"])
     worktree = org.parent / "app-portal-fix"
     _git(portal, "worktree", "add", "--quiet", "-b", "fix/report-lane", str(worktree), home=home)
     _write(worktree / "scripts" / "report.ts", "console.log(process.env.REPORT_WINDOW ?? '7d');\n")
@@ -266,6 +272,8 @@ def build_fixture(root: Path) -> BenignFixture:
     _git(parent, "add", "-A", home=home)
     _git(parent, "commit", "--quiet", "-m", "fixture base", home=home)
     _git(parent, "worktree", "add", "--quiet", "-b", "feature", str(worktree), home=home)
+    # An existing branch no worktree has checked out, for `git worktree add <path> <branch>`.
+    _git(parent, "branch", "feat/other-branch", home=home)
     _node_toolchain(worktree)
     _bun_lockfile(worktree, _NODE_PACKAGES)
     _write(worktree / "test_calc.py", "assert 1 + 1 == 2\nprint('ok')\n")

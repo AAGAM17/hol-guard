@@ -3,6 +3,9 @@
 //! The relay asks once, before it reads the host's input or starts the MCP
 //! server, and launches the Python proxy instead when the lane is not ready:
 //! otherwise every `tools/call` of the session would defer and be refused.
+//! A lane is ready only when the resident can decide the session's calls at
+//! all (`mcp_relay_decide_session.rs`): a config that prompts or observes,
+//! or a store holding remote policy, hands the session to the proxy too.
 //! The answer is only `ready` or `not_ready` with the lane's defer code. It
 //! carries no verdict, no binding state and no key, and it never stands in
 //! for a decision: each call is still admitted by `mcp_relay_decide`, which
@@ -11,19 +14,15 @@
 use std::path::Path;
 
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::json;
 
 use crate::policy_store::PolicySnapshotStore;
 
 pub(crate) const MCP_RELAY_READY_SCHEMA: &str = "guard-mcp-relay-ready-result.v1";
-/// The schema of the MCP relay view the publisher binds.
-const VIEW_SCHEMA: &str = "guard-mcp-relay-view.v1";
 const RUNTIME_SUPERSEDED: &str = "mcp_relay_runtime_superseded";
 const WORKSPACE_INVALID: &str = "mcp_relay_workspace_invalid";
 const EVIDENCE_UNDRAINED: &str = "mcp_relay_evidence_undrained";
 const BINDING_INCOMPLETE: &str = "mcp_relay_binding_incomplete";
-const VIEW_MISSING: &str = "mcp_relay_view_missing";
-const HARNESS_UNBOUND: &str = "mcp_relay_harness_unbound";
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -62,21 +61,7 @@ fn readiness(
     if binding.exact_action_control_digest.is_none() {
         return Err(BINDING_INCOMPLETE);
     }
-    harness_bound(binding.mcp_relay.as_ref(), &request.harness)
-}
-
-/// The view binds `harness`. Its contents are checked by each decision.
-fn harness_bound(view: Option<&Value>, harness: &str) -> Result<(), &'static str> {
-    let view = view.ok_or(VIEW_MISSING)?;
-    if view.get("schema").and_then(Value::as_str) != Some(VIEW_SCHEMA) {
-        return Err(VIEW_MISSING);
-    }
-    let bound = view
-        .get("harnesses")
-        .and_then(Value::as_object)
-        .and_then(|harnesses| harnesses.get(harness))
-        .is_some_and(Value::is_object);
-    bound.then_some(()).ok_or(HARNESS_UNBOUND)
+    crate::mcp_relay_decide::session_decidable(&binding, &request.guard_home, &request.harness)
 }
 
 /// `Path.resolve(strict=True)` of a directory, as the lane settles it.

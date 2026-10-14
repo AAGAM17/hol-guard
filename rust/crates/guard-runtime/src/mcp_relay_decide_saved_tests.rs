@@ -28,7 +28,7 @@ fn integrity_state() -> DirectLanePolicyIntegrityStateV1 {
     }
 }
 
-fn binding() -> DirectLaneBinding {
+pub(in crate::mcp_relay_decide) fn binding() -> DirectLaneBinding {
     let mut binding = DirectLaneBinding::empty_for_tests();
     binding.policy_integrity_state = Some(integrity_state());
     binding.integrity_key = Some(DirectLaneIntegrityKey {
@@ -41,7 +41,7 @@ fn binding() -> DirectLaneBinding {
 /// A guard home whose store holds the schema marker, the diagnostic indexes,
 /// the published integrity state and no saved rows; the writable connection
 /// seeds it.
-fn guard_home(tag: &str) -> (PathBuf, Connection) {
+pub(in crate::mcp_relay_decide) fn guard_home(tag: &str) -> (PathBuf, Connection) {
     let path = tmp_store(&format!("mcp-relay-{tag}"));
     let _ = std::fs::remove_file(&path);
     seed_store(&path);
@@ -86,7 +86,7 @@ fn guard_home(tag: &str) -> (PathBuf, Connection) {
     (path.parent().unwrap().to_path_buf(), connection)
 }
 
-fn sync_state(connection: &Connection, key: &str, payload: &str) {
+pub(in crate::mcp_relay_decide) fn sync_state(connection: &Connection, key: &str, payload: &str) {
     connection
         .execute(
             "insert or replace into sync_state (state_key, payload_json, updated_at)
@@ -97,7 +97,7 @@ fn sync_state(connection: &Connection, key: &str, payload: &str) {
 }
 
 /// Insert a signed decision.
-fn decide(
+pub(in crate::mcp_relay_decide) fn decide(
     connection: &Connection,
     scope: &str,
     action: &str,

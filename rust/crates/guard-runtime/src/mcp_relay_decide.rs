@@ -42,6 +42,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
+pub(crate) use session::session_decidable;
+
 pub(crate) const MCP_RELAY_DECIDE_FEATURE: &str = "mcp-relay-decide-v1";
 const RESULT_SCHEMA: &str = "guard-mcp-relay-decide-result.v1";
 /// The harnesses whose MCP proxy the relay replaces.
@@ -487,6 +489,8 @@ mod queue;
 use queue::route;
 #[path = "mcp_relay_decide_saved.rs"]
 mod saved;
+#[path = "mcp_relay_decide_session.rs"]
+mod session;
 #[path = "mcp_relay_decide_store.rs"]
 mod store;
 #[path = "mcp_relay_decide_subject.rs"]

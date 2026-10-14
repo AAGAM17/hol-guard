@@ -51,6 +51,7 @@ pub(crate) mod git_init_target;
 pub(crate) mod git_object_reads;
 mod git_read_floor;
 mod git_reads;
+mod git_ref_listings;
 mod git_search_text;
 mod repo_create_reason;
 use git_reads::safe_git_arguments;

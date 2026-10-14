@@ -199,6 +199,8 @@ pub(super) fn inspection_arguments<'a>(
                 | "grep"
                 | "ls-tree"
                 | "cat-file"
+                | "show-ref"
+                | "for-each-ref"
         )
     )
     .then_some(remaining)

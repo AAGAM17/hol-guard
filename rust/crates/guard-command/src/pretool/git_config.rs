@@ -35,12 +35,19 @@ pub(super) fn execution_free(
             | "merge-base"
             | "ls-tree"
             | "cat-file"
+            | "show-ref"
+            | "for-each-ref"
     ) {
         return None;
     }
     // Other object-read forms can run drivers; their own review floors decide.
     if matches!(operation, "ls-tree" | "cat-file")
         && !super::git_object_reads::read_form(operation, &remaining[1..])
+    {
+        return None;
+    }
+    if matches!(operation, "show-ref" | "for-each-ref")
+        && !super::git_ref_listings::read_form(operation, &remaining[1..])
     {
         return None;
     }
@@ -217,7 +224,8 @@ fn probe(
     // Like status, hash-object pages only when its own pager.* key says so;
     // config pages by default only for its listing forms.
     let pages_by_default = match operation {
-        "status" | "hash-object" | "merge-base" | "ls-tree" | "cat-file" => false,
+        "status" | "hash-object" | "merge-base" | "ls-tree" | "cat-file" | "show-ref"
+        | "for-each-ref" => false,
         "config" => super::git_config_reads::pages_by_default(&remaining[1..]),
         _ => true,
     };

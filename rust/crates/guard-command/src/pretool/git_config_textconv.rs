@@ -19,7 +19,8 @@ pub(super) fn may_run(operation: &str, options: &[&str]) -> bool {
         // refuses.
         "branch" | "hash-object" | "config" | "grep" => false,
         // Only the plain object-read forms, which never convert, reach the probe.
-        "ls-tree" | "cat-file" => false,
+        // Reference listings print names and object ids only.
+        "ls-tree" | "cat-file" | "show-ref" | "for-each-ref" => false,
         _ => true,
     }
 }

@@ -1,9 +1,9 @@
 //! Read-only `git` invocations proven without a review.
 //!
 //! Status, diff, log, show, grep, rev-parse, merge-base, ls-files, `remote -v`, `worktree list`,
-//! branch listings, `hash-object`, `config`, `ls-tree` and `cat-file` reads. Diff-style reads that can run a
-//! configured helper need the helper-context probe or both `--no-ext-diff`
-//! and `--no-textconv`.
+//! branch listings, `show-ref`, `for-each-ref`, `hash-object`, `config`, `ls-tree` and `cat-file`
+//! reads. Diff-style reads that can run a configured helper need the
+//! helper-context probe or both `--no-ext-diff` and `--no-textconv`.
 
 #[path = "git_log_names.rs"]
 mod log_names;
@@ -99,6 +99,10 @@ pub(super) fn safe_git_arguments(
         // missing objects, so the configuration probe has to clear them first.
         return allow_helper_context
             && super::git_object_reads::read_form(subcommand, &arguments[1..]);
+    }
+    if matches!(subcommand, "show-ref" | "for-each-ref") {
+        return allow_helper_context
+            && super::git_ref_listings::read_form(subcommand, &arguments[1..]);
     }
     if subcommand == "config" {
         // Only the configuration probe can prove what the read prints.

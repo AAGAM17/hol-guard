@@ -303,6 +303,8 @@ fn may_inspect(arguments: &[String]) -> bool {
                         | "merge-base"
                         | "ls-tree"
                         | "cat-file"
+                        | "show-ref"
+                        | "for-each-ref"
                 )
             }
         }

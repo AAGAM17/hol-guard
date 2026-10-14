@@ -278,6 +278,8 @@ def build_fixture(root: Path) -> BenignFixture:
     _bun_lockfile(worktree, _NODE_PACKAGES)
     _write(worktree / "test_calc.py", "assert 1 + 1 == 2\nprint('ok')\n")
     _write(worktree / "scripts" / "rebuild.sh", "#!/bin/sh\necho rebuilt\n")
+    # Reply drafted for a PR review conversation, posted with `gh pr comment --body-file`.
+    _write(worktree / ".tmp" / "body.md", "Fixed in the latest push; the parser now rejects empty input.\n")
     # Worktree package borrowing the canonical checkout's installed node_modules through a symlink.
     _node_toolchain(parent / "dashboard")
     _write(worktree / "dashboard" / "package.json", (parent / "dashboard" / "package.json").read_text())

@@ -201,6 +201,17 @@ pub fn compatibility_observations_with_context(
     deadline: Option<Instant>,
     context: crate::pretool::PathContext<'_>,
 ) -> Result<CompatibilityObservations, &'static str> {
+    compatibility_observations_in(command, deadline, context, None)
+}
+
+/// [`compatibility_observations_with_context`] with the execution
+/// environment the command inherits, for proofs that run a metadata probe.
+pub(crate) fn compatibility_observations_in(
+    command: &CanonicalCommandV1,
+    deadline: Option<Instant>,
+    context: crate::pretool::PathContext<'_>,
+    environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> Result<CompatibilityObservations, &'static str> {
     deadline_check(deadline)?;
     if command.normalized_text.len() > 32_768
         || command.segments.len() > 128
@@ -289,18 +300,21 @@ pub fn compatibility_observations_with_context(
         // operand is not a redirect and stays in place.
         let merged = crate::pretool::without_stderr_merge(segment);
         let cli_segment = merged.as_ref().unwrap_or(segment);
+        let proof_context = match &leading_cd {
+            Some((cd_index, cwd)) if index > *cd_index => crate::pretool::PathContext {
+                cwd: Some(cwd.as_str()),
+                ..context
+            },
+            _ => context,
+        };
         match basename(segment).as_str() {
             "git" => {
-                let proof_context = match &leading_cd {
-                    Some((cd_index, cwd)) if index > *cd_index => crate::pretool::PathContext {
-                        cwd: Some(cwd.as_str()),
-                        ..context
-                    },
-                    _ => context,
-                };
                 git::observe_with_contexts(cli_segment, index, &mut result, context, proof_context)
             }
-            "gh" => github::observe(cli_segment, index, &mut result),
+            "gh" => {
+                let probe = (proof_context, deadline, environment);
+                github::observe(cli_segment, index, &mut result, probe)
+            }
             _ => {}
         }
         domains::observe(command, segment, index, &mut result, context);

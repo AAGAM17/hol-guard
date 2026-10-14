@@ -63,6 +63,7 @@ mod git_remote_ops;
 mod git_routes;
 mod git_session_probe;
 mod git_worktree;
+pub(crate) mod github_conversation;
 mod guard_diagnostics;
 mod listing_reads;
 mod lookup_reads;

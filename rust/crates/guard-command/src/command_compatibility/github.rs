@@ -8,13 +8,24 @@ mod options;
 
 type Capabilities = Option<Vec<&'static str>>;
 
+/// `probe` is where native proofs run the segment (after a verified leading
+/// `cd`), with the deadline and the environment the command inherits.
 pub(super) fn observe(
     segment: &CommandSegmentV1,
     index: usize,
     result: &mut CompatibilityObservations,
+    probe: crate::pretool::github_conversation::ProbeContext<'_>,
 ) {
     match classify(&segment.arguments, dollars_single_quoted(&segment.text)) {
-        Some(capabilities) => {
+        Some(mut capabilities) => {
+            // One secret-free comment or review reply on the work tree's own
+            // repository is review conversation, owned like a routine
+            // review-thread resolution instead of a content mutation.
+            if capabilities == ["content_remote"]
+                && crate::pretool::github_conversation::current_repository_write(segment, probe)
+            {
+                capabilities = vec!["routine_review_thread_remote"];
+            }
             for capability in capabilities {
                 let (owner, permission_only) = github_owner(capability);
                 if permission_only {

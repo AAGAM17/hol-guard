@@ -121,11 +121,15 @@ impl CompiledNativeCommandControls {
         command: &CanonicalCommandV1,
         deadline: Option<Instant>,
         context: crate::pretool::PathContext<'_>,
+        environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
     ) -> Result<(NativeCommandObservationBatchV1, Option<&'static str>), &'static str> {
-        match self
-            .program
-            .observe_with_context(command, &self.active_extensions, deadline, context)
-        {
+        match self.program.observe_in(
+            command,
+            &self.active_extensions,
+            deadline,
+            context,
+            environment,
+        ) {
             Err(error) if UNMODELED_ERRORS.contains(&error) => self
                 .unmodeled_floor(command)
                 .map(|floor| (NativeCommandObservationBatchV1::default(), Some(floor)))

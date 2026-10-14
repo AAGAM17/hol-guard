@@ -307,10 +307,13 @@ fn routine_review_thread_permission_alone_covers_only_one_static_resolution() {
     let controls = controls_with(&["command.github.permission.routine-review-thread-remote"]);
     let projected =
         format!("{RESOLVE_WITH_VARIABLE} --jq .data.resolveReviewThread.thread.isResolved");
+    // Reopening a thread is the same bounded review-conversation step.
+    let unresolve = "gh api graphql -f query='mutation{unresolveReviewThread(input:{threadId:\"PRRT_kwDOexample1234\"}){thread{id}}}'";
     for command in [
         RESOLVE_WITH_VARIABLE,
         RESOLVE_LITERAL_COMMAS,
         projected.as_str(),
+        unresolve,
     ] {
         assert_eq!(action(&controls, command), "allow", "{command}");
     }
@@ -319,7 +322,6 @@ fn routine_review_thread_permission_alone_covers_only_one_static_resolution() {
         REPLY_MENTION,
         "gh api graphql -f query='mutation($id:ID!){resolveReviewThread(input:{threadId:$other}){thread{id}}}' -f id=PRRT_kwDOexample1234",
         "gh api graphql -f query='mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{id}}}' -f id=PRRT_kwDOexample1234 -f extra=1",
-        "gh api graphql -f query='mutation{unresolveReviewThread(input:{threadId:\"PRRT_kwDOexample1234\"}){thread{id}}}'",
         "gh api graphql -f query='mutation{resolveReviewThread(input:{threadId:\"PRRT_kwDOexample1234\"}){thread{id}}}' --jq 'env'",
     ] {
         assert_ne!(action(&controls, command), "allow", "{command}");

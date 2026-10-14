@@ -203,9 +203,11 @@ impl CompiledNativeCommandControls {
             packages,
             deadline,
             crate::pretool::PathContext::default(),
+            None,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn apply_with_tool_and_context(
         &self,
         command: Option<&CanonicalCommandV1>,
@@ -214,9 +216,10 @@ impl CompiledNativeCommandControls {
         packages: &[String],
         deadline: Option<Instant>,
         context: crate::pretool::PathContext<'_>,
+        environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
     ) -> PreToolResultV1 {
         let observed = match command {
-            Some(command) => self.observe_command(command, deadline, context),
+            Some(command) => self.observe_command(command, deadline, context, environment),
             None => Ok((NativeCommandObservationBatchV1::default(), None)),
         };
         let (mut batch, unmodeled) = match observed {

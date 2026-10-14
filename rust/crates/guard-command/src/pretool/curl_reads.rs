@@ -19,7 +19,7 @@
 #[path = "curl_output_targets.rs"]
 pub(in crate::pretool) mod output_targets;
 #[path = "url_secrets.rs"]
-mod url_secrets;
+pub(super) mod url_secrets;
 
 pub(crate) const NETWORK_READ_REASON: &str = "native_exact_safe_network_read";
 

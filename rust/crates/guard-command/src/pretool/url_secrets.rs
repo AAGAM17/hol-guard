@@ -21,9 +21,17 @@ pub(super) fn carries_secret(url: &url::Url) -> bool {
         tail.push('?');
         tail.push_str(part);
     }
-    crate::redacted_command_tokens::redact_text(&tail).count > 0
-        || JWT_RE.is_match(&tail)
-        || tail
+    text_carries_secret(&tail)
+}
+
+/// Whether `text` holds a known credential shape (the redaction patterns),
+/// a JWT, a PEM block or a long opaque token. Text a command sends to a
+/// remote service, such as a posted comment, is scanned the same way.
+pub(in crate::pretool) fn text_carries_secret(text: &str) -> bool {
+    text.contains("-----BEGIN")
+        || crate::redacted_command_tokens::redact_text(text).count > 0
+        || JWT_RE.is_match(text)
+        || text
             .split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '_')))
             .any(opaque_blob)
 }

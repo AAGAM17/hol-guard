@@ -435,9 +435,13 @@ pub(super) fn observe(
     let probe_cleanup = executable == "rm"
         && crate::pretool::safe_reads::proven_created_file_removal(command, segment, context);
     // Removing the links an agent placed at the root of a linked worktree
-    // of the session's repository deletes no data.
+    // of the session's repository deletes no data, whether named from the
+    // session's checkout or after a leading `cd` into that worktree.
     let link_cleanup = executable == "rm"
-        && crate::pretool::directory_targets::sibling::link_removal(segment, context);
+        && (crate::pretool::directory_targets::sibling::link_removal(segment, context)
+            || crate::pretool::directory_targets::sibling::entered_link_removal(
+                command, index, context,
+            ));
     // A proven in-place substitution is the same bounded edit the agent's
     // edit tool makes on an ordinary workspace file.
     let proven_edit = executable == "sed"

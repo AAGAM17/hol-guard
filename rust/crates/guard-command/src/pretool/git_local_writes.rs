@@ -285,7 +285,7 @@ fn proven(
         } else {
             context
         };
-        if !read(index, step) {
+        if !(read(index, step) || route.unlinks(model, index, shell)) {
             return None;
         }
         safe.push(index);

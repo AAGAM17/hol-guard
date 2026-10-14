@@ -66,6 +66,24 @@ impl Route {
         matches!(self, Route::Cd { either: Some(split), .. } if index >= *split)
     }
 
+    /// Whether the step at `index` only removes links in the root of the
+    /// linked worktree the command's leading `cd` enters (see `sibling`).
+    pub(super) fn unlinks(
+        &self,
+        model: &CanonicalCommandV1,
+        index: usize,
+        shell: super::super::PathContext<'_>,
+    ) -> bool {
+        matches!(
+            self,
+            Route::Cd {
+                index: 0,
+                either: None,
+                ..
+            }
+        ) && directory_targets::sibling::entered_link_removal(model, index, shell)
+    }
+
     /// Whether only the Git steps run in the route's directory.
     pub(super) fn chdir(&self) -> bool {
         matches!(self, Route::Chdir { .. })

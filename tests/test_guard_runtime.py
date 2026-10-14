@@ -3021,7 +3021,7 @@ clearer UX and an implementation plan with technical references.
             "tool_name": "Bash",
             "tool_input": {"command": "rg -T js TOKEN src"},
             "tool_response": {
-                "stdout": "src/config.ts:1:const TOKEN = TOKEN",
+                "stdout": "src/config.ts:1:const TOKEN = rotatedValue",
             },
             "source_scope": "project",
         }
@@ -3060,7 +3060,7 @@ clearer UX and an implementation plan with technical references.
             "tool_name": "Bash",
             "tool_input": {"command": "rg --iglob '*.ts' --max-depth 2 TOKEN src"},
             "tool_response": {
-                "stdout": "src/config.ts:1:const TOKEN = TOKEN",
+                "stdout": "src/config.ts:1:const TOKEN = rotatedValue",
             },
             "source_scope": "project",
         }
@@ -3099,7 +3099,7 @@ clearer UX and an implementation plan with technical references.
             "tool_name": "Bash",
             "tool_input": {"command": "git grep TOKEN --max-depth 1 src"},
             "tool_response": {
-                "stdout": "src/config.ts:1:const TOKEN = TOKEN",
+                "stdout": "src/config.ts:1:const TOKEN = rotatedValue",
             },
             "source_scope": "project",
         }
@@ -3138,7 +3138,7 @@ clearer UX and an implementation plan with technical references.
             "tool_name": "Bash",
             "tool_input": {"command": "bash -lc 'rg TOKEN src'"},
             "tool_response": {
-                "stdout": "src/config.ts:1:const TOKEN = TOKEN",
+                "stdout": "src/config.ts:1:const TOKEN = rotatedValue",
             },
             "source_scope": "project",
         }
@@ -3177,7 +3177,7 @@ clearer UX and an implementation plan with technical references.
             "tool_name": "Bash",
             "tool_input": {"command": "git --no-pager -c color.ui=never grep TOKEN src"},
             "tool_response": {
-                "stdout": "src/config.ts:1:const TOKEN = TOKEN",
+                "stdout": "src/config.ts:1:const TOKEN = rotatedValue",
             },
             "source_scope": "project",
         }
@@ -3966,7 +3966,7 @@ clearer UX and an implementation plan with technical references.
             "tool_name": "Bash",
             "tool_input": {"command": "git grep TOKEN --textconv src"},
             "tool_response": {
-                "stdout": "src/config.ts:1:const TOKEN = TOKEN",
+                "stdout": "src/config.ts:1:const TOKEN = rotatedValue",
             },
             "source_scope": "project",
         }

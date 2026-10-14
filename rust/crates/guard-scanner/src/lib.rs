@@ -9,6 +9,7 @@ pub mod staged_scanner;
 mod masked_value;
 mod match_spans;
 mod reference_value;
+mod self_named_value;
 
 pub use match_spans::scan_match_spans;
 
@@ -222,9 +223,11 @@ fn is_sample(
         return false;
     }
     if classifier == "credential-assignment"
-        && (assignment_value(matched).is_some_and(|value| {
-            inert_code_expression_regex().is_match(value) || masked_value::is_masked(value)
-        }) || reference_value::is_reference(matched, rest_of_line))
+        && (self_named_value::is_self_named(matched, rest_of_line)
+            || assignment_value(matched).is_some_and(|value| {
+                inert_code_expression_regex().is_match(value) || masked_value::is_masked(value)
+            })
+            || reference_value::is_reference(matched, rest_of_line))
     {
         return true;
     }
@@ -241,10 +244,8 @@ fn is_sample(
     if sample_regex().is_match(matched) {
         return true;
     }
-    if !documentation_sample_context {
-        return false;
-    }
-    assignment_value(matched).is_some_and(|value| doc_sample_regex().is_match(value))
+    documentation_sample_context
+        && assignment_value(matched).is_some_and(|value| doc_sample_regex().is_match(value))
 }
 
 /// The matches of rule `index` in `text` that are not suppressed as samples.

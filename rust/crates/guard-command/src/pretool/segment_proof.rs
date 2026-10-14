@@ -215,7 +215,9 @@ pub(super) fn exact_safe_segment_with_context(
                         && !search_text.contains(&index)
                         && sensitive_path_argument(argument)
                 }))
-        || !segment.environment_names.is_empty()
+        || !(segment.environment_names.is_empty()
+            || (basename == "kubectl"
+                && super::kubectl_reads::trusted_kubeconfig_prefix(segment, context)))
         || (executable.contains(['/', '\\'])
             && !super::postgres_reads::trusted_pg_ctl_path(executable, context))
     {

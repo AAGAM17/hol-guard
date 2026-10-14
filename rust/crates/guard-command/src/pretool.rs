@@ -94,6 +94,7 @@ mod search_scope;
 mod search_scope_filter;
 mod search_scope_glob;
 mod search_scope_ignore;
+mod secret_aliases;
 pub(crate) mod sed_edits;
 mod segment_proof;
 mod shell_script;
@@ -574,7 +575,8 @@ fn evaluate_single_command(
     if git_search_text::sensitive_beyond_patterns(
         normalized,
         git_search_text::command_without_patterns(&model),
-    ) {
+    ) || secret_aliases::names_secret_alias(&model, context)
+    {
         return Ok(pretool_decision(
             model,
             "review",

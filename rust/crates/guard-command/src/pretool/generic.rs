@@ -481,6 +481,9 @@ fn evaluate_envelope(
     }) {
         signals.sensitive_target = signals.independent_sensitive_target;
     }
+    // A link to a secret file is that secret under another name.
+    signals.sensitive_target |=
+        super::secret_aliases::decision_names_secret_alias(command_decision.as_ref(), context);
     let mut result = if search_scope_proven {
         generic_result(
             generic_action(

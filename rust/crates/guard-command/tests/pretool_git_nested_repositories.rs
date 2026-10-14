@@ -206,14 +206,17 @@ fn nested_repository_cannot_hide_execution_configuration() {
     let child = repository.join("child-tool");
     std::fs::create_dir_all(&child).unwrap();
     git(&child, &["init", "--quiet"]);
-    for (command, _) in [
-        ("git -c core.fsmonitor=./hook status --short", ()),
-        ("git -c diff.external=./hook diff --stat", ()),
-        ("git --exec-path=./helpers status --short", ()),
+    // A helper the command names itself is a program Guard cannot read, so
+    // even an explicit Git Allow leaves it reviewed.
+    for command in [
+        "git -c core.fsmonitor=./hook status --short",
+        "git -c diff.external=./hook diff --stat",
+        "git --exec-path=./helpers status --short",
     ] {
         let result = decide(&repository, &home, command);
         assert_ne!(result.decision, "allow", "{command}");
     }
+    // A helper the repository's own configuration names stays reviewed.
     git(&repository, &["config", "core.fsmonitor", "./hook"]);
     let result = decide(&repository, &home, "git status --short");
     assert_ne!(result.decision, "allow", "repo-local fsmonitor");

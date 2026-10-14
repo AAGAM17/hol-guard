@@ -1,9 +1,14 @@
 use super::{CommandSegmentV1, CompatibilityObservations};
 
+#[path = "git_allow_scope.rs"]
+mod git_allow_scope;
 #[path = "git_fetch.rs"]
 mod git_fetch;
 #[path = "git_hooks_path.rs"]
 mod git_hooks_path;
+pub(crate) use git_allow_scope::{
+    repository_routes_verified, runs_configured_program, subcommand_settles_uncertainty,
+};
 use git_hooks_path::hooks_path_names_no_hooks;
 
 const RULES: &[(&str, &str)] = &[

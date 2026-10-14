@@ -178,6 +178,41 @@ pub(super) fn normalized_haystack(value: &str) -> String {
     value.to_ascii_lowercase().replace('\\', "/")
 }
 
+/// Floors no extension permission can settle: Guard self-protection, secret
+/// exfiltration, and Git configuration that runs a program Guard cannot read.
+pub(crate) fn fixed_command_floor(model: &CanonicalCommandV1) -> bool {
+    model
+        .segments
+        .iter()
+        .any(crate::command_compatibility::git_runs_configured_program)
+        || crate::command_critical_floors::guard_control_block_in_launcher_text(
+            &model.normalized_text,
+        )
+        || crate::command_critical_floors::guard_control_block_in_command(
+            &crate::canonical_command::CanonicalCommand::from_v1(model),
+        )
+        || ps::sensitive_exfiltration(model, sensitive_command, exfiltration_command)
+        || model.segments.iter().any(names_guard_outside_message)
+}
+
+/// A Git alias, hook or config value can carry a program the parser never
+/// models; any argument naming Guard, other than a commit message, keeps the
+/// native decision.
+fn names_guard_outside_message(segment: &crate::CommandSegmentV1) -> bool {
+    let mut message_value = false;
+    segment.arguments.iter().any(|argument| {
+        let is_message = std::mem::take(&mut message_value);
+        message_value = matches!(argument.as_str(), "-m" | "--message");
+        let lowered = argument.to_ascii_lowercase();
+        let attached_message = lowered.starts_with("--message=")
+            || (lowered.starts_with("-m") && !lowered.starts_with("--"));
+        !(is_message || attached_message)
+            && ["hol-guard", "plugin-guard", ".hol-guard"]
+                .iter()
+                .any(|needle| lowered.contains(needle))
+    })
+}
+
 pub(super) fn sensitive_command(value: &str) -> bool {
     credential_keyword_text(value) || sensitive_location_text(value)
 }

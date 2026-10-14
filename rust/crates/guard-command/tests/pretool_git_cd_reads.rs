@@ -293,3 +293,48 @@ fn proven_git_reads_before_a_cd_into_a_sibling_repository_are_allowed() {
         assert_ne!(result.decision, "allow", "{command}");
     }
 }
+
+#[test]
+fn remote_url_reads_are_read_only() {
+    let (space, _cleanup) = workspace("remote-url");
+    let repository = space.repository.to_str().unwrap();
+    git(
+        &space.repository,
+        &[
+            "remote",
+            "add",
+            "origin",
+            "https://example.invalid/fixture.git",
+        ],
+    );
+    for command in [
+        "git remote get-url origin".to_owned(),
+        "git remote get-url --push origin".to_owned(),
+        "git remote get-url --all origin".to_owned(),
+        format!(
+            "pwd && git -C {repository} status --short --branch \
+             && git -C {repository} remote get-url origin \
+             && git -C {repository} remote get-url --push origin"
+        ),
+    ] {
+        let result = decide(&space, &space.repository, &command);
+        assert_eq!(
+            result.decision, "allow",
+            "{command}: {}",
+            result.reason_code
+        );
+    }
+    for command in [
+        "git remote get-url",
+        "git remote get-url --push",
+        "git remote get-url --delete origin",
+        "git remote set-url origin https://example.invalid/other.git",
+        "git remote add other https://example.invalid/other.git",
+        "git remote prune origin",
+        "git remote update",
+        "git remote show origin",
+    ] {
+        let result = decide(&space, &space.repository, command);
+        assert_ne!(result.decision, "allow", "{command}");
+    }
+}

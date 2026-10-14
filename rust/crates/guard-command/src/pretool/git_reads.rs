@@ -116,6 +116,21 @@ pub(super) fn safe_git_arguments(
         .position(|argument| argument == "--")
         .unwrap_or(arguments.len());
     let active_options = &arguments[1..option_end];
+    if subcommand == "remote"
+        && arguments
+            .get(1)
+            .is_some_and(|argument| argument == "get-url")
+    {
+        // `get-url` prints the configured URL of one remote, which `-v`
+        // already prints for every remote.
+        let Some((name, options)) = arguments[2..].split_last() else {
+            return false;
+        };
+        return !name.starts_with('-')
+            && options
+                .iter()
+                .all(|option| matches!(option.as_str(), "--push" | "--all"));
+    }
     if subcommand == "remote" {
         let has_arguments_after_options = option_end + 1 < arguments.len();
         return !active_options.is_empty()

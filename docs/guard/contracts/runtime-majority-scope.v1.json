@@ -1358,33 +1358,6 @@
         "evidence": "install, prepare_install and uninstall have no caller in any in-scope module; they are invoked by the excluded install, uninstall and repair dispatchers. The report validates that no retained symbol or in-scope module references the excluded names."
       },
       {
-        "id": "supply-chain-bundle-sync-verification",
-        "category": "async_control_plane",
-        "path": "src/codex_plugin_scanner/guard/runtime/supply_chain_bundle_runtime.py",
-        "symbols": [
-          "OfflineSupplyChainDecision",
-          "canonical_supply_chain_bundle_payload",
-          "payload_hash_for_supply_chain_bundle",
-          "load_supply_chain_bundle_response",
-          "check_supply_chain_bundle_freshness",
-          "check_supply_chain_bundle_rollback",
-          "_computed_key_fingerprint",
-          "_validate_key_fingerprints",
-          "_signing_key_is_trusted",
-          "verify_supply_chain_bundle_response",
-          "_package_identity_matches",
-          "_package_matches",
-          "_emergency_deny_identity_matches",
-          "_matching_emergency_deny_entries",
-          "_is_high_confidence_block",
-          "_blocking_bundle_reason",
-          "evaluate_cached_supply_chain_bundle"
-        ],
-        "entry_points": [],
-        "evidence": "Every excluded public symbol is called only from runtime/runner.py (cloud-sync-transport) and runtime/supply_chain_bundle.py, which only runner.py and runner_native_sync.py import; neither is in the runtime closure. load_supply_chain_verification_keys stays counted because policy_bundle_trusted_keys.py imports it. The report validates this reference closure on every run.",
-        "reason": "Cloud supply-chain bundle loading, signature and freshness checks, rollback checks and cached bundle evaluation. They run when Guard syncs the supply-chain bundle from Guard Cloud, not on a hook or proxy call."
-      },
-      {
         "id": "approval-continuation-replay",
         "category": "async_control_plane",
         "path": "src/codex_plugin_scanner/guard/continuation_runtime.py",

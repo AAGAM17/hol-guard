@@ -3,7 +3,6 @@
   "version": 1,
   "known_gaps": {
     "awk-end-anchor-after-vitest@pi": "native_command_review_required",
-    "awk-single-quoted-end-anchor@pi": "native_command_review_required",
     "gauntlet-python-local-test-script@pi": "native_command_review_required",
     "pytest-module-quiet@cursor": "native_command_review_required",
     "pytest-quiet@pi": "native_command_review_required",

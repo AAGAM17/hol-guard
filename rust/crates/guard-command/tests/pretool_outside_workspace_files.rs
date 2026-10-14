@@ -323,6 +323,7 @@ fn cd_sequences_prove_reads_in_both_directories() {
     let allowed = [
         format!("cd {sibling} && ls src; ls tests"),
         format!("cd {sibling} && ls src; ls tests; ls"),
+        format!("cd {sibling}; ls src"),
         format!("cd {sibling} && ls src; ls tests;"),
         format!("cd {sibling} && ls; node --version"),
         format!("cd {sibling} && node -v; ls"),
@@ -331,7 +332,6 @@ fn cd_sequences_prove_reads_in_both_directories() {
     let reviewed = [
         format!("cd {sibling} && ls src; cat .env"),
         format!("cd {sibling} && ls src; rm -f existing.txt"),
-        format!("cd {sibling}; ls src"),
         format!("cd {sibling} || ls src; ls tests"),
         format!("cd {ssh} && ls; ls"),
         format!("cd {sibling} && ls; node -e 1"),

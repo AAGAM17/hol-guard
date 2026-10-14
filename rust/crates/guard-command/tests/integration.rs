@@ -118,6 +118,7 @@ pub mod pretool_search_data;
 pub mod pretool_sibling_glob_reads;
 pub mod pretool_sibling_glob_search;
 pub mod pretool_sibling_read_filters;
+pub mod pretool_sibling_sequence_reads;
 pub mod pretool_skill_listings;
 pub mod pretool_skill_roots;
 pub mod pretool_stdin_filters;

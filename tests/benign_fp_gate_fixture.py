@@ -227,6 +227,7 @@ def build_fixture(root: Path) -> BenignFixture:
     for directory in (home, guard_home):
         directory.mkdir(parents=True)
     _write(home / ".gitconfig", _LFS_GITCONFIG)
+    _write(home / ".rustup" / "settings.toml", 'version = "12"\ndefault_toolchain = "stable"\n')
     # Synthetic credential file so the negative controls have a real target.
     _write(home / ".agent" / "skills" / "x" / "SKILL.md", "---\nname: x\n---\nSynthetic home skill body.\n")
     _write(home / ".agent" / "artifacts" / "report.md", "# Report\nInert build report text.\n")
@@ -320,6 +321,7 @@ def build_fixture(root: Path) -> BenignFixture:
         _write(repository / ".github" / "workflows" / "ci.yml", "name: ci\n")
         _write(repository / "src" / "index.ts", f"export const name = '{name}';\n")
         _write(repository / "README.md", f"# {name}\n")
+        _write(repository / "src" / "lib.rs", "pub fn name() -> &'static str {\n    \"fixture\"\n}\n")
         if name == "service-api":
             _write(repository / "contracts" / "commands.json", '{"commands": []}\n')
             _write(repository / "validation" / "schema.json", '{"type": "object"}\n')

@@ -157,7 +157,7 @@ fn clean_answers_are_rendered_natively() {
 fn answers_needing_python_are_handed_off() {
     for (text, event) in [
         (
-            r#"{"hookSpecificOutput":{"permissionDecision":"deny"}}"#,
+            r#"{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"http://h/requests/abcdefgh"}}"#,
             PRE_TOOL_USE,
         ),
         (

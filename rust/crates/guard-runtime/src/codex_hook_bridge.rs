@@ -11,7 +11,8 @@
 //!   failure, so recovery, fallback and denial wording stay in Python;
 //! - a handoff (`--native-handoff` with the daemon's answer on stdin) for
 //!   answers that need Python's post-processing: browser approval waits,
-//!   containment routing and transition observations.
+//!   containment routing and transition observations. A `PreToolUse` deny
+//!   that needs none of them is rendered here (see `handoff`).
 //!
 //! The native bridge never decides a verdict. The daemon decides; the
 //! Python bridge decides whenever the daemon cannot.
@@ -277,23 +278,6 @@ pub(crate) enum Route {
     Handoff(String),
 }
 
-fn needs_python(response: &PyVal, event_name: &str) -> bool {
-    if matches!(
-        response.get("guard_transition_observation"),
-        Some(PyVal::Dict(_))
-    ) {
-        return true;
-    }
-    if event_name != PRE_TOOL_USE {
-        return false;
-    }
-    let decision = response
-        .get("hookSpecificOutput")
-        .and_then(|output| output.get("permissionDecision"));
-    matches!(decision, Some(PyVal::Str(text)) if text == "deny")
-        || matches!(response.get("policy_action"), Some(PyVal::Str(text)) if text == "sandbox-required")
-}
-
 /// Route one daemon answer, as Python's fast path would render it.
 pub(crate) fn route_response(text: &str, event_name: &str) -> Route {
     let Ok(parsed) = pyjson::parse_mapping_lone_surrogates(text) else {
@@ -309,7 +293,7 @@ pub(crate) fn route_response(text: &str, event_name: &str) -> Route {
     {
         return Route::Delegate;
     }
-    if needs_python(&parsed.value, event_name) {
+    if handoff::needs_python(&parsed.value, event_name) {
         return Route::Handoff(text.to_owned());
     }
     let mut rendered = String::new();
@@ -464,6 +448,9 @@ pub(crate) fn run(python_argv: &[String]) -> i32 {
         }
     }
 }
+
+#[path = "codex_hook_bridge_handoff.rs"]
+mod handoff;
 
 #[cfg(all(test, unix))]
 #[path = "codex_hook_bridge_tests.rs"]

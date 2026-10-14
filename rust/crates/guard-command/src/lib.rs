@@ -133,6 +133,8 @@ pub mod package_intent_common;
 pub mod package_intent_parser;
 pub mod package_manager_command;
 pub mod package_manifest_diff;
+#[cfg(not(guard_source_bootstrap))]
+mod packaged_blob;
 mod parser_executables;
 mod parser_segments;
 mod parser_wrappers;

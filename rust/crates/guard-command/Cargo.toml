@@ -22,6 +22,7 @@ serde.workspace = true
 serde_json = { workspace = true, features = ["raw_value"] }
 sha2.workspace = true
 hex.workspace = true
+ruzstd.workspace = true
 idna.workspace = true
 percent-encoding.workspace = true
 pep440_rs.workspace = true
@@ -44,8 +45,11 @@ rustix.workspace = true
 
 [build-dependencies]
 guard-command-build = { path = "../guard-command-build" }
+hex.workspace = true
+ruzstd.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+zstd.workspace = true
 
 [dev-dependencies]
 flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }

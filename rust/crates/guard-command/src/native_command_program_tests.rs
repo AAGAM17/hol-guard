@@ -321,7 +321,7 @@ fn controls_are_bound_to_program_and_both_independent_revisions() {
 
 #[test]
 fn admission_rejects_tampered_unknown_and_invalid_nodes() {
-    let mut value: Value = serde_json::from_slice(EMBEDDED_PROGRAM).unwrap();
+    let mut value: Value = serde_json::from_slice(packaged_command_program_bytes()).unwrap();
     value["semantic_profile"] = "unqualified-unicode".into();
     let bytes = serde_json::to_vec(&value).unwrap();
     assert_eq!(

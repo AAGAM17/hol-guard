@@ -118,6 +118,10 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         // this path on Windows, where the module is not compiled.
         #[cfg(unix)]
         features.push(crate::binding_capture_op::BINDING_CAPTURE_FEATURE.into());
+        // The native SessionStart lane execs its Python fallback, so it is
+        // compiled and advertised on unix only.
+        #[cfg(unix)]
+        features.push(crate::claude_session_start::SESSION_START_FEATURE.into());
     }
     features.push(crate::claude_hook_bridge::BRIDGE_FEATURE.into());
     features.push(crate::codex_hook_bridge::BRIDGE_FEATURE.into());

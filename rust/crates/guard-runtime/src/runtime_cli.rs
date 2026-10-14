@@ -17,6 +17,14 @@ pub(super) fn run() -> Result<(), String> {
         [command, flag] if command == "self-test" && flag == "--json" => {
             write_json(&serde_json::json!({"ok": true, "capabilities": capabilities()}))
         }
+        #[cfg(unix)]
+        [command, mode, marker, config]
+            if command == "claude-hook-bridge"
+                && mode == claude_session_start::SESSION_START_MODE
+                && marker == claude_session_start::SESSION_START_MARKER =>
+        {
+            std::process::exit(claude_session_start::run(config))
+        }
         [command, marker, config]
             if command == "claude-hook-bridge" && marker == claude_hook_bridge::BRIDGE_MARKER =>
         {

@@ -87,7 +87,7 @@ fn capped(deadline: Instant, cap: Duration) -> Duration {
 
 /// `Path.home()`: `$HOME` without trailing slashes, else the passwd entry.
 #[cfg(unix)]
-fn home_directory() -> Option<PathBuf> {
+pub(crate) fn home_directory() -> Option<PathBuf> {
     if let Some(home) = std::env::var_os("HOME") {
         let text = home.to_string_lossy();
         let trimmed = text.trim_end_matches('/');
@@ -110,7 +110,7 @@ fn home_directory() -> Option<PathBuf> {
 /// ignores it there. With neither set CPython raises; the bridge instead
 /// declines to start the child process.
 #[cfg(windows)]
-fn home_directory() -> Option<PathBuf> {
+pub(crate) fn home_directory() -> Option<PathBuf> {
     if let Some(profile) = std::env::var_os("USERPROFILE") {
         return Some(if profile.is_empty() {
             PathBuf::from(".")

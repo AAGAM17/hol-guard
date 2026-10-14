@@ -430,6 +430,41 @@ fn reviewable_settings_run_with_their_command_in_the_workspace_sandbox() {
 }
 
 #[test]
+fn private_temp_paths_run_in_the_workspace_sandbox() {
+    let ws = workspace("private-temp", true);
+    for command in [
+        "OUT_DIR=\"$TMPDIR/report-test\" npm run build",
+        "OUT_DIR=\"${TMPDIR}/report-test\" npm run build",
+        "OUT_DIR=$TMPDIR/report-test PORT=4173 npm run build",
+        "OUT_DIR=\"$TMPDIR/report-test\" bunx vitest run src/report.test.ts",
+    ] {
+        assert_eq!(
+            reason("omp", command, &ws, true) == CONTAINED,
+            host(),
+            "{command}"
+        );
+    }
+    // Another variable, a rebound TMPDIR, a default or a command
+    // substitution could name a host directory, and a single-quoted `$` is
+    // left for the program to expand.
+    for command in [
+        "OUT_DIR=\"$HOME/report-test\" npm run build",
+        "OUT_DIR=\"$TMPDIR/$(id -un)\" npm run build",
+        "OUT_DIR=\"$TMPDIR/`id -un`\" npm run build",
+        "OUT_DIR=\"${TMPDIR:-/Users/nobody}/x\" npm run build",
+        "OUT_DIR=\"$TMPDIRS/x\" npm run build",
+        "OUT_DIR='$TMPDIR/x' npm run build",
+        "TMPDIR=/Users/nobody/.ssh OUT_DIR=\"$TMPDIR/x\" npm run build",
+        "export TMPDIR=/Users/nobody && OUT_DIR=\"$TMPDIR/x\" npm run build",
+        "OUT_DIR=\"$HOME/x\" bunx vitest run src/report.test.ts",
+        "TMPDIR=/Users/nobody OUT_DIR=\"$TMPDIR/x\" bunx vitest run src/report.test.ts",
+    ] {
+        assert_ne!(reason("omp", command, &ws, true), CONTAINED, "{command}");
+    }
+    let _ = std::fs::remove_dir_all(&ws);
+}
+
+#[test]
 fn recursive_removal_runs_in_the_sandbox_only_for_ignored_or_missing_targets() {
     let root = std::env::temp_dir().join(format!("guard-ws-{}-removal", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);

@@ -147,6 +147,36 @@ fn reviewable_settings_project_and_name_the_first_setting() {
 }
 
 #[test]
+fn private_temp_settings_project_only_for_review() {
+    for command in [
+        r#"OUT_DIR="$TMPDIR/report-test" bunx vitest run a.test.ts"#,
+        r#"OUT_DIR="${TMPDIR}/report-test" PORT=4173 bunx vitest run a.test.ts"#,
+        "OUT_DIR=$TMPDIR/report-test bunx vitest run a.test.ts",
+    ] {
+        let reviewed =
+            project_reviewed(command, Default::default()).unwrap_or_else(|| panic!("{command}"));
+        assert_eq!(reviewed.command, "bunx vitest run a.test.ts", "{command}");
+        assert_eq!(reviewed.setting, "OUT_DIR", "{command}");
+        assert_eq!(project(command), None, "{command}");
+    }
+    for command in [
+        r#"OUT_DIR="$HOME/report-test" bunx vitest run a.test.ts"#,
+        r#"OUT_DIR="$TMPDIRS/x" bunx vitest run a.test.ts"#,
+        r#"OUT_DIR="${TMPDIR:-/Users/nobody}/x" bunx vitest run a.test.ts"#,
+        r#"OUT_DIR="$TMPDIR/$(id -un)" bunx vitest run a.test.ts"#,
+        r#"OUT_DIR="$TMPDIR/*" bunx vitest run a.test.ts"#,
+        r#"OUT_DIR='$TMPDIR/x' bunx vitest run a.test.ts"#,
+        r#"TMPDIR=/Users/nobody OUT_DIR="$TMPDIR/x" bunx vitest run a.test.ts"#,
+        r#"export TMPDIR=/Users/nobody; OUT_DIR="$TMPDIR/x" bunx vitest run a.test.ts"#,
+    ] {
+        assert!(
+            project_reviewed(command, Default::default()).is_none(),
+            "{command}"
+        );
+    }
+}
+
+#[test]
 fn reviewed_projection_refuses_program_loader_and_credential_settings() {
     for command in [
         "LC_ALL=C ls",

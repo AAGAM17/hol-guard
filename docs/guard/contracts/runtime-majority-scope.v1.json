@@ -558,7 +558,6 @@
       {
         "path": [
           "src/codex_plugin_scanner/guard/cli/codex_live_hook_completion.py",
-          "src/codex_plugin_scanner/guard/cli/codex_output_safety.py",
           "src/codex_plugin_scanner/guard/cli/commands.py",
           "src/codex_plugin_scanner/guard/cli/commands_lifecycle_gate.py",
           "src/codex_plugin_scanner/guard/cli/commands_router.py",
@@ -570,11 +569,8 @@
           "src/codex_plugin_scanner/guard/cli/commands_support_codex_paths.py",
           "src/codex_plugin_scanner/guard/cli/commands_support_codex_prompt_attachments.py",
           "src/codex_plugin_scanner/guard/cli/commands_support_codex_reads.py",
-          "src/codex_plugin_scanner/guard/cli/commands_support_codex_tool_output.py",
-          "src/codex_plugin_scanner/guard/cli/commands_support_codex_tool_output_messages.py",
           "src/codex_plugin_scanner/guard/cli/commands_support_compound_decision.py",
           "src/codex_plugin_scanner/guard/cli/commands_support_connect.py",
-          "src/codex_plugin_scanner/guard/cli/commands_support_native_search.py",
           "src/codex_plugin_scanner/guard/cli/commands_support_observe_queue.py",
           "src/codex_plugin_scanner/guard/cli/commands_support_permission_store.py",
           "src/codex_plugin_scanner/guard/cli/commands_support_prompts.py",

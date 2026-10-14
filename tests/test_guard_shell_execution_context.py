@@ -10,9 +10,6 @@ import pytest
 from codex_plugin_scanner.guard.cli.commands_support_codex_reads import (
     _codex_command_is_read_only_source_inspection,
 )
-from codex_plugin_scanner.guard.cli.commands_support_codex_tool_output import (
-    _codex_sensitive_local_source_matches,
-)
 from codex_plugin_scanner.guard.cli.commands_support_runtime_artifacts import (
     _codex_post_tool_output_artifact,
 )
@@ -497,7 +494,6 @@ def test_secret_source_output_artifact_uses_the_effective_project(tmp_path: Path
     _write(project_b / ".env", "API_KEY=project-b-secret\n")
     command = "cd project-b && cat .env"
 
-    matches = _codex_sensitive_local_source_matches(command, cwd=project_a)
     artifact = _codex_post_tool_output_artifact(
         payload={
             "tool_name": "Bash",
@@ -509,9 +505,8 @@ def test_secret_source_output_artifact_uses_the_effective_project(tmp_path: Path
         cwd=project_a,
     )
 
-    assert matches
-    assert matches[0].normalized_path == str((project_b / ".env").resolve())
     assert artifact is not None
+    assert artifact.metadata["guard_default_action"] == "require-reapproval"
     assert artifact.metadata["effective_cwd"] == str(project_b.resolve())
 
 

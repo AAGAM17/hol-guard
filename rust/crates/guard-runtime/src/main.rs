@@ -131,6 +131,8 @@ mod codex_hook_identity;
 mod codex_hook_response;
 mod codex_hooks;
 mod codex_identity;
+#[cfg(all(test, unix))]
+mod codex_post_tool_output_vectors_tests;
 mod codex_proxy;
 mod codex_request_resume_busy;
 mod codex_request_resume_op;

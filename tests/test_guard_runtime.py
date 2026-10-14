@@ -2799,11 +2799,20 @@ clearer UX and an implementation plan with technical references.
     ) -> None:
         command = "env -i OPENAI_API_KEY=$OPENAI_API_KEY | grep OPENAI_API_KEY"
 
-        assert guard_commands_module._codex_command_reads_environment_pipeline(command) is True
-        assert guard_commands_module._codex_command_may_read_local_content(
-            command,
+        artifact = guard_commands_module._codex_post_tool_output_artifact(
+            payload={
+                "tool_name": "Bash",
+                "tool_input": {"command": command},
+                "tool_response": {"stdout": "OPENAI_API_KEY=token=definitely-invalid\n"},
+            },
+            config_path=str(tmp_path / "config.toml"),
+            source_scope="project",
             cwd=tmp_path,
         )
+
+        assert artifact is not None
+        assert artifact.metadata["guard_default_action"] == "require-reapproval"
+        assert artifact.metadata["secret_source_family"] == "environment variables"
 
     def test_codex_post_tool_use_detects_url_looking_local_secret_paths(
         self,
@@ -2855,12 +2864,19 @@ clearer UX and an implementation plan with technical references.
         outside_secret.parent.mkdir(parents=True)
         outside_secret.write_text("OPENAI_API_KEY=token=definitely-invalid\n", encoding="utf-8")
 
-        matches = guard_commands_module._codex_sensitive_path_matches_in_text(
-            f"python -c \"print(open('https://example.test/../../{outside_secret.parent.name}/.env').read())\"",
+        command = f"python -c \"print(open('https://example.test/../../{outside_secret.parent.name}/.env').read())\""
+        artifact = guard_commands_module._codex_post_tool_output_artifact(
+            payload={
+                "tool_name": "Bash",
+                "tool_input": {"command": command},
+                "tool_response": {"stdout": "token=definitely-invalid\n"},
+            },
+            config_path=str(tmp_path / "config.toml"),
+            source_scope="project",
             cwd=tmp_path,
         )
 
-        assert matches == []
+        assert artifact is None or "secret_source_family" not in artifact.metadata
 
     def test_codex_post_tool_use_allows_short_option_value_payloads(
         self,

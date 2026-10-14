@@ -516,36 +516,41 @@ fn source_missing(target: &str, cwd: &Path, home: &Path) -> bool {
 }
 
 /// Whether the output is a line-numbered slice of `file` that no whole-file
-/// match overlaps and whose lines, with the context above them, match no
-/// secret rule (see [`source_slice`]). The presented text is still verified
+/// match overlaps and whose runs of lines, each with the context above it,
+/// match no secret rule (see [`source_slice`]). The presented text is still verified
 /// and scanned on its own afterwards.
 fn clean_slice(request: &NativeHookRequestV1, file: &str, path: &str) -> bool {
     let output = extract_payload_output(&request.payload);
     if output.truncated {
         return false;
     }
-    let Some((first, last)) = source_slice::covered_range(&output.text, file) else {
+    let Some(runs) = source_slice::covered_runs(&output.text, file) else {
         return false;
     };
-    if source_slice::key_block_overlaps(file, first, last) {
+    if runs
+        .iter()
+        .any(|&(first, last)| source_slice::key_block_overlaps(file, first, last))
+    {
         return false;
     }
     let local = local_samples_should_be_unsuppressed(path);
     let Some(spans) = scan_match_spans(file, local, true, deadline(request)) else {
         return false;
     };
-    if source_slice::spans_overlap(file, first, last, &spans) {
-        return false;
-    }
-    let start = first.saturating_sub(source_slice::CONTEXT_LINES).max(1);
-    let scan = scan_text(
-        &source_slice::lines(file, start, last),
-        local,
-        true,
-        MAX_SCAN_BYTES,
-        deadline(request),
-    );
-    !scan.budget_exhausted && scan.matches.is_empty()
+    runs.iter().all(|&(first, last)| {
+        if source_slice::spans_overlap(file, first, last, &spans) {
+            return false;
+        }
+        let start = first.saturating_sub(source_slice::CONTEXT_LINES).max(1);
+        let scan = scan_text(
+            &source_slice::lines(file, start, last),
+            local,
+            true,
+            MAX_SCAN_BYTES,
+            deadline(request),
+        );
+        !scan.budget_exhausted && scan.matches.is_empty()
+    })
 }
 
 fn review_inline(request: &NativeHookRequestV1) -> HookReviewResponseV1 {

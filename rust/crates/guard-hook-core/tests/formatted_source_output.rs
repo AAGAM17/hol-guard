@@ -262,6 +262,28 @@ fn slices_that_show_no_secret_are_reviewed_on_their_own() {
     let collapsed = format!("{}\n13-18:  … }}", slice(&[10, 11, 12]));
     let clean = review_post_tool(&request(root.path(), &collapsed));
     assert_eq!(clean.reason_code, "output_scan_allow", "{clean:?}");
+    // A range anchored by its enclosing block's first and last lines leaves
+    // the omitted lines between them, the secret included, unshown.
+    let anchored_rows = |runs: &[&[usize]]| {
+        let rows: Vec<String> = runs
+            .iter()
+            .map(|run| {
+                run.iter()
+                    .map(|number| format!("{number}:{}", lines[number - 1]))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .collect();
+        format!(
+            "[example.py#ABCD]\n{}\n\n[Showing lines 10-12 of 30]",
+            rows.join("\n…\n")
+        )
+    };
+    let clean = review_post_tool(&request(
+        root.path(),
+        &anchored_rows(&[&[1], &[10, 11, 12], &[30]]),
+    ));
+    assert_eq!(clean.reason_code, "output_scan_allow", "{clean:?}");
 
     for blocked in [
         // The secret itself, the lines just below it, and a key body.
@@ -269,6 +291,9 @@ fn slices_that_show_no_secret_are_reviewed_on_their_own() {
         slice(&[5, 6]),
         slice(&[21]),
         format!("{}\n19-24:  …", slice(&[12])),
+        // An anchor row is a shown line like any other.
+        anchored_rows(&[&[2], &[10, 11, 12], &[30]]),
+        anchored_rows(&[&[1], &[10, 11, 12], &[21]]),
         // Rows that are not the file's lines keep the whole-file decision.
         "[example.py#ABCD]\n10:step(9)".into(),
         "[example.py#ABCD]\nstep(10)".into(),

@@ -21,7 +21,7 @@ from .extension_adapters import configure_extension_permission_denial, extension
 from .fixtures import create_fixture, digest_file, filesystem_checks, scenario_fixture_name
 from .guard_tap import GuardTap, read_tap
 from .harness_judge import assess_harness_case, guard_decisions
-from .harnesses import CredentialSeed, adapter, credential_environment, read_transcript
+from .harnesses import CredentialSeed, adapter, credential_environment, keep_login_shell_path, read_transcript
 from .host_process import clean_environment, realistic_environment, run_process
 from .input_evidence import redact_value
 from .provider import LoopbackCollector
@@ -81,6 +81,7 @@ def harness_environment(
         environment = realistic_environment(environment, home)
     environment.update(spec.extra_env)
     environment.update(spec.home_environment(home))
+    environment.update(spec.keychain_environment())
     environment.update(login_environment)
     return environment
 
@@ -190,6 +191,7 @@ def run_harness_case(
             )
             if scenario.oracle == "blocked-extension" or scenario.id in BUSINESS_CLI_CASES | GITHUB_STUB_CASES:
                 environment["PATH"] = str(fixture.root / "bin") + os.pathsep + environment["PATH"]
+            keep_login_shell_path(fixture.home, environment["PATH"])
             spec.prepare_context(fixture.workspace, context)
             command = spec.command(
                 executable,

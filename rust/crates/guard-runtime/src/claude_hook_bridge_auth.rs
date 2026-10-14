@@ -17,8 +17,8 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
 use crate::claude_hook_bridge_render::py_strip;
+use crate::claude_hook_bridge_url::resolve_absolute;
 use crate::daemon_policy_authority::{canonical_discovery_payload, hmac_sha256_raw};
-use crate::oci_path::resolve_lenient;
 use crate::resident_transport::constant_time_eq;
 
 pub(crate) const LOOPBACK_HOSTS: [&str; 3] = ["127.0.0.1", "localhost", "::1"];
@@ -286,15 +286,15 @@ fn resolved(text: &str) -> Result<String, String> {
     if text.contains('\0') {
         return Err("embedded null byte".to_owned());
     }
-    if text.starts_with('/') {
-        return Ok(resolve_lenient(text));
+    if Path::new(text).is_absolute() {
+        return Ok(resolve_absolute(text));
     }
     let cwd = std::env::current_dir().map_err(|_| "daemon state Guard home is invalid")?;
-    let cwd = cwd
+    let joined = cwd.join(text);
+    let joined = joined
         .to_str()
-        .ok_or("daemon state Guard home is invalid")?
-        .to_owned();
-    Ok(resolve_lenient(&format!("{cwd}/{text}")))
+        .ok_or("daemon state Guard home is invalid")?;
+    Ok(resolve_absolute(joined))
 }
 
 /// `_authenticated_state(state_path)`.

@@ -41,7 +41,7 @@
 use super::consume::{repair_store_permissions, storage_gate};
 use super::review_request::{build, ExactKeys, RequestInput};
 use super::{Context, HookDirectDefer, ENVELOPE_BYTES, ESCAPE_FACTOR};
-use crate::blocked_request_mode::safe_alternative_reason;
+use crate::blocked_request_mode::safe_alternative_reason_with_retry;
 use crate::guard_store_approval_request::rewrite_approval_url;
 use crate::local_store_read::STORE_FILE_NAME;
 use guard_command::hook_responses::{pre_tool, pre_tool_review, Object};
@@ -108,8 +108,15 @@ pub(super) fn answer(
         },
     };
     let request = build(&input, result, receipt).ok_or(HookDirectDefer::ReviewQueue)?;
-    if !facts.ask {
-        return silent(context, result, facts.oauth_source, request);
+    if !facts.ask || (review_binding.is_none() && token.is_err()) {
+        return silent(
+            context,
+            result,
+            facts.oauth_source,
+            request,
+            review_binding.is_some(),
+            token.is_ok(),
+        );
     }
     let approval_url = request
         .get("approval_url")
@@ -189,6 +196,8 @@ fn silent(
     result: &Object,
     oauth_source: &str,
     request: Value,
+    retry_reuses_approval: bool,
+    exact_action_allowable: bool,
 ) -> Result<Value, HookDirectDefer> {
     let reason = falsy_or_text(result.get("reason"), BLOCKED_REASON)?;
     let reason_code = falsy_or_text(result.get("reason_code"), "unknown")?;
@@ -198,10 +207,12 @@ fn silent(
     blocked.insert("policy_action".to_owned(), json!("block"));
     blocked.insert(
         "reason".to_owned(),
-        json!(safe_alternative_reason(
+        json!(safe_alternative_reason_with_retry(
             reason,
             Some(reason_code),
-            Some(true)
+            Some(true),
+            retry_reuses_approval,
+            exact_action_allowable,
         )),
     );
     // The block does not name the request, so it renders before the write.

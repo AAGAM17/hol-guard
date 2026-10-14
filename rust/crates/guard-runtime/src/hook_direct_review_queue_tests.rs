@@ -307,17 +307,27 @@ fn a_silent_review_blocks_after_queueing_its_request_and_event() {
         "reason": "Deletes files.",
         "reason_code": "native_review",
     });
-    let response = silent(&context, result.as_object().unwrap(), "default", request).unwrap();
+    let response = silent(
+        &context,
+        result.as_object().unwrap(),
+        "default",
+        request,
+        true,
+        false,
+    )
+    .unwrap();
     let mut blocked = result.as_object().unwrap().clone();
     blocked.insert("decision".to_owned(), json!("deny"));
     blocked.insert("minimum_action".to_owned(), json!("block"));
     blocked.insert("policy_action".to_owned(), json!("block"));
     blocked.insert(
         "reason".to_owned(),
-        json!(safe_alternative_reason(
+        json!(safe_alternative_reason_with_retry(
             "Deletes files.",
             Some("native_review"),
-            Some(true)
+            Some(true),
+            true,
+            false,
         )),
     );
     let mut expected = pre_tool("codex", &blocked);
@@ -332,4 +342,68 @@ fn a_silent_review_blocks_after_queueing_its_request_and_event() {
         1
     );
     std::fs::remove_dir_all(home).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn ask_without_any_reusable_identity_records_without_starting_a_wait() {
+    for (tag, command) in [
+        ("ask-python", "python3 script.py"),
+        ("ask-push", "git push origin dev"),
+    ] {
+        let home = store_home(tag, SILENT_VECTORS);
+        let guard_home = home.to_string_lossy().into_owned();
+        let binding = ask_binding();
+        let workspace = super::super::tests::workspace(tag);
+        let (_, _, _, mut exact) = super::super::tests::bound_query(&binding, &workspace);
+        let NativeExactActionQueryV1::ExactAction {
+            command: query_command,
+            ..
+        } = &mut exact
+        else {
+            panic!("an exact-action query");
+        };
+        *query_command = Some(command.to_owned());
+        assert!(crate::native_exact_action_op::review_binding_for(&exact, None).is_none());
+        let payload = json!({"tool_name": "Bash", "tool_input": {"command": command}});
+        let payload = payload.as_object().unwrap();
+        let fixture = super::super::tests::vectors();
+        let context = Context {
+            harness: "omp",
+            payload,
+            recorded_payload: payload,
+            workspace: &workspace,
+            home_dir: fixture["home_dir"].as_str().unwrap(),
+            guard_home: &guard_home,
+            binding: &binding,
+        };
+        let result = json!({"decision": "deny", "policy_action": "review", "minimum_action": "review",
+                           "reason": "Review this command.", "reason_code": "native_command_review_required"});
+        let response = answer(
+            &context,
+            result.as_object().unwrap(),
+            None,
+            &exact,
+            &Err("mutable_command"),
+        )
+        .expect("an unbound review is recorded without a pause");
+        assert_eq!(response["prompted"], false);
+        assert_eq!(response["policy_action"], "block");
+        assert!(response["reason"]
+            .as_str()
+            .unwrap()
+            .contains("approving it there will not let you run it"));
+        assert!(response.get("approval_request_id").is_none());
+        assert!(response.get("approval_url").is_none());
+        let connection = rusqlite::Connection::open(home.join(STORE_FILE_NAME)).unwrap();
+        let pending: i64 = connection
+            .query_row(
+                "select count(*) from approval_requests where status = 'pending'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(pending, 1);
+        std::fs::remove_dir_all(home).unwrap();
+    }
 }

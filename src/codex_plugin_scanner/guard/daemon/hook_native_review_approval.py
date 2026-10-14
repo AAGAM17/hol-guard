@@ -22,6 +22,7 @@ from .hook_native_package_review import native_package_review_response
 from .hook_native_review_binding import (
     native_review_claimed_allow,
     native_review_matching_allow,
+    native_review_matching_block,
     native_review_policy_binding,
 )
 from .hook_native_saved_approval import (
@@ -114,6 +115,29 @@ def pause_native_pre_tool_for_approval(
         return saved
     if custom is not None:
         return custom[1]
+    if native_review_matching_block(
+        store,
+        harness=harness,
+        tool_name=tool_name,
+        artifact_id=_native_review_artifact_id(harness, tool_name),
+        launch_target=launch_target,
+        workspace=workspace,
+        identity=identity,
+    ):
+        blocked = dict(native_result)
+        blocked.update(
+            decision="deny",
+            minimum_action="block",
+            policy_action="block",
+            reason_code="native_review_user_block",
+            reason=(
+                "The user chose Keep blocked for this action. Do not retry it; continue with a permitted alternative."
+            ),
+        )
+        response = render_pre_tool(harness, blocked, guard_home=guard_home, deadline=deadline)
+        response["prompted"] = False
+        response["approval_reuse_status"] = "blocked"
+        return response
     if claimed_saved_allow_hash is not None and native_review_claimed_allow(
         store,
         harness=harness,
@@ -163,7 +187,7 @@ def pause_native_pre_tool_for_approval(
     except (OSError, RuntimeError, TypeError, ValueError):
         ask = False
     approval_center_url = _native_review_approval_center_url(store)
-    if not ask:
+    if not ask or (identity is None and exact_token is None):
         # The agent stays on the silent block. The inbox row is a separate record.
         queued = queue_native_pre_tool_review(
             store,

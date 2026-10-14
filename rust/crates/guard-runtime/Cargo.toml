@@ -57,6 +57,7 @@ libproc = "0.14.11"
 security-framework = "3.7.0"
 
 [target.'cfg(windows)'.dependencies]
+guard-contained-process = { path = "../guard-contained-process" }
 windows-permissions.workspace = true
 
 [target.'cfg(all(unix, target_os = "linux"))'.dependencies]
@@ -64,6 +65,7 @@ seccompiler = "0.5.0"
 
 [dev-dependencies]
 base64.workspace = true
+tempfile = "3.10"
 
 [lints]
 workspace = true

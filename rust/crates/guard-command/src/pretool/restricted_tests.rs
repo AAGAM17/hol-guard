@@ -9,6 +9,14 @@ mod bun_eval_screen;
 const BUN_EVAL_REASON: &str = "native_bun_eval_readonly_containment_required";
 
 fn python_runtime_name(name: &str) -> bool {
+    // Windows resolves `python3` to `python.exe`, case-insensitively.
+    let lowered;
+    let name = if cfg!(windows) {
+        lowered = name.to_ascii_lowercase();
+        lowered.strip_suffix(".exe").unwrap_or(&lowered)
+    } else {
+        name
+    };
     name.strip_prefix("python").is_some_and(|suffix| {
         suffix.is_empty()
             || suffix

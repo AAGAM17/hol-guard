@@ -697,9 +697,14 @@ fn evaluate_envelope(
             .filter(|reason| *reason != "native_git_readonly_containment_required")
         })
     });
-    // macOS only (the credential-filtering profile); only harnesses that rewrite
-    // into the contained sink get the receipt, others would see a bare deny.
-    if cfg!(target_os = "macos")
+    // macOS runs every credential-filtering profile. Windows runs only the
+    // Python profile, in an AppContainer, for Claude Code, whose Git Bash shell
+    // runs the POSIX-quoted sink. Only harnesses that rewrite into the contained
+    // sink get the receipt; others would see a bare deny.
+    if (cfg!(target_os = "macos")
+        || (cfg!(windows)
+            && harness == "claude-code"
+            && contained_test_reason == Some("native_python_eval_readonly_containment_required")))
         && event == "PreToolUse"
         && matches!(
             harness,

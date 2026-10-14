@@ -13,6 +13,7 @@ from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 
+from ..windows_paths import trusted_windows_local_temp
 from . import restricted_git, restricted_node_test, restricted_node_tool, restricted_vitest
 from .contained_wrapper import bounded_output, peel_contained_wrapper, sibling_project_root
 from .restricted_inline_eval import prepare_restricted_inline_eval, run_restricted_inline_eval
@@ -52,6 +53,8 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
 
 def read_contained_test_request(path: Path, expected_sha256: str, *, workspace: Path) -> dict[str, object]:
     """Read one bounded private adapter snapshot, without following its leaf."""
+    if os.name == "nt":
+        return _read_windows_request(path, expected_sha256, workspace=workspace)
     if (
         os.name != "posix"
         or path.name != "request.json"
@@ -79,8 +82,55 @@ def read_contained_test_request(path: Path, expected_sha256: str, *, workspace: 
             ):
                 raise _reject()
             raw = stream.read(_MAX_REQUEST_BYTES + 1)
-        if len(raw) > _MAX_REQUEST_BYTES or hashlib.sha256(raw).hexdigest() != expected_sha256:
+        return _decode_request(raw, expected_sha256, workspace=workspace)
+    except (OSError, ValueError, RuntimeError, RecursionError) as error:
+        if isinstance(error, RestrictedPytestError):
+            raise
+        raise _reject() from error
+
+
+def _read_windows_request(path: Path, expected_sha256: str, *, workspace: Path) -> dict[str, object]:
+    """Windows has no owner-mode bits; the snapshot must sit directly in this
+    user's temporary directory, reached without links or junctions. The
+    directory comes from the profile, not TEMP, which the hook that wrote the
+    snapshot and the shell that runs this sink may set differently."""
+    if (
+        path.name != "request.json"
+        or not path.parent.name.startswith("hol-guard-contained-test-")
+        or not path.is_absolute()
+        or len(expected_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in expected_sha256)
+    ):
+        raise _reject()
+    try:
+        temporary = trusted_windows_local_temp()
+        if os.path.normcase(path.parent.parent) != os.path.normcase(temporary):
             raise _reject()
+        for candidate, regular in ((path.parent, False), (path, True)):
+            metadata = os.lstat(candidate)
+            if (
+                getattr(metadata, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+                or (stat.S_ISREG(metadata.st_mode) if regular else stat.S_ISDIR(metadata.st_mode)) is not True
+            ):
+                raise _reject()
+        if metadata.st_nlink != 1 or metadata.st_size > _MAX_REQUEST_BYTES:
+            raise _reject()
+        with open(path, "rb") as stream:
+            opened = os.fstat(stream.fileno())
+            if (opened.st_dev, opened.st_ino) != (metadata.st_dev, metadata.st_ino):
+                raise _reject()
+            raw = stream.read(_MAX_REQUEST_BYTES + 1)
+        return _decode_request(raw, expected_sha256, workspace=workspace)
+    except (OSError, ValueError, RuntimeError, RecursionError) as error:
+        if isinstance(error, RestrictedPytestError):
+            raise
+        raise _reject() from error
+
+
+def _decode_request(raw: bytes, expected_sha256: str, *, workspace: Path) -> dict[str, object]:
+    if len(raw) > _MAX_REQUEST_BYTES or hashlib.sha256(raw).hexdigest() != expected_sha256:
+        raise _reject()
+    try:
         value = json.loads(raw, object_pairs_hook=_unique_object)
         if (
             not isinstance(value, dict)

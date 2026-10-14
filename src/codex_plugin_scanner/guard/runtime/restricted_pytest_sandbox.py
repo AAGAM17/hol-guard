@@ -86,6 +86,8 @@ def _backend_argv(plan: RestrictedPytestPlan, *, private_root: Path, user_site_r
     if plan.backend == "macos-seatbelt":
         profile = _macos_profile(plan, private_root=private_root, user_site_root=user_site_root)
         return [str(plan.backend_executable), "-p", profile, "--", *plan.command]
+    if plan.backend != "linux-bubblewrap":
+        raise RestrictedPytestError(PYTEST_SANDBOX_UNAVAILABLE_REASON_CODE, "Unexpected restricted backend.")
     return _bubblewrap_argv(plan, private_root=private_root)
 
 
@@ -230,9 +232,16 @@ def _run_backend_process(
             int | signal.Handlers | Callable[[int, FrameType | None], object] | None,
         ] = {}
 
+        def signal_run(signum: int | None = None) -> None:
+            if os.name == "posix":
+                os.killpg(process.pid, signal.SIGKILL if signum is None else signum)
+            else:
+                # The Windows runner's kill-on-close job ends its descendants.
+                process.kill()
+
         def forward_signal(signum: int, _frame: object) -> None:
             with contextlib.suppress(OSError):
-                os.killpg(process.pid, signum)
+                signal_run(signum)
 
         for signum in (signal.SIGINT, signal.SIGTERM):
             previous_handlers[signum] = signal.getsignal(signum)
@@ -242,7 +251,7 @@ def _run_backend_process(
                 return_code = process.wait(timeout=timeout_seconds)
             except subprocess.TimeoutExpired as error:
                 with contextlib.suppress(OSError):
-                    os.killpg(process.pid, signal.SIGKILL)
+                    signal_run()
                 _ = process.wait()
                 raise RestrictedPytestError(
                     "pytest_restricted_timeout",
@@ -253,7 +262,7 @@ def _run_backend_process(
             # The run owns this new session/group. Stop lingering workers even
             # if the launcher exited successfully before all descendants did.
             with contextlib.suppress(OSError):
-                os.killpg(process.pid, signal.SIGKILL)
+                signal_run()
             for signum, handler in previous_handlers.items():
                 _ = signal.signal(signum, handler)
             if stdout_capture is None:
@@ -270,11 +279,14 @@ def _replay_sandbox_output(source: BinaryIO, destination: TextIO) -> None:
     source.seek(0)
     raw = source.read(_MAX_REPLAY_BYTES + 1)
     truncated = len(raw) > _MAX_REPLAY_BYTES
-    text = raw[:_MAX_REPLAY_BYTES].decode("utf-8", errors="replace")
+    # Windows programs end lines with CRLF; a lone CR stays replaced.
+    text = raw[:_MAX_REPLAY_BYTES].decode("utf-8", errors="replace").replace("\r\n", "\n")
     safe_text = "".join(character if character in {"\n", "\t"} or ord(character) >= 32 else "�" for character in text)
     if truncated:
         safe_text += "\n[HOL Guard truncated restricted pytest output]\n"
-    destination.write(safe_text)
+    # A Windows pipe may use a code page without the replacement character.
+    encoding = getattr(destination, "encoding", None) or "utf-8"
+    destination.write(safe_text.encode(encoding, errors="replace").decode(encoding))
     destination.flush()
 
 

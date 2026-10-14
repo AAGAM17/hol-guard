@@ -329,6 +329,9 @@ fn vitest_wrapper_and_resolved_script_require_the_same_protected_profile() {
             "bunx vitest run > .env",
         ] {
             let result = classify(harness, command);
+            if command == "python3 test_calc.py" {
+                assert_eq!(result.decision, "deny", "{harness} {command}");
+            }
             assert_ne!(
                 result.reason_code, "native_vitest_readonly_containment_required",
                 "{command}"
@@ -519,5 +522,44 @@ fn build_requires_bounded_outputs_and_never_direct_execution() {
             "native_node_build_output_containment_required",
             "{command}"
         );
+    }
+}
+
+#[test]
+fn windows_contains_only_claude_code_python_runs() {
+    let contained = classify("claude-code", "python3 test_calc.py");
+    assert_eq!(contained.decision, "deny");
+    if cfg!(target_os = "macos") || cfg!(windows) {
+        assert_eq!(contained.minimum_action, "sandbox-required");
+        assert_eq!(
+            contained.reason_code,
+            "native_python_eval_readonly_containment_required"
+        );
+    }
+    if cfg!(windows) {
+        let resolved = classify(
+            "claude-code",
+            r"'C:\Program Files\Python312\python.exe' test_calc.py",
+        );
+        assert_eq!(resolved.minimum_action, "sandbox-required");
+        assert_eq!(
+            resolved.reason_code,
+            "native_python_eval_readonly_containment_required"
+        );
+        for (harness, command) in [
+            ("codex", "python3 test_calc.py"),
+            ("omp", "python3 test_calc.py"),
+            ("claude-code", "node -e 'console.log(1)'"),
+            ("claude-code", "python3 -m pytest"),
+        ] {
+            let result = classify(harness, command);
+            if command == "python3 test_calc.py" {
+                assert_eq!(result.decision, "deny", "{harness} {command}");
+            }
+            assert_ne!(
+                result.minimum_action, "sandbox-required",
+                "{harness} {command}"
+            );
+        }
     }
 }

@@ -593,6 +593,8 @@ mod supply_chain_cloud_vectors_tests;
 mod supply_chain_egress;
 mod supply_chain_eval_seams;
 mod totp;
+#[cfg(windows)]
+mod windows_readonly;
 mod workspace_inventory_files;
 mod workspace_inventory_op;
 mod workspace_scan_targets;
@@ -708,6 +710,10 @@ fn main() {
     // wheel ships a single native binary. Dispatch before the panic hook so
     // compiler behavior (including its own exit paths) stays identical.
     let arguments: Vec<String> = std::env::args().skip(1).collect();
+    #[cfg(windows)]
+    if windows_readonly::is_command(&arguments) {
+        std::process::exit(windows_readonly::main(&arguments));
+    }
     if guard_command::source_cli::is_command(&arguments) {
         std::process::exit(guard_command::source_cli::main(arguments));
     }

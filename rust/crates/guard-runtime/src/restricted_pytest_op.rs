@@ -26,6 +26,12 @@ pub(crate) fn evaluate(
         result
     } else if operation == "normalized_command" {
         guard_command::restricted_command::evaluate_normalized(input)
+    } else if cfg!(windows) && operation == "prepare_inline" {
+        #[cfg(windows)]
+        let result = crate::windows_readonly::prepare_inline(input);
+        #[cfg(not(windows))]
+        let result = Value::Null;
+        result
     } else {
         serde_json::json!({
             "reason_code": "pytest_restricted_sandbox_unavailable",

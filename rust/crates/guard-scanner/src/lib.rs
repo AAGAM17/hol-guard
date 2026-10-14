@@ -147,6 +147,8 @@ static COMPILED: OnceLock<Vec<Regex>> = OnceLock::new();
 static SAMPLE: OnceLock<Regex> = OnceLock::new();
 static DOC_SAMPLE: OnceLock<Regex> = OnceLock::new();
 static INERT_CODE_EXPRESSION: OnceLock<Regex> = OnceLock::new();
+static DECLARED_SAMPLE_VALUE: OnceLock<Regex> = OnceLock::new();
+static DEPLOYED_VALUE_MARKER: OnceLock<Regex> = OnceLock::new();
 
 fn compiled() -> &'static [Regex] {
     COMPILED.get_or_init(|| {
@@ -181,6 +183,31 @@ fn doc_sample_regex() -> &'static Regex {
     })
 }
 
+/// Values in tests and docs that say outright they are not real, such as
+/// `fictional-report-key` or `stub_token`. Delimiters are explicit because
+/// `\b` treats `_` as a word character.
+fn declared_sample_value_regex() -> &'static Regex {
+    DECLARED_SAMPLE_VALUE.get_or_init(|| {
+        RegexBuilder::new(
+            r"(?:^|[^a-z0-9])(?:fictional|fictitious|bogus|stub|stubbed|mock|mocked|sample|placeholder|fixture|synthetic|redacted|not[-_.]?real)(?:[^a-z0-9]|$)",
+        )
+        .case_insensitive(true)
+        .build()
+        .expect("declared sample rule must compile")
+    })
+}
+
+/// A value that names a deployed environment, such as `fixture-prod-value`,
+/// is not treated as inert even when it also carries a sample word.
+fn deployed_value_marker_regex() -> &'static Regex {
+    DEPLOYED_VALUE_MARKER.get_or_init(|| {
+        RegexBuilder::new(r"(?:^|[^a-z0-9])(?:prod|production|live|staging|stage)(?:[^a-z0-9]|$)")
+            .case_insensitive(true)
+            .build()
+            .expect("deployed value rule must compile")
+    })
+}
+
 fn inert_code_expression_regex() -> &'static Regex {
     INERT_CODE_EXPRESSION.get_or_init(|| {
         Regex::new(
@@ -212,9 +239,77 @@ fn assignment_value(matched: &str) -> Option<&str> {
     Some(value)
 }
 
+/// Whether the text right after a matched assignment continues the value as
+/// an expression, as in `'mock-' + real_secret` or `"mock-"$REAL`, on its own
+/// line or, after a trailing `\` or an operator opening the next line, on the
+/// next. The match then holds only a prefix of the value, so its wording
+/// proves nothing.
+fn continues_as_expression(rest: &str) -> bool {
+    let mut lines = rest.split('\n').map(|line| line.trim_end_matches('\r'));
+    let line = lines.next().unwrap_or_default();
+    match line.trim() {
+        "\\" => return true,
+        "" => {
+            let next = lines.find(|next| !next.trim().is_empty());
+            return next.is_some_and(continues_previous_line);
+        }
+        _ => {}
+    }
+    let mut characters = line.chars();
+    match characters.next() {
+        None => return false,
+        Some('.') => {
+            return characters.next().is_some_and(|next| !next.is_whitespace());
+        }
+        Some(first) if !first.is_whitespace() => {
+            return !matches!(first, ',' | ';' | ')' | ']' | '}' | '`');
+        }
+        Some(_) => {}
+    }
+    let trimmed = line.trim_start();
+    if trimmed.starts_with("&&") {
+        return false;
+    }
+    matches!(
+        trimmed.chars().next(),
+        Some('+' | '.' | '|' | '~' | '%' | '&' | '$' | '"' | '\'')
+    )
+}
+
+/// Whether a line continues the previous line's expression: indented, and
+/// opening with a spaced `+`, `~`, `%` or `||`, or a `.` member call such as
+/// `.concat(`. Unindented lines (diff `+` lines, bullets) and `...` do not,
+/// nor does a quote or `$`, which usually starts a new statement or entry.
+fn continues_previous_line(line: &str) -> bool {
+    let operator = line.trim_start();
+    if operator.len() == line.len() {
+        return false;
+    }
+    let mut characters = operator.chars();
+    match characters.next() {
+        Some('+' | '~' | '%') => characters.next().is_some_and(char::is_whitespace),
+        Some('|') => characters.next() == Some('|'),
+        Some('.') => characters
+            .next()
+            .is_some_and(|next| next == '_' || next.is_ascii_alphabetic()),
+        _ => false,
+    }
+}
+
+/// Whether a value substitutes something else when it is used, as in
+/// `mock-${REAL_SECRET}`, `mock-$REAL`, `mock-$(cat key)`, `f"mock-{key}"`
+/// or `` `mock-${key}` ``. Its sample wording then proves nothing.
+fn interpolates(value: &str) -> bool {
+    value.contains(['{', '`'])
+        || value.split('$').skip(1).any(|tail| {
+            tail.starts_with(|next: char| next == '(' || next == '_' || next.is_ascii_alphabetic())
+        })
+}
+
 fn is_sample(
     classifier: &str,
     matched: &str,
+    continued: bool,
     rest_of_line: &str,
     suppress_samples: bool,
     documentation_sample_context: bool,
@@ -244,8 +339,17 @@ fn is_sample(
     if sample_regex().is_match(matched) {
         return true;
     }
-    documentation_sample_context
-        && assignment_value(matched).is_some_and(|value| doc_sample_regex().is_match(value))
+    if !documentation_sample_context {
+        return false;
+    }
+    !continued
+        && assignment_value(matched).is_some_and(|value| {
+            doc_sample_regex().is_match(value)
+                || (declared_sample_value_regex().is_match(value)
+                    && !interpolates(value)
+                    && !deployed_value_marker_regex().is_match(value)
+                    && !has_long_alphanumeric_run(value))
+        })
 }
 
 /// The matches of rule `index` in `text` that are not suppressed as samples.
@@ -265,6 +369,7 @@ fn counted_matches<'t>(
         !is_sample(
             classifier,
             matched.as_str(),
+            continues_as_expression(&text[matched.end()..]),
             &text[matched.end()..line_end],
             suppress_samples,
             documentation_sample_context,
@@ -495,5 +600,106 @@ mod tests {
                 "{text:?}"
             );
         }
+    }
+
+    #[test]
+    fn declared_sample_values_are_suppressed_in_tests_and_docs() {
+        for text in [
+            "process.env.EXAMPLE_SERVICE_API_KEY = 'fictional-report-key';",
+            "const apiKey = 'stub_token'",
+            "password: \"mocked-password\"",
+            "secret = synthetic.value.1",
+            "token = 'not-real-key'",
+        ] {
+            let result = scan_text(text, false, true, MAX_SCAN_BYTES, None);
+            assert!(result.matches.is_empty(), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn declared_sample_words_do_not_hide_real_looking_values() {
+        for text in [
+            // Split so repository secret scanners do not read the fixture as a key.
+            format!(
+                "process.env.EXAMPLE_SERVICE_API_KEY = 'fictional-{}';",
+                ["Q9x7Lm2V", "b8Nc4Rt6", "Yp1Zk3"].concat()
+            ),
+            "const apiKey = 'stubborn-production-key'".to_owned(),
+            "password = 'mockingbird-prod-value'".to_owned(),
+            "credential = 'fixture-prod-value'".to_owned(),
+            "token = 'mock-live-token'".to_owned(),
+        ] {
+            let result = scan_text(&text, false, true, MAX_SCAN_BYTES, None);
+            assert!(
+                result
+                    .matches
+                    .iter()
+                    .any(|matched| matched.classifier == "credential-assignment"),
+                "{text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn declared_sample_prefixes_of_longer_expressions_are_reported() {
+        for text in [
+            "password = 'mock-' + real_secret",
+            "password = 'mock-' . $real_secret;",
+            "password = 'mock-'.$real_secret;",
+            "password = \"mock-\"$REAL_SECRET",
+            "password = 'mock-' 'real-secret-tail'",
+            "password = 'mock-' || real_secret",
+            "password = 'fixture-value' + real_secret",
+            "const password = 'mock-'\n  + realTail;",
+            "const password = 'mock-'\r\n\r\n  .concat(realTail);",
+            "api_key = 'mock-' \\\n    'real-secret-tail'",
+            "password=\"mock-${REAL_SECRET}\"",
+            "password=\"mock-$REAL_SECRET\"",
+            "password=\"mock-$(cat key)\"",
+        ] {
+            let result = scan_text(text, false, true, MAX_SCAN_BYTES, None);
+            assert!(
+                result
+                    .matches
+                    .iter()
+                    .any(|matched| matched.classifier == "credential-assignment"),
+                "{text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn declared_sample_values_ending_a_statement_stay_suppressed() {
+        for text in [
+            "const apiKey = 'stub_token'.",
+            "const apiKey = 'stub_token' && run",
+            "call(api_key='stub_token')",
+            "{ \"token\": \"mock-token\", \"other\": 1 }",
+            "const apiKey = 'stub_token';\nconst other = 1;",
+            "api_key: mock-token\n\"next\": 1",
+            "password = 'fixture-value'\n",
+            "+API_KEY = \"fictional-report-key\"\n+OTHER = 1",
+            "password = 'fixture-value'\n...\n",
+            "password = 'fixture-value'\n+ next item",
+            "password = 'fixture-value'\n  ...",
+        ] {
+            let result = scan_text(text, false, true, MAX_SCAN_BYTES, None);
+            assert!(result.matches.is_empty(), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn declared_sample_words_need_documentation_context() {
+        let result = scan_text(
+            "process.env.EXAMPLE_SERVICE_API_KEY = 'fictional-report-key';",
+            true,
+            true,
+            MAX_SCAN_BYTES,
+            None,
+        );
+        assert!(result
+            .matches
+            .iter()
+            .any(|matched| matched.classifier == "credential-assignment"));
     }
 }

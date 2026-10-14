@@ -18,7 +18,7 @@ use allowances::{
 };
 pub(super) use omp_targets::{
     bounded_omp_directory_read_target, bounded_omp_file_read_target,
-    bounded_omp_selector_requires_review, missing_read_target,
+    bounded_omp_file_selector_target, bounded_omp_selector_requires_review, missing_read_target,
 };
 
 pub(super) fn safe_read_target(argument: &str) -> bool {

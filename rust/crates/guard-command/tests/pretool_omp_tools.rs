@@ -721,6 +721,44 @@ fn brace_globs_prove_every_alternative() {
 }
 
 #[test]
+fn grep_line_ranges_carry_the_file_read_proof() {
+    let f = fixture();
+    // `grep` takes the `file:N-M` selectors `read` takes and searches only
+    // those lines of that one file.
+    let absolute = format!("{}:970-1160", f.project.join("calc.py").display());
+    for path in [
+        absolute.as_str(),
+        "calc.py:1-5",
+        "src/main.rs:1-3,8+2",
+        "~/clean/a.txt:2",
+    ] {
+        let result = omp(
+            &f,
+            "grep",
+            json!({"pattern": "x", "path": path, "case": false}),
+        );
+        assert!(allowed(&result), "{path}: {}", result.reason_code);
+    }
+    // Absolute forms skip the relative-path read proof, so these reach the
+    // selector proof itself.
+    let project = |rest: &str| format!("{}/{rest}", f.project.display());
+    for path in [
+        "~/secret-dir/.env:1-5".to_owned(),
+        "~/.ssh/id_rsa:1-2".to_owned(),
+        "~/.codex/auth.json:1".to_owned(),
+        "calc.py:1-2;~/secret-dir".to_owned(),
+        project("calc.py:0-3"),
+        project("calc.py:1-5:raw"),
+        project("src:1-5"),
+        project("missing.py:1-5"),
+        project("../project/calc.py:1-2"),
+    ] {
+        let result = omp(&f, "grep", json!({"pattern": "x", "path": path}));
+        assert!(!allowed(&result), "{path}: {}", result.reason_code);
+    }
+}
+
+#[test]
 fn unanchored_brace_globs_prove_each_alternative_at_every_depth() {
     let f = fixture();
     let glob_in = |cwd: &std::path::Path, path: &str| {

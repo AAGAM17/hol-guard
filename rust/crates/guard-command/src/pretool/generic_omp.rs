@@ -614,6 +614,8 @@ fn grep_scope(
     let targets = search_targets(input_path(input, signals)?.unwrap_or("."), context)?;
     // A single file is proven by the ordinary bounded file-read path. An
     // entry of a list has no such fallback, so it carries the same proof here.
+    // A `file:N-M` entry searches only those lines of one file, so it carries
+    // the proof `read` gives the same selector.
     let list = targets.len() > 1;
     // A `glob` or `type` override can re-include a gitignored file, so with
     // either one no ignore file narrows the proof.
@@ -624,6 +626,7 @@ fn grep_scope(
     let proven = |target: &str| {
         super::super::search_scope::omp_grep_scope_proven(target, home, cwd, gitignore)
             || (list && super::super::read_paths::existing_regular_read_target(target, home, cwd))
+            || super::super::read_paths::bounded_omp_file_selector_target(target, home, cwd)
     };
     if targets.iter().all(|target| proven(target)) {
         return Some(directory_allow(

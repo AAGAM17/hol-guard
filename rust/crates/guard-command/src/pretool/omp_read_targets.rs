@@ -23,6 +23,22 @@ pub(in crate::pretool) fn bounded_omp_file_read_target(
     bounded_structured_file_read_target(value, home_dir, cwd)
 }
 
+/// Whether `value` is OMP's `path:N-M` (or `path:raw`) form for an existing
+/// bounded file. `read` and `grep` both narrow to that file's lines, so the
+/// form reads no more than the bare file would. A bare path is not a match.
+pub(in crate::pretool) fn bounded_omp_file_selector_target(
+    value: &str,
+    home_dir: Option<&str>,
+    cwd: Option<&str>,
+) -> bool {
+    match bounded_selector_path(value, home_dir, cwd) {
+        BoundedSelectorPath::Base(base) | BoundedSelectorPath::RawFile(base) => {
+            bounded_existing_file_read_target(&base, home_dir, cwd)
+        }
+        BoundedSelectorPath::Unsupported | BoundedSelectorPath::NotSelector => false,
+    }
+}
+
 pub(in crate::pretool) fn bounded_omp_selector_requires_review(
     value: &str,
     home_dir: Option<&str>,

@@ -79,6 +79,8 @@ mod claim_reuse_binding;
 #[cfg(test)]
 mod claim_reuse_binding_tests;
 #[cfg(test)]
+mod claim_reuse_then_tests;
+#[cfg(test)]
 mod claim_reuse_vectors_tests;
 mod claude_guard_question;
 mod claude_hook_bridge;
@@ -397,6 +399,7 @@ mod mcp_relay_args;
 mod mcp_relay_authority;
 #[cfg(unix)]
 mod mcp_relay_catalog;
+mod mcp_relay_claims;
 #[cfg(unix)]
 mod mcp_relay_core;
 mod mcp_relay_decide;

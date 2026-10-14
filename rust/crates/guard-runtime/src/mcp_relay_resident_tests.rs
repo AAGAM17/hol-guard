@@ -304,7 +304,13 @@ fn replies_map_to_forward_or_block() {
             data: json!({"guardPolicyAction": "block"}),
         })
     );
+    let claim = json!({"schema": RESULT_SCHEMA, "outcome": "claim", "ticket": "claim-1:1"});
+    let held = Some(Reply::Claim {
+        ticket: "claim-1:1".to_owned(),
+    });
+    assert_eq!(reply(&serde_json::to_vec(&claim).unwrap()), held);
     for other in [
+        json!({"schema": RESULT_SCHEMA, "outcome": "claim", "ticket": ""}),
         json!({"schema": RESULT_SCHEMA, "outcome": "defer", "reason": "x"}),
         json!({"schema": "other", "outcome": "forward", "ticket": "e:1"}),
         // A forward without a ticket could never be recorded.
@@ -331,6 +337,13 @@ fn without_a_resident_every_call_is_blocked() {
         commits: Commits::default(),
     };
     assert_eq!(unbound.decide(&message, &call, None, &catalog), expected);
+    // A claim goes only to the resident that decided the call.
+    let ticket = ClaimTicket {
+        message: message.clone(),
+        expected: catalog.snapshot(),
+        claim: "claim-1:1".to_owned(),
+    };
+    assert_eq!(unbound.claim(ticket), expected);
     let mut unreachable = ResidentRelayAuthority {
         facts: Some(facts()),
         resident: None,

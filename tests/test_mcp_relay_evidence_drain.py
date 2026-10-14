@@ -147,6 +147,26 @@ def test_a_record_the_proxy_could_not_have_written_is_dropped(
     assert calls == []
 
 
+def test_a_claimed_call_appends_the_post_claim_evidence(
+    tmp_path: Path, calls: list[tuple[str, dict[str, Any]]]
+) -> None:
+    appended = [{"kind": "post_claim", "context_matches": True}]
+
+    assert record_mcp_relay_evidence(object(), tmp_path, _record(evidence_append=appended))
+
+    [(kind, recorded)] = calls
+    assert kind == "allow"
+    assert recorded["additional_scanner_evidence"] == tuple(appended)
+
+
+@pytest.mark.parametrize("appended", [{"kind": "post_claim"}, ["post_claim"], None])
+def test_a_malformed_post_claim_evidence_drops_the_record(
+    tmp_path: Path, calls: list[tuple[str, dict[str, Any]]], appended: object
+) -> None:
+    assert not record_mcp_relay_evidence(object(), tmp_path, _record(evidence_append=appended))
+    assert calls == []
+
+
 def test_a_record_with_unknown_or_missing_fields_is_dropped(
     tmp_path: Path, calls: list[tuple[str, dict[str, Any]]]
 ) -> None:

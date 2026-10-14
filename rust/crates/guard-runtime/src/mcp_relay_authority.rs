@@ -29,6 +29,32 @@ pub(crate) struct ForwardTicket {
     pub(crate) evidence: Option<String>,
 }
 
+/// A `tools/call` the authority forwards only once it claimed the call's
+/// saved approval, which the relay asks for after its own drain found the
+/// catalog the decision saw still current.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ClaimTicket {
+    /// The exact request to write to the child.
+    pub(crate) message: Value,
+    /// The catalog authority the decision was made against.
+    pub(crate) expected: CatalogSnapshot,
+    /// The authority's handle on the held claim.
+    pub(crate) claim: String,
+}
+
+impl ClaimTicket {
+    /// The "no native decision" response for this call.
+    pub(crate) fn no_decision(&self) -> Value {
+        let params = self
+            .message
+            .get("params")
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        no_decision_response(self.message.get("id"), &params)
+    }
+}
+
 /// The authority's answer for one `tools/call`.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ToolCallVerdict {
@@ -36,6 +62,8 @@ pub(crate) enum ToolCallVerdict {
     Respond(Value),
     /// Forward to the child once the catalog still matches.
     Forward(ForwardTicket),
+    /// Claim the saved approval once the catalog still matches, then answer.
+    Claim(ClaimTicket),
 }
 
 /// Decides `tools/call` requests; the relay never decides one itself.
@@ -48,6 +76,13 @@ pub(crate) trait RelayAuthority {
         order: Option<&[String]>,
         catalog: &RelayCatalog,
     ) -> ToolCallVerdict;
+
+    /// Spend a held claim and answer the call: a respond or a forward, never
+    /// another claim. An authority that holds no claims answers "no native
+    /// decision".
+    fn claim(&mut self, ticket: ClaimTicket) -> ToolCallVerdict {
+        ToolCallVerdict::Respond(ticket.no_decision())
+    }
 
     /// The catalog changed between the decision and the write.
     fn boundary_changed(&mut self, ticket: ForwardTicket) -> Value;

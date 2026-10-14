@@ -4,7 +4,7 @@
 use serde_json::json;
 
 use super::*;
-use crate::mcp_relay_authority::{ForwardTicket, PendingNativeAuthority};
+use crate::mcp_relay_authority::{ClaimTicket, ForwardTicket, PendingNativeAuthority};
 
 /// Forwards every call against the catalog it sees and records the outcome.
 #[derive(Default)]
@@ -223,4 +223,105 @@ fn a_timed_out_tools_list_leaves_the_catalog_unauthorized() {
     let mut relay = relay(child, host, PendingNativeAuthority);
     assert_eq!(relay.serve(), Ok(RelayExit::TimedOut));
     assert_ne!(relay.catalog.snapshot().state, "complete");
+}
+
+/// Holds a claim for every call and forwards each claim it is asked to spend.
+#[derive(Default)]
+struct ClaimingAuthority {
+    claimed: Vec<String>,
+    completed: usize,
+}
+
+impl RelayAuthority for ClaimingAuthority {
+    fn decide(
+        &mut self,
+        message: &Value,
+        _params: &Map<String, Value>,
+        _order: Option<&[String]>,
+        catalog: &RelayCatalog,
+    ) -> ToolCallVerdict {
+        ToolCallVerdict::Claim(ClaimTicket {
+            message: message.clone(),
+            expected: catalog.snapshot(),
+            claim: "claim-1".to_owned(),
+        })
+    }
+
+    fn claim(&mut self, ticket: ClaimTicket) -> ToolCallVerdict {
+        self.claimed.push(ticket.claim);
+        ToolCallVerdict::Forward(ForwardTicket {
+            message: ticket.message,
+            expected: ticket.expected,
+            evidence: None,
+        })
+    }
+
+    fn boundary_changed(&mut self, ticket: ForwardTicket) -> Value {
+        json!({"jsonrpc": "2.0", "id": ticket.message["id"].clone(), "boundary": true})
+    }
+
+    fn complete(&mut self, _ticket: ForwardTicket, response: Value) -> Value {
+        self.completed += 1;
+        response
+    }
+}
+
+#[test]
+fn a_held_claim_is_spent_after_the_drain_and_forwarded() {
+    let host = FakeHost::with(vec![call(4)]);
+    let mut relay = relay(FakeChild::replying(), host, ClaimingAuthority::default());
+    assert_eq!(relay.serve(), Ok(RelayExit::HostClosed));
+    assert_eq!(relay.authority.claimed, vec!["claim-1".to_owned()]);
+    assert_eq!(relay.authority.completed, 1);
+    assert_eq!(relay.child.sent, vec![call(4)]);
+    assert_eq!(relay.host.sent, vec![echo(json!(4), "tools/call")]);
+}
+
+#[test]
+fn a_catalog_change_before_the_claim_spends_nothing() {
+    // The drain before the decision stops at the gap; the one before the
+    // claim sees the list change.
+    let mut child = FakeChild::replying();
+    child.queue.push_back(Step::Timeout);
+    child.queue.push_back(Step::Frame(list_changed()));
+    let host = FakeHost::with(vec![call(5)]);
+    let mut relay = relay(child, host, ClaimingAuthority::default());
+    assert_eq!(relay.serve(), Ok(RelayExit::HostClosed));
+    assert!(relay.authority.claimed.is_empty());
+    assert!(relay.child.sent.is_empty());
+    assert_eq!(relay.host.sent.len(), 2);
+    assert_eq!(relay.host.sent[0], list_changed());
+    assert_eq!(
+        relay.host.sent[1]["error"]["message"],
+        "HOL Guard could not obtain a native decision for this tool call."
+    );
+}
+
+#[test]
+fn a_failed_drain_before_the_claim_poisons_the_catalog_and_spends_nothing() {
+    let mut child = FakeChild::replying();
+    child.queue.push_back(Step::Timeout);
+    child.queue.push_back(Step::Eof);
+    let host = FakeHost::with(vec![call(6)]);
+    let mut relay = relay(child, host, ClaimingAuthority::default());
+    assert_eq!(relay.serve(), Ok(RelayExit::HostClosed));
+    assert!(relay.authority.claimed.is_empty());
+    assert!(relay.child.sent.is_empty());
+    assert_eq!(relay.catalog.snapshot().state, "error");
+    assert_eq!(relay.host.sent[0]["error"]["code"], -32001);
+}
+
+#[test]
+fn an_authority_without_claims_answers_a_claim_with_no_decision() {
+    let message = call(8);
+    let ticket = ClaimTicket {
+        message: message.clone(),
+        expected: RelayCatalog::default().snapshot(),
+        claim: "claim-1".to_owned(),
+    };
+    let ToolCallVerdict::Respond(response) = PendingNativeAuthority.claim(ticket) else {
+        panic!("a claim without a holder must respond");
+    };
+    assert_eq!(response["id"], 8);
+    assert_eq!(response["error"]["data"]["guardPolicyAction"], "block");
 }

@@ -161,6 +161,29 @@ fn route_defers_everything_else() {
         route(&proxy(json!({"kind": "stored_block"})), &pending),
         Err(ROUTE_UNSUPPORTED)
     );
+    // A pending approval forwards only once it is claimed, and only when the
+    // proxy would pass the decision to its claim.
+    let claimed = |pass: Value| {
+        route(
+            &proxy(json!({
+                "kind": "allow_and_forward",
+                "decision_source": "policy",
+                "policy_action": "allow",
+                "remember": false,
+                "pass_approval_decision": pass,
+            })),
+            &pending,
+        )
+    };
+    assert_eq!(
+        claimed(json!(true)),
+        Ok(Routed::Claim {
+            source: "policy".to_owned(),
+            policy_action: "allow".to_owned(),
+        })
+    );
+    assert_eq!(claimed(json!(false)), Err(ROUTE_UNSUPPORTED));
+    assert_eq!(claimed(json!(null)), Err(ROUTE_UNSUPPORTED));
 }
 
 #[test]

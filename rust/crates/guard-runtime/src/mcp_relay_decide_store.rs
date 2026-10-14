@@ -122,7 +122,7 @@ pub(super) fn saved<'c>(
 
 /// The integrity state and key the daemon published, when they are the
 /// protected, enforced, cut-over state its key signs.
-fn published_integrity(
+pub(super) fn published_integrity(
     binding: &DirectLaneBinding,
 ) -> Result<
     (
@@ -151,7 +151,7 @@ fn published_integrity(
 }
 
 /// `_canonical_utc_timestamp(_now())`.
-fn utc_now() -> Option<String> {
+pub(super) fn utc_now() -> Option<String> {
     let micros = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .ok()?

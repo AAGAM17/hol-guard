@@ -16,7 +16,9 @@ use guard_command::mcp_stdio_session::{
 };
 use serde_json::{json, Map, Value};
 
-use crate::mcp_relay_authority::{sync_failed_response, RelayAuthority, ToolCallVerdict};
+use crate::mcp_relay_authority::{
+    sync_failed_response, ClaimTicket, RelayAuthority, ToolCallVerdict,
+};
 use crate::mcp_relay_catalog::{cursor_fact, CatalogSnapshot, RelayCatalog};
 use crate::mcp_relay_host::{HostLink, HostRead};
 
@@ -219,10 +221,14 @@ impl<C: ChildLink, H: HostLink, A: RelayAuthority> Relay<C, H, A> {
             self.catalog.poison();
             return Ok(Some(sync_failed_response(message.get("id"), &params)));
         }
-        match self
+        let verdict = match self
             .authority
             .decide(&message, &params, order, &self.catalog)
         {
+            ToolCallVerdict::Claim(ticket) => self.claim(ticket),
+            verdict => verdict,
+        };
+        match verdict {
             ToolCallVerdict::Respond(response) => Ok(Some(response)),
             ToolCallVerdict::Forward(ticket) => match self
                 .forward_guarded(&ticket.message, &ticket.expected)?
@@ -230,7 +236,23 @@ impl<C: ChildLink, H: HostLink, A: RelayAuthority> Relay<C, H, A> {
                 Guarded::Response(response) => Ok(Some(self.authority.complete(ticket, response))),
                 Guarded::BoundaryChanged => Ok(Some(self.authority.boundary_changed(ticket))),
             },
+            // A claim answers with a respond or a forward, never a claim.
+            ToolCallVerdict::Claim(ticket) => Ok(Some(ticket.no_decision())),
         }
+    }
+
+    /// `_allow_and_forward` before its claim: drain the child stream and
+    /// claim only while the catalog the decision saw is still current. A
+    /// claim the relay never asks for expires unspent in the authority.
+    fn claim(&mut self, ticket: ClaimTicket) -> ToolCallVerdict {
+        if self.drain(Duration::ZERO).is_err() {
+            self.catalog.poison();
+            return ToolCallVerdict::Respond(ticket.no_decision());
+        }
+        if !self.catalog.matches(&ticket.expected) {
+            return ToolCallVerdict::Respond(ticket.no_decision());
+        }
+        self.authority.claim(ticket)
     }
 
     /// A non-`tools/call` request; `tools/list` also drives the catalog.

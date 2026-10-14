@@ -6,7 +6,10 @@ records for that call: the tool-call identity it built, the policy decision,
 the route's decision source and policy action, and the call params with the
 arguments in host order. The direct-evidence drain hands each such record to
 the same receipt writers the proxy calls, so a relayed call leaves the
-receipt and runtime evidence the proxy would have left.
+receipt and runtime evidence the proxy would have left. A call the proxy
+decides only after claiming its saved approval carries the evidence the
+post-claim check appended, which follows the decision's own evidence as in
+``_allow_and_forward``.
 """
 
 from __future__ import annotations
@@ -33,6 +36,8 @@ _RECORD_KEYS = frozenset(
         "decision",
     }
 )
+# The post-claim check's evidence, present only on a claimed call's record.
+_APPEND_KEY = "evidence_append"
 _FORWARD_ACTIONS = frozenset({"allow", "warn"})
 _BLOCK_SOURCE = "policy-block"
 
@@ -49,7 +54,10 @@ def record_mcp_relay_evidence(store: object, guard_home: Path, record: object) -
     from ..proxy.runtime_mcp_projection import McpCallProjector
     from ..tool_decision_evidence import tool_decision_scanner_evidence
 
-    if not isinstance(record, Mapping) or set(record) != _RECORD_KEYS:
+    if not isinstance(record, Mapping) or set(record) - {_APPEND_KEY} != _RECORD_KEYS:
+        return False
+    append = record.get(_APPEND_KEY, [])
+    if not isinstance(append, list) or not all(isinstance(item, dict) for item in append):
         return False
     harness, outcome = record["harness"], record["outcome"]
     source, policy_action = record["decision_source"], record["policy_action"]
@@ -85,7 +93,7 @@ def record_mcp_relay_evidence(store: object, guard_home: Path, record: object) -
             "signals": decision.signals,
             "risk_categories": decision.risk_categories,
             "arguments": arguments,
-            "additional_scanner_evidence": tool_decision_scanner_evidence(decision),
+            "additional_scanner_evidence": (*tool_decision_scanner_evidence(decision), *append),
             "policy_action": policy_action,
         }
         if outcome == "forward":

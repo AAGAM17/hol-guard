@@ -14,6 +14,12 @@
 //! server identity, the workspace the approval hash binds and the launcher
 //! paths) are computed once, so no call hashes the executable again.
 //!
+//! A call the proxy forwards only after claiming its saved approval comes
+//! back as a held claim. Once the relay's own drain found the catalog the
+//! decision saw still current, it sends that ticket with `mcp_relay_claim`
+//! to the same resident, never a rediscovered one, which claims the approval,
+//! re-decides the call and answers it as the proxy answers after its claim.
+//!
 //! The relay answers only what the resident decided. A call it cannot send
 //! as the proxy would see it (a shell or package request, a Composio action,
 //! arguments whose key order or numbers the decoded map lost), a resident
@@ -30,7 +36,7 @@ use serde_json::{json, Map, Value};
 use crate::claude_hook_bridge_http::remaining;
 use crate::mcp_relay_args::RelayArgs;
 use crate::mcp_relay_authority::{
-    blocked_response, no_decision_response, tool_name, ForwardTicket, RelayAuthority,
+    blocked_response, no_decision_response, tool_name, ClaimTicket, ForwardTicket, RelayAuthority,
     ToolCallVerdict,
 };
 use crate::mcp_relay_catalog::RelayCatalog;
@@ -42,6 +48,8 @@ const STATE_DIRECTORY: &str = "native-runtime";
 const RESULT_SCHEMA: &str = "guard-mcp-relay-decide-result.v1";
 const DECIDE_TIMEOUT: Duration = Duration::from_millis(1_000);
 const COMMIT_TIMEOUT: Duration = Duration::from_millis(250);
+/// The resident rolls a claim back unless it can commit well before this.
+const CLAIM_TIMEOUT: Duration = Duration::from_millis(3_000);
 const MINIMUM_TIMEOUT: Duration = Duration::from_millis(50);
 /// Tickets a full drain kept, retried later; the oldest is dropped beyond it.
 const MAX_RETAINED: usize = 16;
@@ -227,6 +235,11 @@ impl RelayAuthority for ResidentRelayAuthority {
                 expected,
                 evidence: Some(ticket),
             }),
+            Some(Reply::Claim { ticket }) => ToolCallVerdict::Claim(ClaimTicket {
+                message: message.clone(),
+                expected,
+                claim: ticket,
+            }),
             Some(Reply::Block { message, data }) => ToolCallVerdict::Respond(blocked_response(
                 id,
                 &tool_name(params),
@@ -234,6 +247,45 @@ impl RelayAuthority for ResidentRelayAuthority {
                 Some(data),
             )),
             None => no_decision(),
+        }
+    }
+
+    fn claim(&mut self, ticket: ClaimTicket) -> ToolCallVerdict {
+        let no_decision = ToolCallVerdict::Respond(ticket.no_decision());
+        let (Some(facts), Some(resident)) = (self.facts.as_ref(), self.resident.as_ref()) else {
+            return no_decision;
+        };
+        let payload = json!({
+            "operation": "mcp_relay_claim",
+            "request": {"guard_home": facts.guard_home, "ticket": ticket.claim},
+        });
+        let Ok(payload) = serde_json::to_vec(&payload) else {
+            return no_decision;
+        };
+        // Only the resident that decided the call holds its claim, and a
+        // claim request is never repeated: a lost answer spends nothing twice.
+        let answered = send(resident, &payload, Instant::now() + CLAIM_TIMEOUT).ok();
+        match answered.as_deref().and_then(reply) {
+            Some(Reply::Forward { ticket: evidence }) => ToolCallVerdict::Forward(ForwardTicket {
+                message: ticket.message,
+                expected: ticket.expected,
+                evidence: Some(evidence),
+            }),
+            Some(Reply::Block { message, data }) => {
+                let params = ticket
+                    .message
+                    .get("params")
+                    .and_then(Value::as_object)
+                    .cloned()
+                    .unwrap_or_default();
+                ToolCallVerdict::Respond(blocked_response(
+                    ticket.message.get("id"),
+                    &tool_name(&params),
+                    Some(&message),
+                    Some(data),
+                ))
+            }
+            Some(Reply::Claim { .. }) | None => no_decision,
         }
     }
 
@@ -280,6 +332,7 @@ fn committed(output: &[u8]) -> Sent {
 #[derive(Debug, Clone, PartialEq)]
 enum Reply {
     Forward { ticket: String },
+    Claim { ticket: String },
     Block { message: String, data: Value },
 }
 
@@ -288,14 +341,16 @@ fn reply(output: &[u8]) -> Option<Reply> {
     if result.get("schema")?.as_str()? != RESULT_SCHEMA {
         return None;
     }
+    let ticket = || {
+        result
+            .get("ticket")?
+            .as_str()
+            .filter(|ticket| !ticket.is_empty())
+            .map(str::to_owned)
+    };
     match result.get("outcome")?.as_str()? {
-        "forward" => Some(Reply::Forward {
-            ticket: result
-                .get("ticket")?
-                .as_str()
-                .filter(|ticket| !ticket.is_empty())?
-                .to_owned(),
-        }),
+        "forward" => Some(Reply::Forward { ticket: ticket()? }),
+        "claim" => Some(Reply::Claim { ticket: ticket()? }),
         "block" => Some(Reply::Block {
             message: result.get("message")?.as_str()?.to_owned(),
             data: result.get("data").filter(|data| data.is_object())?.clone(),

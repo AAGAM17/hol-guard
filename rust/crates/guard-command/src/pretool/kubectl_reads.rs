@@ -6,10 +6,13 @@
 //! options that move the API server, credentials or impersonation, raise log
 //! verbosity (which prints bearer tokens), read templates from local files, or
 //! hit raw API paths. Unknown verbs stay reviewed because `kubectl` runs a
-//! `kubectl-<verb>` plugin from `PATH` for them. Container logs and ConfigMap
-//! data are application output that often carries credentials, so `logs`,
-//! `describe` of a ConfigMap and any ConfigMap output beyond names and
-//! summary columns keep the review or the read permission.
+//! `kubectl-<verb>` plugin from `PATH` for them. ConfigMaps often hold
+//! credentials in practice, so `describe` of a ConfigMap and any ConfigMap
+//! output beyond names and summary columns keep the review or the read
+//! permission. `kubectl logs` of one pod or workload is a read too
+//! (`kubectl_logs`): it prints what the workload wrote and moves nothing out
+//! of the session, which any later step that sends it elsewhere still has to
+//! pass.
 //!
 //! A kubeconfig can run code (`exec` credential plugins) and read local files
 //! (`tokenFile`, client keys), so an explicitly named one must pass
@@ -17,6 +20,9 @@
 
 #[path = "kubeconfig_trust.rs"]
 mod trust;
+
+#[path = "kubectl_logs.rs"]
+mod logs;
 
 /// Options that take no value.
 const FLAGS: [&str; 10] = [
@@ -83,6 +89,8 @@ pub(super) fn safe_kubectl_segment(
     }
     let mut positionals = Vec::new();
     let mut output = None;
+    // Set once an option only `kubectl logs` takes appears.
+    let mut logs_only = false;
     let mut index = 0;
     while index < arguments.len() {
         let argument = arguments[index].as_str();
@@ -95,10 +103,11 @@ pub(super) fn safe_kubectl_segment(
             Some((name, value)) => (name, Some(value)),
             None => (argument, None),
         };
-        if FLAGS.contains(&name) {
+        if FLAGS.contains(&name) || logs::FLAGS.contains(&name) {
             if inline.is_some_and(|value| !matches!(value, "true" | "false")) {
                 return false;
             }
+            logs_only |= logs::FLAGS.contains(&name);
             index += 1;
             continue;
         }
@@ -109,15 +118,25 @@ pub(super) fn safe_kubectl_segment(
                 None => return false,
             },
         };
-        if !option_value_safe(name, value, context) {
-            return false;
+        match logs::value_safe(name, value) {
+            Some(safe) => {
+                if !safe {
+                    return false;
+                }
+                logs_only = true;
+            }
+            None => {
+                if !option_value_safe(name, value, context) {
+                    return false;
+                }
+            }
         }
         if matches!(name, "-o" | "--output") {
             output = Some(value);
         }
         index += consumed;
     }
-    verb_safe(&positionals, output)
+    verb_safe(&positionals, output) && (!logs_only || positionals.first() == Some(&"logs"))
 }
 
 /// A whole `kubectl` segment, generic checks included, that the native proof
@@ -180,6 +199,7 @@ fn verb_safe(positionals: &[&str], output: Option<&str>) -> bool {
     }
     match *verb {
         "get" | "describe" | "explain" => !rest.is_empty(),
+        "logs" => output.is_none() && logs::target_safe(rest),
         "top" => matches!(rest, [resource, ..] if TOP_RESOURCES.contains(resource)),
         "api-resources" | "api-versions" | "cluster-info" | "version" => rest.is_empty(),
         "config" => matches!(rest, ["get-contexts" | "current-context", ..] if rest.len() <= 2),

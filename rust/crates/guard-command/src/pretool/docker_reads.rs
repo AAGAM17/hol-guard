@@ -12,8 +12,7 @@
 //! - `inspect`, which prints each container's environment, and `compose ps`,
 //!   which loads the project's `.env` and `include` sources. Both also sit
 //!   under the critical container-state floor.
-//! - `logs`, which is application output that often carries credentials,
-//!   like `kubectl logs`.
+//! - `logs`, which is application output that often carries credentials.
 //! - every other subcommand, including plugin commands that run a
 //!   `docker-<name>` binary.
 //!

@@ -1855,6 +1855,23 @@
       "expect": "allow"
     },
     {
+      "id": "guard-dashboard-open",
+      "fix_area": "shell",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "hol-guard dashboard"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
       "id": "guard-command-test",
       "fix_area": "shell",
       "harnesses": [
@@ -2203,6 +2220,38 @@
       "expect": "allow"
     },
     {
+      "id": "queue-kubectl-context-logs-since-time",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "kubectl --context staging-ctx -n web logs deploy/frontend --since-time=2026-10-08T00:00:00Z --tail=300"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-kubectl-kubeconfig-logs-tail",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "kubectl --kubeconfig ${HOME}/kubeconfig.yaml -n web logs deploy/frontend -c app --since 1h --tail=200 2>&1 | tail -40"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
       "id": "neg-kubectl-exec-node-env",
       "fix_area": "negative",
       "harnesses": [
@@ -2215,6 +2264,22 @@
       "tool": "shell",
       "tool_input": {
         "command": "kubectl --kubeconfig ${HOME}/kubeconfig.yaml exec deploy/x -- node -e \"console.log(process.env.POSTGRES_URL)\""
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-kubectl-logs-secret-target",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "kubectl --kubeconfig ${HOME}/kubeconfig.yaml logs secret/app-token"
       },
       "cwd": "org_app",
       "expect": "not_allow"
@@ -2471,6 +2536,23 @@
       "tool": "shell",
       "tool_input": {
         "command": "hol-guard command explain \"x\" --home /tmp/evil"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-guard-dashboard-home-override",
+      "fix_area": "negative",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "hol-guard dashboard --home /tmp/evil"
       },
       "cwd": "org_app",
       "expect": "not_allow"

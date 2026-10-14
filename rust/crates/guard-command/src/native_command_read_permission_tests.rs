@@ -121,13 +121,13 @@ fn kubectl_reads_are_allowed_by_default_and_never_cover_exec_or_secrets() {
         "kubectl get pods -n example-namespace -l app=example-app",
         "kubectl describe deploy example-app -n example-namespace",
         "kubectl get configmaps -n example-namespace",
+        "kubectl logs deploy/example-app -n example-namespace --tail 200",
     ] {
         assert_eq!(action(&defaults, command), "allow", "{command}");
     }
-    // Logs and ConfigMap data are application output that often carries
-    // credentials, so they keep the review without the permission.
+    // ConfigMap data often carries credentials, so it keeps the review
+    // without the permission, as do exec and Secret reads.
     for command in [
-        "kubectl logs deploy/example-app -n example-namespace",
         "kubectl get configmap example-config -o yaml",
         "kubectl describe configmap example-config",
         "kubectl exec deploy/example-app -- env",

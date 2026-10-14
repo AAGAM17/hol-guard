@@ -5,6 +5,12 @@
 //! incident, uninstall, policy and other control subcommands keep the normal
 //! review or critical-floor path.
 //!
+//! `hol-guard dashboard` is admitted beside them. It starts Guard's own daemon
+//! when it is not running and opens the local approval center in the browser.
+//! The session token travels only to the browser; the printed URL is redacted.
+//! It changes no policy, approval or harness state, and it takes no root
+//! override, so it cannot point Guard at another home.
+//!
 //! Like every other bare-name proof here, the inherited `PATH` is a host trust
 //! input: Rust has no resolved executable identity. A launcher sitting in the
 //! working directory is the one shadow this proof can see, so it fails closed
@@ -50,6 +56,8 @@ pub(super) fn safe_hol_guard_arguments(arguments: &[String]) -> bool {
             | ["daemon", "status"]
             | ["status" | "doctor" | "settings", "--json"]
             | ["daemon", "status", "--json"]
+            | ["dashboard"]
+            | ["dashboard", "--json"]
     ) || help_request(&words)
         || command_inspection(&words)
 }
@@ -178,6 +186,8 @@ mod tests {
             "doctor --json",
             "settings",
             "settings --json",
+            "dashboard",
+            "dashboard --json",
             "--help",
             "-h",
             "help",
@@ -257,6 +267,12 @@ mod tests {
             "guard guard --help",
             "guard npm --help",
             "guard a b c --help",
+            "dashboard --home /tmp",
+            "dashboard --guard-home /tmp",
+            "dashboard --workspace /tmp",
+            "dashboard --json --json",
+            "dashboard open",
+            "--home /tmp dashboard",
         ] {
             assert!(!safe_hol_guard_arguments(&arguments(command)), "{command}");
         }

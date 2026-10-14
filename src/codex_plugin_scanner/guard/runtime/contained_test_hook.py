@@ -15,6 +15,7 @@ from pathlib import Path
 
 from ..windows_paths import trusted_windows_local_temp
 from . import restricted_git, restricted_node_test, restricted_node_tool, restricted_vitest
+from .contained_run_directory import as_directory_change, as_run_root
 from .contained_wrapper import bounded_output, peel_contained_wrapper, sibling_project_root
 from .restricted_inline_eval import prepare_restricted_inline_eval, run_restricted_inline_eval
 from .restricted_package_test import (
@@ -269,6 +270,47 @@ def run_authorized_contained_test(
         raise _reject()
     if cwd is None:
         cwd = workspace
+    if "cwd" in tool_input:
+        # Oh My Pi runs the command in its `cwd` argument. The call as issued
+        # must carry the receipt; the explicit `cd` form is then authorized
+        # and run by the wrapper path below.
+        receipt = authorize(payload)
+        if not _contained_receipt(receipt):
+            raise _reject()
+        if receipt_matches(receipt):
+            # The `cd` form is judged from the session folder and can lose
+            # the workspace sandbox native authority chose inside `cwd` (a
+            # setting such as `REPORT_DIR=... vitest` in a linked worktree).
+            # Ask again rooted at that directory and, when the answer is the
+            # same sandbox, run the command as issued there.
+            # Only a directory the `cd` form could also root the sandbox at
+            # is asked about: inside the workspace, or a sibling repository's
+            # own root. Any other `cwd` keeps the directory change below.
+            root, rooted = as_run_root(payload, workspace=workspace, home=home_dir)
+            bounded = _path_is_within(root, workspace.resolve(strict=True)) or (
+                sibling_project_root(root, home=home_dir) == root
+            )
+            first = authorize(rooted) if bounded else None
+            if receipt_matches(first) and isinstance(first, Mapping):
+                return run_workspace_contained(
+                    rooted,
+                    workspace=root,
+                    cwd=root,
+                    authorize=authorize,
+                    first_receipt=first,
+                    home_dir=home_dir,
+                    timeout_seconds=timeout_seconds,
+                    merge_stderr=merge_stderr,
+                )
+        return run_authorized_contained_test(
+            as_directory_change(payload, workspace=workspace, home=home_dir),
+            workspace=workspace,
+            authorize=authorize,
+            timeout_seconds=timeout_seconds,
+            cwd=cwd,
+            home_dir=home_dir,
+            merge_stderr=merge_stderr,
+        )
 
     def run_workspace(receipt: object) -> int | None:
         """Run in the workspace sandbox when Rust issued that profile, else None."""

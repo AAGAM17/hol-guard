@@ -513,6 +513,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
         super().__init__(server_address, handler_class)
 
     def _initialize_request_services(self) -> None:
+        from .hook_direct_counters import bind_hook_counter_sink
         from .hook_worker import HookWorker
 
         try:
@@ -523,6 +524,7 @@ class _GuardDaemonHTTPServer(BoundedThreadingHTTPServer):
                 activity_writer=self.runtime_hook_evidence_writer,
                 capture_writer=self.codex_binding_capture_writer,
             )
+            bind_hook_counter_sink(self.hook_worker, getattr(self, "diagnostics", None))
             self.extension_control_runtime = ExtensionControlRuntime(
                 self.store.read_extension_control_authority_for_registry(BUILT_IN_COMMAND_EXTENSION_REGISTRY)
             )
@@ -1760,6 +1762,7 @@ class _GuardDaemonHandler(
         )
 
     def _handle_runtime_hook(self, payload: dict[str, object], query: str, *, default_harness: str) -> None:
+        from .hook_direct_counters import note_hook_received
         from .hook_direct_pi_transport import pi_direct_answer
         from .hook_request_parsing import (
             HookPayloadReferenceError,
@@ -1771,6 +1774,12 @@ class _GuardDaemonHandler(
         admission_seconds = PROMPT_ADMISSION_SECONDS if prompt_event else _RUNTIME_HOOK_ADMISSION_TIMEOUT_SECONDS
         transport_deadline = self._daemon_server().request_deadline(self.request, admission_seconds)
         params = parse_qs(query)
+        # Diagnostics only: a count by the harness the worker reviews (the
+        # `runtime-harness` override first), before anything is judged.
+        note_hook_received(
+            getattr(self._daemon_server(), "hook_worker", None),
+            self._optional_string(params.get("runtime-harness", [None])[-1]) or default_harness,
+        )
         hint_missing = "guard_remaining_seconds" not in payload and "guard_remaining_ms" not in payload
         hook_deadline = RuntimeHookDeadline.for_admission(
             _runtime_hook_remaining_hint(payload),

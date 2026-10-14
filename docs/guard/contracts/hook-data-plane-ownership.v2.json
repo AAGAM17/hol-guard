@@ -527,6 +527,7 @@
    "class": "persistence_only",
    "paths": [
     "src/codex_plugin_scanner/guard/daemon/hook_metrics.py",
+    "src/codex_plugin_scanner/guard/daemon/hook_direct_counters.py",
     "src/codex_plugin_scanner/guard/daemon/runtime_hook_evidence_writer.py",
     "src/codex_plugin_scanner/guard/daemon/runtime_hook_evidence_journal.py",
     "src/codex_plugin_scanner/guard/daemon/runtime_hook_mcp_evidence.py",

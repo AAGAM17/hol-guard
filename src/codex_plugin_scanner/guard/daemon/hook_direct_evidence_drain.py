@@ -10,7 +10,9 @@ command activity; after a ``UserPromptSubmit`` it is the receipt and the
 binding capture alone. A tool call the native MCP relay decided is recorded
 by ``mcp_relay_evidence_drain`` as the proxy records it. The publisher advertises the drain in the
 direct-lane binding only while it runs, so a resident never answers directly
-for a daemon that would leave the evidence behind.
+for a daemon that would leave the evidence behind. A page from a current
+resident also carries its diagnostic hook counts, which go to
+``hook_direct_counters`` for the daemon log and nowhere else.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from pathlib import Path
 from typing import Protocol, cast
 
 from ..native_policy_snapshot_direct_lane import DIRECT_HOOK_EVIDENCE_FEATURE
+from .hook_direct_counters import HookCounterLog
 
 _DRAIN_SCHEMA = "guard-hook-direct-evidence.v1"
 _DRAIN_INTERVAL_SECONDS = 0.25
@@ -128,7 +131,9 @@ def record_direct_hook_evidence(host: _DrainHost, record: object) -> bool:
     return True
 
 
-def _decode_page(output: bytes | None) -> tuple[list[object], int, tuple[str, int] | None] | None:
+def _decode_page(
+    output: bytes | None, counters: HookCounterLog | None = None
+) -> tuple[list[object], int, tuple[str, int] | None] | None:
     if not output:
         return None
     try:
@@ -143,6 +148,9 @@ def _decode_page(output: bytes | None) -> tuple[list[object], int, tuple[str, in
     epoch = page.get("epoch")
     if not isinstance(records, list) or isinstance(remaining, bool) or not isinstance(remaining, int):
         return None
+    if counters is not None and "counters" in page:
+        # Diagnostics only; a page from an older resident has none.
+        counters.observe_page(epoch, page.get("counters"))
     if through is None:
         return records, remaining, None
     if isinstance(through, bool) or not isinstance(through, int) or through < 1:
@@ -172,6 +180,8 @@ class DirectHookEvidenceDrain:
         self.rejected = 0
         self.failures = 0
         self._ack: tuple[str, int] | None = None
+        counters = getattr(host, "hook_counters", None)
+        self._counters = counters if isinstance(counters, HookCounterLog) else None
 
     def start(self) -> None:
         if self._thread is not None:
@@ -192,6 +202,16 @@ class DirectHookEvidenceDrain:
     def drain_once(self) -> bool:
         """Drain up to a few pages; return whether more records remain."""
 
+        try:
+            return self._drain_pages()
+        finally:
+            # Every poll, so daemon receipts are logged even when no drain
+            # transport is available.
+            if self._counters is not None:
+                with suppress(Exception):
+                    self._counters.maybe_log()
+
+    def _drain_pages(self) -> bool:
         for _ in range(_MAX_PAGES_PER_WAKE):
             page = self._fetch_page()
             if page is None:
@@ -241,7 +261,7 @@ class DirectHookEvidenceDrain:
             )
         except Exception:
             output = None
-        page = _decode_page(output)
+        page = _decode_page(output, self._counters)
         if page is None:
             self.failures += 1
         return page

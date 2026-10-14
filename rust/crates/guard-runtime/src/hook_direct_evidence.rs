@@ -12,7 +12,10 @@
 //! is sent again. Each queue names its own epoch, and an acknowledgement from
 //! another epoch is ignored: a restarted resident numbers its records from
 //! one again, and the daemon's cursor for the old resident must not drop them.
+//! Each page also carries the queue's diagnostic hook counts, which the
+//! daemon only logs.
 
+use crate::hook_direct_counters::DirectHookCounters;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::VecDeque;
@@ -70,6 +73,7 @@ impl Default for QueueState {
 pub(crate) struct DirectEvidenceQueue {
     epoch: String,
     state: Mutex<QueueState>,
+    counters: DirectHookCounters,
 }
 
 impl Default for DirectEvidenceQueue {
@@ -86,11 +90,17 @@ impl Default for DirectEvidenceQueue {
                 QUEUES.fetch_add(1, Ordering::Relaxed)
             ),
             state: Mutex::new(QueueState::default()),
+            counters: DirectHookCounters::default(),
         }
     }
 }
 
 impl DirectEvidenceQueue {
+    /// The diagnostic counts of direct hooks since this queue started.
+    pub(crate) fn counters(&self) -> &DirectHookCounters {
+        &self.counters
+    }
+
     /// Queue one record, or refuse it when the queue cannot hold it.
     pub(crate) fn offer(&self, record: Value) -> bool {
         self.try_offer(record).is_ok()
@@ -186,6 +196,7 @@ pub(crate) fn drain(
         "records": records,
         "remaining": remaining,
         "through": through,
+        "counters": queue.counters.snapshot(),
     }))
     .map_err(|_| "direct_hook_evidence_encoding_failed".to_owned())
 }

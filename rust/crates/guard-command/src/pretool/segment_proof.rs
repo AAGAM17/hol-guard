@@ -249,6 +249,12 @@ pub(super) fn exact_safe_segment_with_context(
             super::listing_reads::safe_listing_segment(&segment.text, &segment.arguments, context)
         }
         "test" => safe_reads::safe_file_predicate_arguments(&segment.arguments, context),
+        "[" => segment
+            .arguments
+            .split_last()
+            .is_some_and(|(last, predicate)| {
+                last == "]" && safe_reads::safe_file_predicate_arguments(predicate, context)
+            }),
         "find" => {
             super::find_reads::safe_find_listing_arguments(&segment.arguments, context)
                 || super::fanout_reads::safe_find_exec(model, segment, context)

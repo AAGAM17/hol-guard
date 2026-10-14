@@ -25,6 +25,7 @@ else:  # pragma: no cover - runtime compatibility
 from .action_lattice import coerce_guard_action, normalize_guard_action
 from .approval_gate import ApprovalGateGrant, public_config, require_settings_write
 from .approval_wait_limits import MAX_APPROVAL_WAIT_TIMEOUT_SECONDS
+from .config_constants import VALID_GUARD_ACTIONS, VALID_RISK_ACTION_KEYS, VALID_SECURITY_LEVELS
 from .config_file_io import ConfigFileTrustError, read_config_file_bytes
 from .config_mutation import notify_native_policy_mutation, record_posture_change_if_needed
 from .config_preset_support import apply_named_posture_harness_policy
@@ -44,7 +45,7 @@ from .harness_posture import (
 )
 from .mdm.contracts import ManagedPolicy, ManagedPolicyState
 from .mdm.policy import apply_managed_policy, fail_closed_managed_policy, load_managed_policy
-from .models import GUARD_ACTION_VALUES, GuardAction, GuardMode
+from .models import GuardAction, GuardMode
 from .native_guard_config import load_native_guard_config
 from .presentation_mode import (
     PRESENTATION_SCHEMA_VERSION,
@@ -125,25 +126,7 @@ GUARD_HOME_METADATA_FILES = frozenset(
 GUARD_DB_BACKUP_TIMEOUT_SECONDS = 5.0
 GUARD_DB_BACKUP_SLEEP_SECONDS = 0.05
 
-VALID_GUARD_ACTIONS = frozenset(GUARD_ACTION_VALUES)
 VALID_GUARD_MODES = {"observe", "prompt", "enforce"}
-VALID_SECURITY_LEVELS = {"relaxed", "gentle", "balanced", "strict", "paranoid", "custom"}
-VALID_RISK_ACTION_KEYS = {
-    "local_secret_read",
-    "credential_exfiltration",
-    "data_flow_exfiltration",
-    "destructive_shell",
-    "encoded_execution",
-    "network_egress",
-    "prompt_injection",
-    "mcp_dangerous_tool",
-    "malicious_skill",
-    "package_script",
-    "persistence",
-    "guard_bypass",
-    "cloud_advisory",
-    "encoded_exfiltration",
-}
 DEFAULT_SECURITY_LEVEL = "balanced"
 SECURITY_LEVEL_RISK_ACTIONS: dict[str, dict[str, GuardAction]] = {
     "relaxed": {

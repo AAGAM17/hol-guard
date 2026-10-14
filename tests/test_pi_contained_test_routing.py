@@ -17,7 +17,7 @@ from codex_plugin_scanner.guard.adapters.pi_extension_previous_source import pre
 from codex_plugin_scanner.guard.adapters.pi_extension_source import managed_extension_source
 
 
-def test_routing_is_active_omp_only_and_does_not_change_frozen_previous(tmp_path: Path) -> None:
+def test_routing_is_active_for_pi_and_omp_and_does_not_change_frozen_previous(tmp_path: Path) -> None:
     arguments = {
         "guard_home": tmp_path / "guard",
         "home_dir": tmp_path / "home",
@@ -28,9 +28,21 @@ def test_routing_is_active_omp_only_and_does_not_change_frozen_previous(tmp_path
     active = managed_extension_source(**arguments)
     assert "prepareContainedTestInput(response, snapshot)" in active
     assert "cleanupContainedTestRequest(event.toolCallId)" in active
+    assert "      return { input };\n" in active
+    assert '"--harness", "pi"' not in active
     assert "prepareContainedTestInput" not in previous_managed_extension_source(**arguments)
-    arguments["harness"] = "pi"
-    assert "prepareContainedTestInput" not in managed_extension_source(**arguments)
+    arguments.update(harness="pi", display_name="Pi")
+    pi_source = managed_extension_source(**arguments)
+    assert "prepareContainedTestInput" not in previous_managed_extension_source(**arguments)
+    assert "prepareContainedTestInput(response, snapshot)" in pi_source
+    assert "cleanupContainedTestRequest(event.toolCallId)" in pi_source
+    # Pi ignores a returned input; only an in-place mutation reaches the tool.
+    assert "return { input };" not in pi_source
+    assert pi_source.count("Object.assign(event.input, input);") == 1
+    # The sink re-checks authority under Pi's own harness policy, not OMP's default.
+    assert pi_source.count('"execute-contained-test", "--harness", "pi", "--guard-home"') == 1
+    # Pi has no session_stop event, so shutdown releases unconsumed request files.
+    assert "for (const key of containedTestRequests.keys()) cleanupContainedTestRequest(key);\n  });" in pi_source
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="active profile is macOS-only until Linux enforcement exists")

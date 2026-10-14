@@ -138,10 +138,10 @@ def write_global_gitconfig(kind: str, home: Path) -> None:
 
 
 def omp_contained(case: ReplayCase, result: dict[str, object]) -> bool:
-    """Whether OMP's extension would run this receipt in the sandbox, so the user sees no denial."""
+    """Whether the Pi or OMP extension would run this receipt in the sandbox, so the user sees no denial."""
     code, profile = result.get("reason_code"), result.get("required_execution_profile")
     return (
-        case.harness == "omp"
+        case.harness in {"omp", "pi"}
         and case.tool == "shell"
         and result.get("decision") == "deny"
         and result.get("policy_action") == "sandbox-required"

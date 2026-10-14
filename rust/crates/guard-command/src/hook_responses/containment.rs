@@ -124,7 +124,7 @@ pub(super) fn receipt(
     reason_code: &str,
 ) -> Option<Map<String, Value>> {
     let text = |key: &str| response.get(key).and_then(Value::as_str);
-    if !matches!(canonical, "omp" | "zcode" | "claude-code" | "codex")
+    if !matches!(canonical, "omp" | "pi" | "zcode" | "claude-code" | "codex")
         || text("minimum_action") != Some("sandbox-required")
         || text("policy_action") != Some("sandbox-required")
         || text("decision") != Some("deny")

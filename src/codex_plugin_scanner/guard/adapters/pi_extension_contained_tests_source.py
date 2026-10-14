@@ -1,4 +1,4 @@
-"""Active OMP-only input replacement for native-required test containment."""
+"""Active Pi and OMP input replacement for native-required test containment."""
 
 from __future__ import annotations
 
@@ -146,14 +146,51 @@ CONTAINED_TEST_BRANCH_SOURCE = r"""
 """
 
 
-def with_contained_test_routing(shared_source: str) -> str:
-    """Extend only the active OMP variant, keeping the previous v1 text frozen."""
-    branch = '    if (response.decision === "deny") {\n      const reason = ompInteractiveContext(ctx)'
+# Pi ignores a returned `input`; its extension API changes arguments only when
+# the handler mutates `event.input` in place. The reviewed snapshot is a frozen
+# deep copy, so the mutation cannot alter what Guard reviewed or the request file.
+_PI_INPUT_RETURN = "      Object.assign(event.input, input);\n      return undefined;\n"
+# The sink re-checks native authority under the harness it names; Pi must not
+# be re-checked under OMP's harness-scoped policy.
+_SINK_ARGS = '"execute-contained-test", "--guard-home"'
+_PI_SINK_ARGS = '"execute-contained-test", "--harness", "pi", "--guard-home"'
+# Pi has no `session_stop`; release unconsumed request files on shutdown instead.
+_SHUTDOWN = '  pi.on("session_shutdown", () => containedTestPresentations.clear());\n'
+_PI_SHUTDOWN = (
+    '  pi.on("session_shutdown", () => {\n'
+    "    containedTestPresentations.clear();\n"
+    "    for (const key of containedTestRequests.keys()) cleanupContainedTestRequest(key);\n"
+    "  });\n"
+)
+
+
+def with_contained_test_routing(shared_source: str, *, harness: str = "omp") -> str:
+    """Extend the active Pi or OMP variant, keeping the previous v1 text frozen."""
+    if harness == "omp":
+        branch = '    if (response.decision === "deny") {\n      const reason = ompInteractiveContext(ctx)'
+        helpers, branch_source = CONTAINED_TEST_HELPERS_SOURCE, CONTAINED_TEST_BRANCH_SOURCE
+    elif harness == "pi":
+        branch = (
+            '    if (response.decision === "deny") {\n'
+            '      const reason = approvalBlockedReason(response, response.reason ?? "Blocked by HOL Guard.");\n'
+        )
+        helpers = _replace_once(
+            _replace_once(CONTAINED_TEST_HELPERS_SOURCE, _SINK_ARGS, _PI_SINK_ARGS), _SHUTDOWN, _PI_SHUTDOWN
+        )
+        branch_source = _replace_once(CONTAINED_TEST_BRANCH_SOURCE, "      return { input };\n", _PI_INPUT_RETURN)
+    else:
+        raise ValueError(f"no contained routing for harness {harness!r}")
     cleanup = '  pi.on("tool_result", async (event, ctx) => {\n'
     if shared_source.count(branch) != 1 or shared_source.count(cleanup) != 1:
-        raise ValueError("OMP containment insertion point changed")
-    return CONTAINED_TEST_HELPERS_SOURCE + shared_source.replace(
+        raise ValueError("Pi-family containment insertion point changed")
+    return helpers + shared_source.replace(
         branch,
-        CONTAINED_TEST_BRANCH_SOURCE + branch,
+        branch_source + branch,
         1,
     ).replace(cleanup, cleanup + "    cleanupContainedTestRequest(event.toolCallId);\n", 1)
+
+
+def _replace_once(source: str, old: str, new: str) -> str:
+    if source.count(old) != 1:
+        raise ValueError("Pi-family containment source changed")
+    return source.replace(old, new, 1)

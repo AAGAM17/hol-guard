@@ -703,7 +703,7 @@ fn evaluate_envelope(
         && event == "PreToolUse"
         && matches!(
             harness,
-            "omp" | "oh-my-pi" | "zcode" | "claude-code" | "codex"
+            "omp" | "oh-my-pi" | "pi" | "zcode" | "claude-code" | "codex"
         )
         && cwd.is_some()
         && (result.action.action_type == PreToolActionTypeV1::Command

@@ -337,7 +337,7 @@ pub(super) fn host_eligible(harness: &str, event: &str) -> bool {
     event == "PreToolUse"
         && matches!(
             harness,
-            "omp" | "oh-my-pi" | "zcode" | "claude-code" | "codex"
+            "omp" | "oh-my-pi" | "pi" | "zcode" | "claude-code" | "codex"
         )
         && sandbox_available()
 }

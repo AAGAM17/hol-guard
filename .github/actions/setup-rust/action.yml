@@ -22,6 +22,11 @@ inputs:
   save-main-cache:
     description: Also save this Windows producer's successful scheduled or manual main build.
     default: "false"
+  save-push-ref:
+    # Actions scopes a cache to the ref that saved it (readable there and by refs whose base it
+    # is), so this lets one trusted branch reuse its own dependency builds. Never a PR ref.
+    description: Also save on push events to exactly this full ref, such as refs/heads/<branch>.
+    default: ""
 
 runs:
   using: composite
@@ -70,12 +75,15 @@ runs:
         # old path set so the trusted pre-migration cache can actually restore.
         cache-bin: true
         # Only the opted-in Windows release producer may warm main outside push.
+        # A caller may name one branch whose pushes save to that branch's own scope.
         # Other scheduled/manual jobs and all PR refs remain cache readers.
         save-if: >-
-          ${{ github.ref == 'refs/heads/main' &&
-              (github.event_name == 'push' ||
-               (inputs.save-main-cache == 'true' && runner.os == 'Windows' &&
-                (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'))) }}
+          ${{ (github.ref == 'refs/heads/main' &&
+               (github.event_name == 'push' ||
+                (inputs.save-main-cache == 'true' && runner.os == 'Windows' &&
+                 (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')))) ||
+              (inputs.save-push-ref != '' && github.event_name == 'push' &&
+               github.ref == inputs.save-push-ref) }}
     - name: Check for restored Rust dependencies
       id: rust-cache-state
       if: inputs.cache-fallback-key != '' && steps.rust-cache.outputs.cache-hit != 'true'

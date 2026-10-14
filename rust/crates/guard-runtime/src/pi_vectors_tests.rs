@@ -14,7 +14,7 @@ use crate::pi_detect::detect;
 
 const VECTORS: &str = include_str!("../testdata/pi/vectors.json");
 
-fn substitute(value: &Value, root: &str) -> Value {
+pub(crate) fn substitute(value: &Value, root: &str) -> Value {
     match value {
         Value::String(text) => Value::String(text.replace("<ROOT>", root)),
         Value::Array(items) => {
@@ -36,7 +36,7 @@ fn decode_hex(text: &str) -> Vec<u8> {
         .collect()
 }
 
-fn materialize(root: &Path, case: &Value) {
+pub(crate) fn materialize(root: &Path, case: &Value) {
     fs::create_dir_all(root.join("work")).unwrap();
     fs::create_dir_all(root.join(case["home"].as_str().unwrap())).unwrap();
     let root_text = root.to_string_lossy();
@@ -82,7 +82,7 @@ fn materialize(root: &Path, case: &Value) {
 }
 
 /// Restores access so the fixture tree can be removed.
-fn release(root: &Path) {
+pub(crate) fn release(root: &Path) {
     fn walk(path: &Path) {
         let Ok(metadata) = fs::symlink_metadata(path) else {
             return;

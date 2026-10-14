@@ -319,3 +319,99 @@ fn checks_before_a_proven_publish_run_contained_then_publish() {
         );
     }
 }
+
+/// Evaluates `command` in the primary checkout for an Oh My Pi session whose
+/// environment also carries `names`.
+fn in_session(
+    repository: &Repository,
+    command: &str,
+    names: &[&str],
+) -> guard_contracts::PreToolResultV1 {
+    let home = repository.home.to_str().unwrap();
+    let mut environment_names: Vec<String> = ["PATH", "HOME", "GIT_CONFIG_NOSYSTEM"]
+        .into_iter()
+        .chain(names.iter().copied())
+        .map(str::to_owned)
+        .collect();
+    environment_names.sort();
+    let context = guard_contracts::GuardExecutionEnvironmentV1 {
+        path: std::env::var("PATH").unwrap(),
+        environment_names,
+        environment_digest: "0".repeat(64),
+        home: Some(home.to_owned()),
+        git_pager_disabled: false,
+        pager_disabled: false,
+        xdg_config_home: None,
+        git_config_no_system: true,
+        library_search_paths: Default::default(),
+    };
+    guard_command::pretool::evaluate_pre_tool_envelope_with_execution_context(
+        "omp",
+        "PreToolUse",
+        &json!({"tool_name":"bash", "tool_input":{"command":command}}),
+        Some(&controls("default")),
+        None,
+        guard_command::pretool::PathContext {
+            home_dir: Some(home),
+            cwd: repository.primary.to_str(),
+            cdpath_unset: false,
+            rustup_override_absent: false,
+            npm_config_inert: false,
+            shell_home_matches: false,
+        },
+        Some(&context),
+    )
+}
+
+/// A session behind a TLS-inspecting proxy names the proxy's certificate
+/// authority for Git and every other client. That chooses who may sign for
+/// GitHub and runs nothing, so the chain keeps its proof; settings that
+/// present a client identity, loosen verification or run a program do not.
+#[test]
+fn a_session_certificate_anchor_keeps_the_publish_chain_proof() {
+    install_git_push_verdict(verdict);
+    let repository = repository("anchor");
+    let anchors = [
+        "GIT_SSL_CAINFO",
+        "GIT_SSL_CAPATH",
+        "SSL_CERT_FILE",
+        "CURL_CA_BUNDLE",
+        "REQUESTS_CA_BUNDLE",
+        "NODE_EXTRA_CA_CERTS",
+    ];
+    let publish = concat!(
+        "git checkout -b add-contributing && git add CONTRIBUTING.md && ",
+        "git commit -m \"Add CONTRIBUTING.md with setup and contribution guidelines\" && ",
+        "git push -u origin add-contributing",
+    );
+    let result = in_session(&repository, publish, &anchors);
+    assert_eq!(
+        (result.minimum_action.as_str(), result.reason_code.as_str()),
+        ("allow", PUBLISH),
+        "{result:?}"
+    );
+    for command in [
+        "git checkout -b b1 && git add . && git commit -m x && git push -u origin other",
+        "git checkout -b b1 && git add . && git commit -m x && git push -u upstream b1",
+        "git checkout -b refused && git add . && git commit -m x && git push origin refused",
+        "git checkout -b b1 && git add -f . && git commit -m x && git push origin b1",
+        "git checkout -b b1 && git add . && git -c core.fsmonitor=./mon commit -m x && git push origin b1",
+        "git checkout -b b1 && GIT_SSL_CAINFO=/tmp/ca.pem git push origin b1",
+    ] {
+        let result = in_session(&repository, command, &anchors);
+        assert_ne!(result.minimum_action, "allow", "{command}");
+    }
+    for name in [
+        "GIT_SSL_NO_VERIFY",
+        "GIT_SSL_CERT",
+        "GIT_SSL_KEY",
+        "GIT_SSH_COMMAND",
+        "GIT_ASKPASS",
+        "GIT_PROXY_COMMAND",
+        "GIT_EXEC_PATH",
+        "GIT_DIR",
+    ] {
+        let result = in_session(&repository, publish, &["GIT_SSL_CAINFO", name]);
+        assert_ne!(result.minimum_action, "allow", "{name}");
+    }
+}

@@ -60,7 +60,7 @@ const TRANSPORT_PREFIXES: &[&str] = &["GIT_SSL_", "GIT_SSH", "GIT_HTTP", "GIT_CU
 /// for the server but leave origin, credentials and verification where they
 /// were. The hook stamps them from the session, which the agent's command
 /// cannot set; an inline assignment on the command is still refused.
-const CERTIFICATE_ANCHORS: &[&str] = &[
+pub(super) const CERTIFICATE_ANCHORS: &[&str] = &[
     "GIT_SSL_CAINFO",
     "GIT_SSL_CAPATH",
     "SSL_CERT_FILE",

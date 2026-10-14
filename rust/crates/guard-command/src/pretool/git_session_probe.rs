@@ -19,7 +19,10 @@ const CONFIG_LIMIT: u64 = 8 * 1024 * 1024;
 const TEXT_LIMIT: u64 = 4096;
 
 /// Session variables Git reads for its own behavior that cannot change where
-/// a remote operation connects, how it authenticates or what it runs.
+/// a remote operation connects, how it authenticates or what it runs. The
+/// session's certificate anchors (`GIT_SSL_CAINFO`, `GIT_SSL_CAPATH`) are
+/// accepted as well, as they are for a push: they pick which authority signs
+/// for the server, usually a company's TLS-inspecting proxy, and run nothing.
 const INERT_GIT_VARIABLES: &[&str] = &[
     "GIT_CONFIG_NOSYSTEM",
     "GIT_EDITOR",
@@ -64,7 +67,9 @@ impl Probe {
             || !super::git_config::clean_environment(Some(environment), &home, &cwd)
             || environment.environment_names.iter().any(|name| {
                 let key = name.to_ascii_uppercase();
-                (key.starts_with("GIT_") && !INERT_GIT_VARIABLES.contains(&key.as_str()))
+                (key.starts_with("GIT_")
+                    && !INERT_GIT_VARIABLES.contains(&key.as_str())
+                    && !super::git_push::CERTIFICATE_ANCHORS.contains(&key.as_str()))
                     || key == "SSH_ASKPASS"
             })
         {

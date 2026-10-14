@@ -24,7 +24,7 @@ pub(super) fn reaches_outside(segment: &CommandSegmentV1, name: &str, workspace:
     }
     // A variable or home path the sandbox would resolve differently. Redirect
     // targets appear only in the segment text.
-    if expands_variable(&segment.text, name)
+    if (expands_variable(&segment.text, name) && !identity_expansions_only(segment, name))
         || segment.text.split_whitespace().any(|word| {
             word.trim_start_matches(['>', '<', '&', '|', '"', '\'', '='])
                 .starts_with('~')
@@ -43,6 +43,122 @@ pub(super) fn reaches_outside(segment: &CommandSegmentV1, name: &str, workspace:
         };
         outside(value, name, workspace)
     })
+}
+
+/// Commit identity settings. Git records their values in the commit it writes
+/// and starts nothing by them.
+const IDENTITY_KEYS: &[&str] = &[
+    "user.name",
+    "user.email",
+    "author.name",
+    "author.email",
+    "committer.name",
+    "committer.email",
+];
+
+/// Whether every `$` in a Git segment is a double-quoted variable that sets a
+/// `-c` commit identity before the subcommand, as in
+/// `git -c user.name="${USER:-dev}" commit`. The quotes keep the expansion
+/// one word, and Git only writes it into the commit, so it names no path the
+/// sandbox would resolve differently. Any other key, an unquoted or
+/// command-substituting expansion, or a `$` anywhere else keeps the refusal.
+fn identity_expansions_only(segment: &CommandSegmentV1, name: &str) -> bool {
+    if name != "git" || segment.text.contains('`') {
+        return false;
+    }
+    // Every `$` in the text must expand, so a single-quoted or escaped one in
+    // an identity value cannot stand in for an expansion elsewhere, such as a
+    // redirect target.
+    let Some(expansions) = quoted_expansions(&segment.text)
+        .filter(|expansions| *expansions == segment.text.matches('$').count())
+    else {
+        return false;
+    };
+    let mut identity = 0usize;
+    let mut global = true;
+    let mut arguments = segment.arguments.iter();
+    while let Some(argument) = arguments.next() {
+        if global && argument == "-c" {
+            let Some(setting) = arguments.next() else {
+                return false;
+            };
+            if setting.contains('$') {
+                let key = setting
+                    .split_once('=')
+                    .map(|(key, _)| key.to_ascii_lowercase());
+                if !key.is_some_and(|key| IDENTITY_KEYS.contains(&key.as_str())) {
+                    return false;
+                }
+                identity += setting.matches('$').count();
+            }
+            continue;
+        }
+        global &= argument.starts_with('-');
+        if argument.contains('$') {
+            return false;
+        }
+    }
+    expansions > 0 && expansions == identity
+}
+
+/// The number of `$` expansions the shell performs in `text` when each is a
+/// plain `$NAME`, `${NAME}`, `${NAME-word}` or `${NAME:-word}` with a literal
+/// word, inside double quotes; `None` for any other expansion.
+fn quoted_expansions(text: &str) -> Option<usize> {
+    let characters: Vec<char> = text.chars().collect();
+    let (mut single, mut double, mut count, mut index) = (false, false, 0usize, 0usize);
+    while let Some(&current) = characters.get(index) {
+        index += 1;
+        match current {
+            '\\' if !single => index += 1,
+            '\'' if !double => single = !single,
+            '"' if !single => double = !double,
+            '$' if !single => {
+                if !double {
+                    return None;
+                }
+                index = expansion_end(&characters, index)?;
+                count += 1;
+            }
+            _ => {}
+        }
+    }
+    Some(count)
+}
+
+/// The index after a variable expansion whose name starts at `start`.
+fn expansion_end(characters: &[char], start: usize) -> Option<usize> {
+    let braced = characters.get(start) == Some(&'{');
+    let mut index = start + usize::from(braced);
+    let name_start = index;
+    while characters
+        .get(index)
+        .is_some_and(|c| c.is_ascii_alphanumeric() || *c == '_')
+    {
+        index += 1;
+    }
+    if index == name_start || characters[name_start].is_ascii_digit() {
+        return None;
+    }
+    if !braced {
+        return Some(index);
+    }
+    if characters.get(index) == Some(&':') {
+        index += 1;
+        if characters.get(index) != Some(&'-') {
+            return None;
+        }
+    }
+    if characters.get(index) == Some(&'-') {
+        index += 1;
+        while characters
+            .get(index)
+            .is_some_and(|c| c.is_ascii_alphanumeric() || matches!(*c, '.' | '_' | '@' | '+' | '-'))
+        {
+            index += 1;
+        }
+    }
+    (characters.get(index) == Some(&'}')).then_some(index + 1)
 }
 
 /// Text tools whose programs use `$` as an anchor or a field reference.
@@ -135,3 +251,7 @@ pub(super) fn outside(value: &str, name: &str, workspace: &Path) -> bool {
         _ => false,
     })
 }
+
+#[cfg(test)]
+#[path = "workspace_contained_identity_tests.rs"]
+mod identity_tests;

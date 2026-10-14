@@ -366,14 +366,13 @@ fn parse(segment: &CommandSegmentV1) -> Option<WorktreeAdd<'_>> {
         _ => {}
     }
     let destination = destination.filter(|value| valid_path_text(value))?;
-    // A bare name such as `feat/x` is accepted only without `-b` and
-    // `--detach`, where Git checks out the existing branch of that name (or
-    // detaches at what the name resolves to) and the probe reads the same
-    // commit. With `-b` or `--detach` the reference stays qualified.
+    // A bare name such as `main` or `feat/x` is accepted in every form.
+    // Without `-b` and `--detach` Git checks out the existing branch of that
+    // name (or detaches at what the name resolves to); with either flag it
+    // starts from the commit the name resolves to, exactly as the probe's
+    // `rev-parse` resolves it. The tree proven is the tree checked out.
     let attach = branch.is_none() && !detach;
-    if reference.is_some_and(|value| {
-        !(valid_local_reference(value) || (attach && valid_branch_name(value)))
-    }) {
+    if reference.is_some_and(|value| !(valid_local_reference(value) || valid_branch_name(value))) {
         return None;
     }
     Some(WorktreeAdd {

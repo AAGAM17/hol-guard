@@ -545,4 +545,23 @@ fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
     let denied = evaluate(&repository, &disabled, &command);
     assert_eq!(denied.minimum_action, "block");
     assert_eq!(denied.reason_code, "native_command_permission_disabled");
+
+    // A plain branch name as the start point is proven the same way, and the
+    // Git extension's permission and extension switches still decide it.
+    git(
+        &repository,
+        &["config", "--unset", "remote.origin.partialCloneFilter"],
+    );
+    git(&repository, &["branch", "release-lane"]);
+    let named_base = format!(
+        "git worktree add --quiet -b named-base {} release-lane",
+        root.join("named-base-child").display()
+    );
+    let named_allowed = evaluate(&repository, &enabled, &named_base);
+    assert_eq!(named_allowed.reason_code, "native_exact_safe_worktree_add");
+    for controls in [&disabled, &extension_disabled] {
+        let named_denied = evaluate(&repository, controls, &named_base);
+        assert_eq!(named_denied.minimum_action, "block", "{named_base}");
+        assert!(named_denied.reason_code.ends_with("disabled"));
+    }
 }

@@ -215,6 +215,12 @@ fn existing_branch_worktree_add_is_allowed() {
         "git worktree add ../app-discovery-fix feat/discovery-fix && cd ../app-discovery-fix && git log --oneline -3".to_owned(),
         // No branch of that name: Git detaches at the tag.
         "git worktree add ../app-release release-lane".to_owned(),
+        // A new branch, or a detached checkout, starting from a bare name.
+        "git worktree add -b review ../app-review main".to_owned(),
+        "git worktree add -b review ../app-review feat/discovery-fix".to_owned(),
+        "git worktree add --detach ../app-review feat/discovery-fix".to_owned(),
+        "git worktree add -b review ../app-review release-lane".to_owned(),
+        format!("git worktree add -b review {organization}/app-review main"),
     ] {
         assert_allowed(&home, &repository, &command);
     }
@@ -232,9 +238,10 @@ fn existing_branch_worktree_add_neighbours_stay_reviewed() {
         "git worktree add -B feat/discovery-fix ../app-discovery-fix origin/main",
         "git worktree add -f ../app-discovery-fix feat/discovery-fix",
         "git worktree add --force ../app-discovery-fix feat/discovery-fix",
-        "git worktree add --detach ../app-discovery-fix feat/discovery-fix",
-        "git worktree add -b other ../app-discovery-fix feat/discovery-fix",
         "git worktree add ../app-discovery-fix feat/discovery-fix~1",
+        "git worktree add -b other ../app-discovery-fix feat/discovery-fix~1",
+        "git worktree add -b other ../app-discovery-fix missing-branch",
+        "git worktree add --detach ../app-discovery-fix missing-branch",
         "git -c core.hooksPath=hooks worktree add ../app-discovery-fix feat/discovery-fix",
         "GIT_DIR=../service/.git git worktree add ../app-discovery-fix feat/discovery-fix",
         "git worktree add ../service feat/discovery-fix",

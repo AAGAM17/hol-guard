@@ -6840,6 +6840,21 @@
       "expect": "allow"
     },
     {
+      "id": "git-worktree-add-new-branch-from-local-main",
+      "fix_area": "worktree-add",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git worktree add -b review ${ORG}/app-portal-review main"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
       "id": "queue-worktree-add-org-sibling",
       "fix_area": "worktree-add",
       "harnesses": [

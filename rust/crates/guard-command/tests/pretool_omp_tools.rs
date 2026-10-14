@@ -712,6 +712,52 @@ fn brace_globs_prove_every_alternative() {
 }
 
 #[test]
+fn glob_entries_that_name_nothing_carry_their_folder_listing_proof() {
+    let f = fixture();
+    // Agents glob a few instruction files to learn which exist. The host
+    // skips missing entries in a list and fails a lone one, so neither lists
+    // more than the nearest existing folder would.
+    let absolute = format!(
+        "{};{}",
+        f.project.join("calc.py").display(),
+        f.project.join("src/AGENTS.md").display()
+    );
+    for path in [
+        absolute.as_str(),
+        "calc.py;src/AGENTS.md;scripts/AGENTS.md",
+        "src/AGENTS.md",
+    ] {
+        let result = omp(
+            &f,
+            "glob",
+            json!({"path": path, "hidden": true, "gitignore": false, "limit": 50}),
+        );
+        assert!(allowed(&result), "{path}: {}", result.reason_code);
+        assert_eq!(result.reason_code, "native_omp_directory_listing");
+    }
+    for path in [
+        "calc.py;src/.env",
+        "calc.py;src/missing/credentials.json",
+        "calc.py;~/.ssh/missing",
+        "calc.py;.git/missing",
+        "calc.py;src/.cache/AGENTS.md",
+        "calc.py;src/../../missing.md",
+        "calc.py;src/missing/*.md",
+        "calc.py;~/clean/notes/AGENTS.md",
+    ] {
+        let result = omp(&f, "glob", json!({"path": path}));
+        assert!(!allowed(&result), "{path}: {}", result.reason_code);
+    }
+    // Content searches keep their own missing-path handling.
+    let result = omp(
+        &f,
+        "grep",
+        json!({"pattern": "x", "path": "src;src/AGENTS.md"}),
+    );
+    assert!(!allowed(&result), "grep: {}", result.reason_code);
+}
+
+#[test]
 fn eval_allows_literal_tool_programs() {
     let f = fixture();
     for code in [

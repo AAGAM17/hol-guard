@@ -318,7 +318,11 @@ fn listing_target_proven(
             context.path.home_dir,
             context.path.cwd,
         );
+    let missing_glob_entry = signals.tool_name.as_deref() == Some("glob")
+        && !has_glob_selector
+        && missing_listing_entry(target, context);
     literal_glob_file
+        || missing_glob_entry
         || super::super::safe_reads::bounded_omp_directory_read_target(
             target,
             context.path.home_dir,
@@ -383,6 +387,55 @@ fn literal_name_selector(selector: &str) -> bool {
                 !super::super::sensitive_read_path_argument(name)
                     && !super::super::sensitive_command(name)
             })
+}
+
+/// A glob entry that names nothing returns no names: the host skips it in a
+/// list and reports it missing, or fails a single path with "not found". It
+/// reveals no more than a listing of its nearest existing folder, so it
+/// carries that folder's listing proof when it sits in the session folder.
+/// Sensitive and hidden names keep their review.
+fn missing_listing_entry(target: &str, context: &OmpContext<'_>) -> bool {
+    let (home, cwd) = (context.path.home_dir, context.path.cwd);
+    if !super::super::read_paths::missing_read_target(target, home, cwd, false)
+        || super::super::sensitive_command(target)
+        || super::super::sensitive_read_path_argument(target)
+        || target.split(['/', '\\']).any(|part| part == "..")
+    {
+        return false;
+    }
+    let expand = |path: &str| {
+        super::super::read_paths::expand_home_read_path(path, home)
+            .unwrap_or_else(|| path.to_owned())
+    };
+    let Some(session) = cwd.and_then(|root| std::fs::canonicalize(expand(root)).ok()) else {
+        return false;
+    };
+    let path = session.join(expand(target));
+    let Some(folder) = path
+        .ancestors()
+        .skip(1)
+        .find(|folder| std::fs::symlink_metadata(folder).is_ok())
+    else {
+        return false;
+    };
+    let (Ok(canonical), Ok(missing)) = (std::fs::canonicalize(folder), path.strip_prefix(folder))
+    else {
+        return false;
+    };
+    // Only an ordinary folder inside the session qualifies, and no name on
+    // the way down from the session may be hidden.
+    let visible = |path: &std::path::Path| {
+        path.components().all(|part| {
+            matches!(part, std::path::Component::Normal(name)
+                if name.to_str().is_some_and(|name| !name.starts_with('.')))
+        })
+    };
+    canonical.is_dir()
+        && canonical.strip_prefix(&session).is_ok_and(visible)
+        && visible(missing)
+        && folder.to_str().is_some_and(|folder| {
+            super::super::safe_reads::bounded_omp_directory_read_target(folder, home, cwd)
+        })
 }
 
 /// Maximum patterns proven from one glob's `{a,b}` alternatives.

@@ -3,7 +3,7 @@
 //! and a non-forced `branch` rename, plus the `stash list` read beside them.
 
 use super::super::git_remote_config::GitConfig;
-use crate::CanonicalCommandV1;
+use crate::{CanonicalCommandV1, CommandSegmentV1};
 use std::time::Instant;
 
 /// Options `allowed` accepts, then pathspecs, with `--` ending the options.
@@ -195,4 +195,29 @@ pub(super) fn aliased(effective: &GitConfig, model: &CanonicalCommandV1) -> bool
         .filter(|segment| segment.executable.as_deref() == Some("git"))
         .filter_map(|segment| segment.arguments.first())
         .any(|name| effective.contains_key(&format!("alias.{}", name.to_ascii_lowercase())))
+}
+
+/// The branch `git switch -c <name>` or `git checkout -b <name>` creates at
+/// the checked-out commit. A start point is not one of these forms.
+pub(super) fn created_branch(original: &CommandSegmentV1) -> Option<&str> {
+    match original.arguments.as_slice() {
+        [command, flag, name]
+            if matches!(
+                (command.as_str(), flag.as_str()),
+                ("switch", "-c" | "--create") | ("checkout", "-b")
+            ) =>
+        {
+            Some(name.as_str())
+        }
+        _ => None,
+    }
+}
+
+/// Whether a write other than a branch creation may change the checked-out
+/// branch: any `checkout`, `switch` or `branch` form.
+pub(super) fn moves_head(original: &CommandSegmentV1) -> bool {
+    original
+        .arguments
+        .first()
+        .is_none_or(|command| matches!(command.as_str(), "checkout" | "switch" | "branch"))
 }

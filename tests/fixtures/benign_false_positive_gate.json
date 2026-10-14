@@ -3476,6 +3476,57 @@
       "expect": "allow"
     },
     {
+      "id": "queue-sibling-git-c-merge-origin-main",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${ORG}/service-api merge origin/main --no-edit 2>&1 | tail -3"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-sibling-git-c-sleep-merge-fetch-head",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "sleep 120; git -C ${ORG}/service-api merge FETCH_HEAD --no-edit"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-sibling-git-c-cherry-pick-tail",
+      "fix_area": "queue",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${ORG}/service-api cherry-pick 36b51d1428 300395d837 2>&1 | tail -2"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
       "id": "home-rg-relative-sibling-repo",
       "fix_area": "shell",
       "harnesses": [
@@ -6295,6 +6346,40 @@
       "tool": "shell",
       "tool_input": {
         "command": "git pull --ff-only"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "session-git-pull-origin-main-merge",
+      "fix_area": "git",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git pull origin main --no-edit"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "session-git-pull-origin-main-sleep-tail",
+      "fix_area": "git",
+      "harnesses": [
+        "codex",
+        "zcode",
+        "claude-code",
+        "omp",
+        "cursor"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "sleep 300; git pull origin main --no-edit 2>&1 | tail -3"
       },
       "cwd": "org_app",
       "expect": "allow"

@@ -1,8 +1,8 @@
-//! A plain `origin` refresh, or a fast-forward pull of one. It runs only Git
-//! built-ins once the effective configuration proves `origin` is a GitHub
-//! HTTPS remote with no program, proxy or URL rewrite in the way, every
-//! credential helper resolves to a trusted executable, and no hook Git would
-//! start for the fetch can run.
+//! A plain `origin` refresh, or a pull of one that fast-forwards or merges
+//! the fetched branch. It runs only Git built-ins once the effective
+//! configuration proves `origin` is a GitHub HTTPS remote with no program,
+//! proxy or URL rewrite in the way, every credential helper resolves to a
+//! trusted executable, and no hook Git would start for the fetch can run.
 
 use super::git_remote_config as config;
 use super::git_session_probe::Probe;
@@ -101,7 +101,7 @@ pub(super) fn exact_safe_command(
     }
     fetch_seen.then_some((
         "native_exact_safe_git_origin_refresh",
-        "The Rust command authority proved this fetch or fast-forward pull reaches only a GitHub HTTPS origin with trusted credential helpers, plain refspecs and no hooks, filters or transport programs.",
+        "The Rust command authority proved this fetch or pull reaches only a GitHub HTTPS origin with trusted credential helpers, plain refspecs and no hooks, filters or transport programs.",
     ))
 }
 
@@ -137,7 +137,7 @@ pub(super) fn proven_read(
 fn proven(
     segment: &CommandSegmentV1,
     leading: &[String],
-    upstream: Option<bool>,
+    upstream: Option<pull::Pull>,
     context: super::PathContext<'_>,
     deadline: Option<Instant>,
     execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
@@ -207,12 +207,12 @@ fn memo_key(
     )
 }
 
-/// The leading `-C` routes of a refresh, with `None` for a fetch or, for a
-/// fast-forward pull, whether Git picks the upstream.
+/// The leading `-C` routes of a refresh, with `None` for a fetch or the
+/// shape of a pull.
 fn parse<'a>(
     segment: &'a CommandSegmentV1,
     context: super::PathContext<'_>,
-) -> Option<(&'a [String], Option<bool>)> {
+) -> Option<(&'a [String], Option<pull::Pull>)> {
     let executable = segment.executable.as_deref()?;
     if executable != "git"
         || segment.pipeline_index != 0
@@ -249,7 +249,7 @@ fn parse<'a>(
 fn prove(
     executable: &str,
     leading: &[String],
-    upstream: Option<bool>,
+    upstream: Option<pull::Pull>,
     context: super::PathContext<'_>,
     deadline: Option<Instant>,
     execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
@@ -285,7 +285,5 @@ fn prove(
         && !config::repository_config_routes_transport(&repository)
         && !effective.keys().any(|key| key.starts_with("submodule."))
         && probe.hooks_inert(["pre-auto-gc", "reference-transaction", "post-fetch"])
-        && upstream.is_none_or(|upstream| {
-            pull::fast_forward_inert(&effective, &repository, upstream, &probe)
-        })
+        && upstream.is_none_or(|shape| pull::pull_inert(&effective, &repository, shape, &probe))
 }

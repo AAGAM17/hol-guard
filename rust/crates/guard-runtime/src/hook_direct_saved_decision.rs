@@ -14,13 +14,16 @@
 //!   environment and extension-control digest the daemon published;
 //! - the decision probe and the non-consuming `resolve_policy_decision_lookup`
 //!   against the integrity state the daemon published, which must still be
-//!   the stored one and protected;
+//!   the stored one and protected, composed with the workspace's portable Git
+//!   identity (`hook_direct_saved_portable.rs`);
 //! - the block or accepted-allow response.
 //!
 //! Any other shape defers, so the daemon takes the request: custom grant
-//! rows, remote or portable workspace decisions, a policy bundle, an
-//! integrity state other than the published protected one, a missing or
-//! unreadable decision, and every step the daemon could answer differently.
+//! rows, remote decisions, portable decisions bound anywhere but the
+//! workspace's own identity, a portable identity the resident does not
+//! resolve exactly, a policy bundle, an integrity state other than the
+//! published protected one, a missing or unreadable decision, and every step
+//! the daemon could answer differently.
 
 use super::{reviewed_edge, HookDirectDefer, PRE_TOOL_USE};
 use crate::local_store_read::{
@@ -183,6 +186,7 @@ fn saved_response(
     if !store.local_only(&integrity_state)? {
         return Err(HookDirectDefer::SavedDecision);
     }
+    let identity = portable::identity(store, context.workspace)?;
     let key_b64 = Zeroizing::new(Base64UrlUnpadded::encode_string(&key.key));
     let store_path = Path::new(context.guard_home).join(STORE_FILE_NAME);
     let request = PolicyDecisionLookupRequestV1 {
@@ -207,9 +211,19 @@ fn saved_response(
         policy_bundle_decision_identities: None,
         probe_groups: None,
     };
-    let lookup =
+    let lookup = |workspace: &str| {
+        let request = PolicyDecisionLookupRequestV1 {
+            workspace: Some(workspace.to_owned()),
+            ..request.clone()
+        };
         crate::policy_decision_lookup_op::evaluate_non_consuming(&request, store.connection)
-            .map_err(|_| HookDirectDefer::SavedDecision)?;
+            .map_err(|_| HookDirectDefer::SavedDecision)
+    };
+    let local = lookup(context.workspace)?;
+    let lookup = match identity {
+        None => local,
+        Some(identity) => portable::compose(local, lookup(&identity)?)?,
+    };
     match saved_verdict(result, &lookup, store.artifact_id, token) {
         Some((verdict, status)) => render(context.harness, &verdict, status)
             .map(Some)
@@ -355,8 +369,9 @@ impl StoreShape<'_> {
     }
 
     /// Whether the daemon's lookup reads only local decisions under the
-    /// published integrity state: no remote, bundle or portable workspace
-    /// decisions, and the published state still stored.
+    /// published integrity state: no remote or bundle decisions, and the
+    /// published state still stored. Portable decisions are read through the
+    /// workspace's identity (`portable::identity`).
     fn local_only(&self, integrity_state: &Value) -> Result<bool, HookDirectDefer> {
         if self.any(
             &format!("select 1 from policy_decisions where source in {REMOTE_SOURCES_SQL} limit 1"),
@@ -365,9 +380,6 @@ impl StoreShape<'_> {
             &format!(
                 "select 1 from policy_decisions where source not in {REMOTE_SOURCES_SQL} limit 1"
             ),
-            &[],
-        )? || self.any(
-            "select 1 from policy_decisions where workspace like 'git-project:v1:%' limit 1",
             &[],
         )? || self.any(
             "select 1 from sync_state where state_key = 'policy_bundle' limit 1",
@@ -402,6 +414,9 @@ mod query;
 
 #[path = "hook_direct_saved_consume.rs"]
 mod consume;
+
+#[path = "hook_direct_saved_portable.rs"]
+mod portable;
 
 // Read once the direct lane queues a reviewed `PreToolUse` itself.
 #[path = "hook_direct_review_request.rs"]

@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 const VECTORS: &str = include_str!("../tests/fixtures/hook_direct_saved_decision_vectors.json");
 const KEY: [u8; 32] = [7u8; 32];
 const KEY_ID: &str = "test-policy-key";
-const SIGNED_AT: &str = "2026-01-01T00:00:00+00:00";
+pub(super) const SIGNED_AT: &str = "2026-01-01T00:00:00+00:00";
 
 pub(super) fn vectors() -> Value {
     serde_json::from_str(VECTORS).expect("saved-decision vectors parse")
@@ -157,6 +157,12 @@ fn insert_decision(
         )
         .unwrap();
     let id = connection.last_insert_rowid();
+    sign_decision(connection, id);
+    id
+}
+
+/// Sign the decision `id` with the published integrity key.
+pub(super) fn sign_decision(connection: &Connection, id: i64) {
     let row = connection
         .query_row(
             &format!("select {POLICY_LOOKUP_COLUMNS} from policy_decisions where decision_id = ?1"),
@@ -184,11 +190,10 @@ fn insert_decision(
             ],
         )
         .unwrap();
-    id
 }
 
-const ARTIFACT: &str = "claude-code:native-pretool:Read";
-const TOKEN: &str =
+pub(super) const ARTIFACT: &str = "claude-code:native-pretool:Read";
+pub(super) const TOKEN: &str =
     "guard-exact-action:v1:0000000000000000000000000000000000000000000000000000000000000000";
 
 fn shape(connection: &Connection) -> StoreShape<'_> {
@@ -223,7 +228,7 @@ fn a_local_store_with_the_decision_is_read() {
 
 #[test]
 fn a_store_the_lookup_reads_differently_defers() {
-    let cases: [(&str, &str); 6] = [
+    let cases: [(&str, &str); 5] = [
         (
             "grant",
             "create table local_cli_grant (grant_id text); insert into local_cli_grant values ('g');",
@@ -232,12 +237,6 @@ fn a_store_the_lookup_reads_differently_defers() {
             "remote",
             "insert into policy_decisions (harness, scope, action, source, created_at, updated_at)
              values ('*', 'global', 'block', 'team-policy', 'x', 'x');",
-        ),
-        (
-            "portable",
-            "insert into policy_decisions (harness, scope, action, workspace, source, created_at,
-               updated_at)
-             values ('*', 'workspace', 'allow', 'git-project:v1:abc', 'manual', 'x', 'x');",
         ),
         (
             "bundle",

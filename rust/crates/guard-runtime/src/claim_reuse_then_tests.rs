@@ -12,16 +12,16 @@ use crate::store_vectors_support_tests::{decode_key, dump_store, gunzip_json, se
 
 const VECTORS: &[u8] = include_bytes!("../tests/fixtures/claim_vectors.json.gz");
 /// A one-shot approval: its first claim consumes it.
-const ONE_SHOT: &str = "lo-basic-packageFalse";
+pub(crate) const ONE_SHOT: &str = "lo-basic-packageFalse";
 /// A saved local policy row: a claim retains it.
-const LOCAL_POLICY: &str = "pol-basic-approval-gate-False";
+pub(crate) const LOCAL_POLICY: &str = "pol-basic-approval-gate-False";
 
-struct Case {
-    connection: Connection,
+pub(crate) struct Case {
+    pub(crate) connection: Connection,
     request: Value,
 }
 
-fn case(id: &str) -> Case {
+pub(crate) fn case(id: &str) -> Case {
     let document = gunzip_json(VECTORS);
     let vector = document["vectors"]
         .as_array()
@@ -58,7 +58,7 @@ fn case(id: &str) -> Case {
 
 /// Claim the case's rows the way the relay claim does, running `after` inside
 /// the claim's transaction.
-fn claim<T>(
+pub(crate) fn claim<T>(
     case: &Case,
     after: &mut dyn FnMut(&Connection) -> rusqlite::Result<Option<T>>,
 ) -> rusqlite::Result<Option<T>> {

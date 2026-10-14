@@ -21,7 +21,9 @@
 //! held. Every other outcome rolls the claim back and defers, so no deferred
 //! call ever leaves an approval spent: a declined claim (which the proxy
 //! queues for re-approval, 2570-2582), a post-claim re-approval queue
-//! (2670-2680), and any lane, store, policy or evidence failure.
+//! (2670-2680), a package intent the fresh resolve now finds (which the proxy
+//! sends through its package policy), and any lane, store, policy or
+//! evidence failure.
 //!
 //! Declared divergences from the proxy:
 //!

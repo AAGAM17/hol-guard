@@ -68,6 +68,8 @@ pub(crate) struct RelayFacts {
     fingerprint: Map<String, Value>,
     server_identity: Value,
     launcher_path: Option<String>,
+    /// The proxy's own `PATH`, as set.
+    path: Option<String>,
     launcher_home: String,
 }
 

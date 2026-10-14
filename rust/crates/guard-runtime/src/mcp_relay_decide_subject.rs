@@ -55,13 +55,13 @@ fn extension(
     let artifact = &identity.artifact;
     let metadata = &artifact.metadata;
     let empty = Map::new();
-    let server = super::object(metadata.get("mcp_server_identity")).unwrap_or(&empty);
+    let server = object(metadata.get("mcp_server_identity")).unwrap_or(&empty);
     let store_path = Path::new(&request.guard_home).join(STORE_FILE_NAME);
     let connection_identity_hash = match server_identity_hash(server) {
         Some(server_hash) => Some(connection_hash(artifact, &server_hash)?),
         None => None,
     };
-    let tool_identity = super::object(metadata.get("mcp_tool_identity"));
+    let tool_identity = object(metadata.get("mcp_tool_identity"));
     Ok(McpExtensionInputV1 {
         store_path: store_path
             .into_os_string()
@@ -122,7 +122,7 @@ fn stripped(value: Option<&Value>) -> Option<String> {
 
 /// `_tool_name`: the identity's tool name, else the command, else the name.
 pub(super) fn tool_name(artifact: &McpToolCallArtifactV1) -> String {
-    let identity_name = super::object(artifact.metadata.get("mcp_tool_identity"))
+    let identity_name = object(artifact.metadata.get("mcp_tool_identity"))
         .and_then(|tool| tool.get("tool_name"))
         .and_then(Value::as_str)
         .map(python_strip);
@@ -198,4 +198,9 @@ pub(super) fn connection_hash(
         SUBJECT_INVALID,
     )?;
     Ok(guard_policy_snapshot::digest_bytes(&bytes))
+}
+
+/// A metadata entry that is a mapping.
+fn object(value: Option<&Value>) -> Option<&Map<String, Value>> {
+    value.and_then(Value::as_object)
 }

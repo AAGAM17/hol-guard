@@ -7,10 +7,10 @@
 //! the publisher's ACK holds, a harness the binding's MCP view covers, and a
 //! store whose saved lookups the resident reads as the proxy would: none at
 //! all, or only local rows the daemon's published integrity key verifies (see
-//! `mcp_relay_decide_store.rs` and `mcp_relay_decide_saved.rs`). Such a call
-//! is either forwarded (an allow or warn) or blocked (a terminal or stored
-//! block). A block's
-//! evidence is queued for the daemon's drain before the answer is returned.
+//! `mcp_relay_decide_store.rs` and `mcp_relay_decide_saved.rs`), for a call
+//! the package parser finds no intent in (`mcp_relay_decide_package.rs`).
+//! Such a call is forwarded (an allow or warn) or blocked (a terminal or
+//! stored block). A block's evidence is queued for the daemon's drain first.
 //! The proxy records a forward only after the child answered it, so a
 //! forward's evidence is held under a ticket the relay commits once the child
 //! responded; a forward the relay never completes (a catalog boundary change,
@@ -73,6 +73,9 @@ pub(crate) struct McpRelayDecideRequestV1 {
     pub(crate) arguments: McpToolArgumentsV1,
     #[serde(default)]
     pub(crate) launcher_path: Option<String>,
+    /// The proxy's `PATH` as set, which the package parser resolves in.
+    #[serde(default)]
+    pub(crate) path: Option<String>,
     pub(crate) launcher_home: String,
     pub(crate) catalog_state: String,
     /// The `tools/call` params, which the daemon projects into evidence.
@@ -252,13 +255,14 @@ fn admit(
     })
 }
 
-/// Build the identity and run the tool policy, reading saved lookups on
-/// `connection`, which the caller holds in one transaction.
+/// Pass the package check, build the identity and run the tool policy,
+/// reading saved lookups on `connection`, held in one transaction.
 fn resolve(
     request: &McpRelayDecideRequestV1,
     admitted: &Admitted,
     connection: Option<&Connection>,
 ) -> Result<Resolved, &'static str> {
+    package::package_gate(request)?;
     let binding = &admitted.binding;
     let control_digest = binding
         .exact_action_control_digest
@@ -474,14 +478,11 @@ fn route(proxy: &Value, decision: &Decision) -> Result<Routed, &'static str> {
     }
 }
 
-/// Map a decision's view of the call arguments, for the subject.
-fn object(value: Option<&Value>) -> Option<&Map<String, Value>> {
-    value.and_then(Value::as_object)
-}
-
 #[path = "mcp_relay_decide_claim.rs"]
 mod claim;
 pub(crate) use claim::claim;
+#[path = "mcp_relay_decide_package.rs"]
+mod package;
 #[path = "mcp_relay_decide_saved.rs"]
 mod saved;
 #[path = "mcp_relay_decide_store.rs"]

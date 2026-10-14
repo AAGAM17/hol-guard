@@ -220,3 +220,31 @@ fn stash_listing_composes_with_worktree_listing() {
         assert_reviewed(&session, &command);
     }
 }
+
+#[test]
+fn stash_listing_keeps_its_proof_beside_fallbacks_and_github_reads() {
+    let (session, service) = sibling("stash-fallback");
+    let primary = session.primary.display();
+    let sib = service.display();
+    for command in [
+        format!(
+            r#"cd {primary} && git status --short | head -4 && git stash list | head -3 && git worktree list | grep -c "fix" || echo "no fix worktrees remain" && gh pr list --repo example-org/app-portal --state open --json number,title --jq '.[] | "\(.number) \(.title)"' | head -4"#
+        ),
+        format!("cd {sib} && git stash list | head -3 || echo none"),
+        "git stash list | head -3 && gh pr list --repo example-org/app-portal --json number"
+            .to_owned(),
+    ] {
+        assert_allowed(&session, &command);
+    }
+    // After `||` a step may run in either directory, so only reads proven in
+    // both may follow it.
+    for command in [
+        format!("cd {sib} && git stash list || git stash pop"),
+        format!("cd {sib} && git stash list || echo none && git commit -m x"),
+        format!("cd {sib} && git stash list || git push origin main"),
+        format!("cd {sib} && git stash list || gh pr merge 1 --repo example-org/app-portal"),
+        format!("cd {sib} && git stash list || cat ~/.ssh/id_rsa"),
+    ] {
+        assert_reviewed(&session, &command);
+    }
+}

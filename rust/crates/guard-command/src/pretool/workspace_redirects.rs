@@ -209,7 +209,18 @@ pub(super) fn contained(
     if !crate::pretool::workspace_contained::host_eligible(harness, event) {
         return None;
     }
-    let projected_text = project(command)?;
+    // A command the bounded-write projection takes runs directly instead: a
+    // single command, or a chain whose only write is its first step's,
+    // followed by plain readers. One it declines, such as a write to
+    // `.tool-versions`, or a chain beside local Git writes, runs here.
+    let stripped = project(command)?;
+    let direct = super::redirect_projection::project(command, context);
+    // A later read of a written file spelled from the root names what the
+    // projection's relative spelling names, so both earn the same floor.
+    let projected_text = match &direct {
+        Some(projection) => projection.relative_reads(stripped.clone(), context.cwd),
+        None => stripped.clone(),
+    };
     let projected_payload =
         super::command_rewrite::payload_with_command(payload, command, &projected_text);
     let projected = super::evaluate_envelope(
@@ -231,11 +242,6 @@ pub(super) fn contained(
     // A projection that earns a plain allow runs in the sandbox too: the
     // redirects still need its confinement, and the command needs nothing
     // the sandbox withholds when it stays offline.
-    // A command the bounded-write projection takes runs directly instead: a
-    // single command, or a chain whose only write is its first step's,
-    // followed by plain readers. One it declines, such as a write to
-    // `.tool-versions`, or a chain beside local Git writes, runs here.
-    let direct = super::redirect_projection::project(command, context);
     let single = direct.is_none();
     let runs_directly = direct
         .is_some_and(|projection| projection.bounded_writes && projection.git_chain.is_none());
@@ -246,7 +252,8 @@ pub(super) fn contained(
     if projected.reason_code != crate::pretool::workspace_contained::REASON && !allowed {
         return None;
     }
-    contained_shape(command, &projected_text, &workspace)?;
+    // The sandbox runs the command as written, so its shape is the stripped text's.
+    contained_shape(command, &stripped, &workspace)?;
     let raw = super::evaluate_envelope(
         harness,
         event,

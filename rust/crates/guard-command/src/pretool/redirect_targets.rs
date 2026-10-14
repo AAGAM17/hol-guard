@@ -118,3 +118,83 @@ fn no_symlink_components(base: &std::path::Path, relative: &std::path::Path) -> 
     }
     true
 }
+
+/// A later step that names a file this command writes below the working
+/// directory, spelled from the root, names what the relative spelling names:
+/// `> .tmp/run.log; wc -l <cwd>/.tmp/run.log`. Rewriting exactly those words
+/// lets the read keep the floor its relative spelling gets. Only a written
+/// target is rewritten, only outside quotes, and a chain that changes
+/// directory keeps its words. Every other byte of the command is kept.
+pub(super) fn relative_saved_reads(
+    command: String,
+    targets: &[String],
+    cwd: Option<&str>,
+) -> String {
+    let Some(root) = cwd
+        .map(|root| root.trim_end_matches('/'))
+        .filter(|root| root.starts_with('/') && !root.is_empty())
+    else {
+        return command;
+    };
+    let plain = |value: &str| {
+        !value.is_empty()
+            && !value.split('/').any(|part| matches!(part, "" | "." | ".."))
+            && !value.contains([
+                '\'', '"', '\\', '$', '`', '*', '?', '[', ']', '{', '}', '~', ' ',
+            ])
+    };
+    let pairs: Vec<(String, String)> = targets
+        .iter()
+        .filter_map(|target| match target.strip_prefix(root) {
+            Some(rest) => {
+                let rest = rest.strip_prefix('/')?;
+                plain(rest).then(|| (target.clone(), rest.to_owned()))
+            }
+            None => plain(target).then(|| (format!("{root}/{target}"), target.clone())),
+        })
+        .collect();
+    // Any `cd`, `pushd` or `popd` name, even glued to a separator or quoted,
+    // keeps every word as written.
+    if pairs.is_empty()
+        || command
+            .split(|value: char| !(value.is_ascii_alphanumeric() || "_-".contains(value)))
+            .any(|word| matches!(word, "cd" | "pushd" | "popd"))
+    {
+        return command;
+    }
+    let mut out = String::with_capacity(command.len());
+    let mut word = String::new();
+    // Whether the current word holds a quote, an escape or quoted text.
+    let mut quoted = false;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let flush = |out: &mut String, word: &mut String, quoted: bool| {
+        let relative = pairs
+            .iter()
+            .find(|(absolute, _)| !quoted && absolute.as_str() == word.as_str())
+            .map(|(_, relative)| relative.as_str());
+        out.push_str(relative.unwrap_or(word.as_str()));
+        word.clear();
+    };
+    for value in command.chars() {
+        if !escaped && quote.is_none() && (value.is_whitespace() || ";&|()<>".contains(value)) {
+            flush(&mut out, &mut word, quoted);
+            quoted = false;
+            out.push(value);
+            continue;
+        }
+        match (escaped, quote, value) {
+            (true, _, _) => escaped = false,
+            (false, Some('\''), '\'') => quote = None,
+            (false, Some('\''), _) => {}
+            (false, _, '\\') => escaped = true,
+            (false, None, '\'' | '"') => quote = Some(value),
+            (false, Some('"'), '"') => quote = None,
+            _ => {}
+        }
+        quoted |= escaped || quote.is_some() || matches!(value, '\'' | '"');
+        word.push(value);
+    }
+    flush(&mut out, &mut word, quoted);
+    out
+}

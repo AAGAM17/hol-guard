@@ -28,10 +28,15 @@ fn cwd_compounds_validate_reads_and_one_bounded_write() {
             // After `;` the read runs in the new directory when `cd` succeeded
             // and in the original one when it failed, and is proven in both.
             ("&& cat one.txt; cat one.txt", true),
+            // `||` forks the same way: the alternative runs in the new
+            // directory after a failed read, or in the original one after a
+            // failed `cd`, and is proven in both.
+            ("&& cat one.txt || cat one.txt", true),
             ("&& cat one.txt; cat alias.txt", false),
             ("&& cat one.txt; cat .env", false),
             ("&& cat one.txt; rm one.txt", false),
-            ("&& cat one.txt || cat one.txt", false),
+            ("&& cat one.txt || cat alias.txt", false),
+            ("&& cat one.txt || rm one.txt", false),
             ("&& cat alias.txt", false),
             ("&& cat .env", false),
             ("; cat one.txt", true),

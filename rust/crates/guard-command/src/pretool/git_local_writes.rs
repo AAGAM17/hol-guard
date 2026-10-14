@@ -65,6 +65,7 @@ const RULES: &[&str] = &[
 /// The rule a proven `git push origin <branch>` step may raise.
 const PUSH_RULE: &str = "command.git.push";
 const PROPOSE_PERMISSION: &str = "command.github.permission.propose-remote";
+const READ_PERMISSION: &str = "command.github.permission.read-remote";
 
 /// Rules the packaged catalog ships disabled; they count only on segments
 /// proven as reads (`git worktree list`), never raising a review of their own.
@@ -187,20 +188,30 @@ fn proven(
     {
         return None;
     }
-    // A `gh pr create` the user's GitHub permissions allow on its own. Nothing
-    // else may carry a permission observation.
+    // A `gh pr create`, or a GitHub read such as `gh pr list`, the user's
+    // GitHub permissions allow on its own. Nothing else may carry a permission
+    // observation, and a read still needs the read proof below.
     let granted = controls
         .map(|controls| controls.github_granted_segments(&extensions.permission_observations))
         .unwrap_or_default();
     let allowed_alone = |observation: &NativeCommandPermissionObservationV1| {
         let mut segments = observation.matcher_evidence.iter();
-        observation.permission_id == PROPOSE_PERMISSION
-            && !observation.matcher_evidence.is_empty()
+        matches!(
+            observation.permission_id.as_str(),
+            PROPOSE_PERMISSION | READ_PERMISSION
+        ) && !observation.matcher_evidence.is_empty()
             && segments.all(|evidence| granted.contains(&evidence.segment_index))
     };
     if !extensions.permission_observations.iter().all(allowed_alone) {
         return None;
     }
+    let proposing: Vec<usize> = extensions
+        .permission_observations
+        .iter()
+        .filter(|observation| observation.permission_id == PROPOSE_PERMISSION)
+        .flat_map(|observation| observation.matcher_evidence.iter())
+        .map(|evidence| evidence.segment_index)
+        .collect();
     let route = route::route(model, context)?;
     let model = route.model(model);
     let shell = context;
@@ -254,7 +265,7 @@ fn proven(
         }
         // Behind `git -C` only the Git steps run in that repository; a push
         // or a GitHub step would act from the shell's directory.
-        if route.chdir() && (super::git_push::chained(segment) || granted.contains(&index)) {
+        if route.chdir() && (super::git_push::chained(segment) || proposing.contains(&index)) {
             return None;
         }
         if super::git_push::chained(segment) {
@@ -264,7 +275,7 @@ fn proven(
             }
             continue;
         }
-        if granted.contains(&index) {
+        if proposing.contains(&index) {
             proposal = true;
             continue;
         }

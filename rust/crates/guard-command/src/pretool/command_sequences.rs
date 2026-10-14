@@ -3,10 +3,13 @@
 //!
 //! * `cd <dir> && ls src; ls tests`: the shell groups this as
 //!   `(cd <dir> && ls src); ls tests`. Segments chained to the `cd` with
-//!   `&&` or `|` run only in the new directory; every segment after a `;`
-//!   runs there when the `cd` succeeded and in the original directory when
-//!   it failed, so each is proven against both. Git reads follow the same
-//!   split in the Git execution-context floor.
+//!   `&&` or `|` run only in the new directory; every segment after the
+//!   first `;` or `||` runs there when the `cd` succeeded and in the
+//!   original directory when it failed, so each is proven against both.
+//!   `cd <dir> && ls src || echo none && ls tests` splits the same way: a
+//!   failed `cd` runs the `||` alternative and everything after it in the
+//!   original directory. Git reads follow the same split in the Git
+//!   execution-context floor.
 //! * `cd <dir>; ls src`: nothing is chained to the `cd`, so every later
 //!   segment runs in `<dir>` when the `cd` succeeded and in the original
 //!   directory when it failed. Each is proven against both. A Git read is
@@ -39,6 +42,31 @@ fn separators(model: &CanonicalCommandV1) -> Option<Vec<String>> {
             Some(separator.trim().to_owned())
         })
         .collect()
+}
+
+/// A separator after which a segment can run whether or not the leading
+/// `cd` succeeded.
+fn forks(separator: &str) -> bool {
+    matches!(separator, ";" | "||")
+}
+
+/// A GitHub CLI read names its repository, so the directory it runs in
+/// selects nothing and no Git command runs to resolve a remote.
+fn selects_repository(segment: &CommandSegmentV1) -> bool {
+    segment
+        .arguments
+        .iter()
+        .enumerate()
+        .any(|(index, argument)| {
+            (matches!(argument.as_str(), "--repo" | "-R")
+                && segment
+                    .arguments
+                    .get(index + 1)
+                    .is_some_and(|value| !value.is_empty() && !value.starts_with('-')))
+                || argument
+                    .strip_prefix("--repo=")
+                    .is_some_and(|value| !value.is_empty())
+        })
 }
 
 fn plain_segment(segment: &CommandSegmentV1) -> bool {
@@ -108,10 +136,11 @@ pub(in crate::pretool) fn leading_semicolon_cd(
     Some((cwd, rest))
 }
 
-/// `cd <dir> && <head>; <tail>` with the head joined by `&&` or `|` and no
-/// other directory change. The shell groups it as `(cd <dir> && <head>);
-/// <tail>`: the head runs only in `<dir>`, and the tail runs there after the
-/// head or in the original directory when the `cd` failed. Returns the
+/// `cd <dir> && <head>; <tail>` or `cd <dir> && <head> || <tail>` with the
+/// head joined by `&&` or `|` and no other directory change. The shell
+/// groups it as `(cd <dir> && <head>); <tail>`: the head runs only in
+/// `<dir>`, and the tail runs there after the head or in the original
+/// directory when the `cd` failed. Returns the
 /// directory, every segment after the `cd`, and the tail on its own; both
 /// keep the original text and spans.
 pub(in crate::pretool) fn leading_and_cd(
@@ -122,7 +151,7 @@ pub(in crate::pretool) fn leading_and_cd(
         return None;
     }
     let separators = separators(model)?;
-    let tail = separators.iter().position(|separator| separator == ";")? + 1;
+    let tail = separators.iter().position(|separator| forks(separator))? + 1;
     if separators.first().map(String::as_str) != Some("&&")
         || !separators[..tail - 1]
             .iter()
@@ -149,10 +178,10 @@ fn cd_then_read_sequence(
     let leading_semicolon = separators.first().map(String::as_str) == Some(";");
     if !(leading_semicolon
         || (separators.first().map(String::as_str) == Some("&&")
-            && separators.iter().any(|separator| separator == ";")))
+            && separators.iter().any(|separator| forks(separator))))
         || !separators
             .iter()
-            .all(|separator| matches!(separator.as_str(), "&&" | "|" | ";"))
+            .all(|separator| matches!(separator.as_str(), "&&" | "|" | ";" | "||"))
     {
         return false;
     }
@@ -170,20 +199,20 @@ fn cd_then_read_sequence(
         .iter()
         .any(|segment| segment.executable.as_deref().map(executable_basename) == Some("git"));
     let allow_git_helper_context = allow_git_helper_context && !leading_semicolon && !git;
-    let mut after_semicolon = false;
+    let mut after_fork = false;
     model.segments[1..]
         .iter()
         .zip(&separators)
         .all(|(segment, separator)| {
-            after_semicolon |= separator == ";";
+            after_fork |= forks(separator);
             let executable = segment.executable.as_deref().map(executable_basename);
             plain_segment(segment)
                 && !changes_directory(segment)
                 && (cwd_read_executable(segment.executable.as_deref())
                     || crate::pretool::version_probes::lone_probe_segment(segment))
-                && executable.is_some_and(|name| name != "gh")
+                && executable.is_some_and(|name| name != "gh" || selects_repository(segment))
                 && exact_safe_segment_with_context(model, segment, allow_git_helper_context, moved)
-                && (!after_semicolon
+                && (!after_fork
                     || exact_safe_segment_with_context(
                         model,
                         segment,

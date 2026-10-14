@@ -8,7 +8,7 @@ pub(super) mod chain;
 mod names;
 
 pub(super) use names::valid_branch_name;
-use names::{valid_local_reference, valid_path_text};
+use names::{valid_destination_text, valid_local_reference, valid_path_text};
 
 struct WorktreeAdd<'a> {
     leading: Vec<String>,
@@ -161,6 +161,10 @@ pub(super) fn outside_home_reason(
         return None;
     }
     let spec = parse(segment)?;
+    // `~/<path>` already names a checkout below home.
+    if spec.destination.starts_with('~') {
+        return None;
+    }
     let home = std::fs::canonicalize(Path::new(context.home_dir?)).ok()?;
     let supplied = Path::new(spec.destination);
     let target = if supplied.is_absolute() {
@@ -365,7 +369,11 @@ fn parse(segment: &CommandSegmentV1) -> Option<WorktreeAdd<'_>> {
         None if !detach && reference.is_none() => return None,
         _ => {}
     }
-    let destination = destination.filter(|value| valid_path_text(value))?;
+    let destination = destination.filter(|value| valid_destination_text(value))?;
+    // A quoted or escaped `~` stays a literal directory name.
+    if destination.starts_with('~') && !super::directory_targets::home_targets_unquoted(segment) {
+        return None;
+    }
     // A bare name such as `main` or `feat/x` is accepted in every form.
     // Without `-b` and `--detach` Git checks out the existing branch of that
     // name (or detaches at what the name resolves to); with either flag it
@@ -407,6 +415,18 @@ fn fresh_destination(value: &str, context: super::PathContext<'_>) -> Option<Pat
     if !home.is_dir() || !home.is_absolute() || !cwd.is_dir() || !cwd.is_absolute() {
         return None;
     }
+    // The shell expands an unquoted `~/` from its own HOME, so the spelling
+    // is proved only when that HOME is the declared one.
+    let expanded;
+    let value = if value.starts_with("~/") {
+        if cfg!(windows) || !context.shell_home_matches {
+            return None;
+        }
+        expanded = super::read_paths::expand_home_read_path(value, context.home_dir)?;
+        expanded.as_str()
+    } else {
+        value
+    };
     let supplied = Path::new(value);
     let target = if supplied.is_absolute() {
         supplied.to_path_buf()

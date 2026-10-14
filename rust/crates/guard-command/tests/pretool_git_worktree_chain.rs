@@ -261,3 +261,33 @@ fn existing_branch_worktree_add_neighbours_stay_reviewed() {
         "git worktree add ../app-discovery-fix feat/discovery-fix",
     );
 }
+
+/// An unquoted `~/` destination is the shell's HOME, here the declared one,
+/// so it names the same checkout as the absolute spelling. Quoted, Git would
+/// create a literal `~` directory, and other users' homes, hidden leaves,
+/// existing paths and symlinked parents stay reviewed as before.
+#[test]
+fn home_relative_worktree_destinations_match_the_absolute_spelling() {
+    let (_cleanup, home, repository) = repository("home-relative");
+    git(&home, &repository, &["branch", "feat/discovery-fix"]);
+    for command in [
+        "git worktree add ~/app-discovery-fix feat/discovery-fix",
+        "git worktree add ~/org/app-discovery-fix feat/discovery-fix 2>&1 | tail -2",
+        "git worktree add -b fix/home-lane ~/org/app-home-lane origin/main",
+    ] {
+        assert_allowed(&home, &repository, command);
+    }
+    for command in [
+        "git worktree add '~/app-discovery-fix' feat/discovery-fix",
+        "git worktree add \"~/app-discovery-fix\" feat/discovery-fix",
+        "git worktree add ~root/app-discovery-fix feat/discovery-fix",
+        "git worktree add ~ feat/discovery-fix",
+        "git worktree add ~/.app-discovery-fix feat/discovery-fix",
+        "git worktree add ~/org/service feat/discovery-fix",
+        "git worktree add ~/org/link/review feat/discovery-fix",
+        "git worktree add ~/org/app/.github/workflows/fix feat/discovery-fix",
+        "HOME=/tmp git worktree add ~/app-discovery-fix feat/discovery-fix",
+    ] {
+        assert_reviewed(&home, &repository, command);
+    }
+}

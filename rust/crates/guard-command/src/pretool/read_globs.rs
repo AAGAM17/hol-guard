@@ -24,9 +24,16 @@ pub(super) fn bounded_glob_file_read_target(
     value: &str,
     context: super::super::PathContext<'_>,
 ) -> bool {
-    let Some((directory, pattern)) = value.rsplit_once('/') else {
-        return false;
-    };
+    glob_file_matches(value, context).is_some()
+}
+
+/// The words the shell passes on for `value`, each `<directory>/<name>`,
+/// when every one of them clears the proof above; `None` otherwise.
+pub(in crate::pretool) fn glob_file_matches(
+    value: &str,
+    context: super::super::PathContext<'_>,
+) -> Option<Vec<String>> {
+    let (directory, pattern) = value.rsplit_once('/')?;
     if directory.is_empty()
         || directory.starts_with('-')
         || directory.contains(['*', '?', '[', ']', '{', '}', '\\'])
@@ -34,38 +41,29 @@ pub(super) fn bounded_glob_file_read_target(
         || !super::verified_path_context(context.home_dir, context.cwd)
         || !super::bounded_read_target(directory, context.home_dir, context.cwd, true)
     {
-        return false;
+        return None;
     }
-    let Some(base) = directory_path(directory, context) else {
-        return false;
-    };
-    let Ok(entries) = std::fs::read_dir(&base) else {
-        return false;
-    };
-    let mut matches = 0_usize;
+    let base = directory_path(directory, context)?;
+    let entries = std::fs::read_dir(&base).ok()?;
+    let mut matches = Vec::new();
     for (inspected, entry) in entries.enumerate() {
         if inspected >= MAX_ENTRIES {
-            return false;
+            return None;
         }
-        let Ok(entry) = entry else {
-            return false;
-        };
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else {
-            return false;
-        };
+        let name = entry.ok()?.file_name();
+        let name = name.to_str()?;
         if !name.is_ascii() {
-            return false;
+            return None;
         }
         if !wildcard_matches(pattern.as_bytes(), name.as_bytes()) {
             continue;
         }
-        matches += 1;
-        if matches > MAX_MATCHES || !readable_match(directory, name, &base, context) {
-            return false;
+        if matches.len() >= MAX_MATCHES || !readable_match(directory, name, &base, context) {
+            return None;
         }
+        matches.push(format!("{directory}/{name}"));
     }
-    matches > 0
+    (!matches.is_empty()).then_some(matches)
 }
 
 /// A last component holding `*` or `?` and otherwise only plain filename

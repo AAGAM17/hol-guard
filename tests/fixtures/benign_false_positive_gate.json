@@ -4849,6 +4849,54 @@
       "expect": "allow"
     },
     {
+      "id": "session-mkdir-copy-preserved-globs-into-workspace",
+      "fix_area": "scratch-checkout",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "mkdir -p ${ORG}/app-portal/src/discovery && cp ${PRIVATE_TMP}/preserved/src/discovery/*.ts ${ORG}/app-portal/src/discovery/ && cp ${PRIVATE_TMP}/preserved/tests/discovery.test.ts ${ORG}/app-portal/tests/ && echo copied"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-copy-glob-into-git-hooks",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cp ${PRIVATE_TMP}/preserved/src/discovery/*.ts ${ORG}/app-portal/.git/hooks/"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-copy-glob-matching-directory",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cp ${PRIVATE_TMP}/* ${ORG}/app-portal/src/"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
       "id": "session-ls-scratch-checkout-bin",
       "fix_area": "scratch-checkout",
       "harnesses": [
@@ -6559,6 +6607,99 @@
       "expect": "allow"
     },
     {
+      "id": "queue-cd-reads-or-fallback-then-gh-pr-list",
+      "fix_area": "queue",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cd ${ORG}/app-portal && git status --short | head -4 && git stash list | head -3 && git worktree list | grep -c \"fix\" || echo \"no fix worktrees remain\" && gh pr list --repo example-org/app-portal --state open --json number,title --jq '.[] | \"\\(.number) \\(.title)\"' | head -4"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "queue-cd-ls-or-echo-fallback",
+      "fix_area": "queue",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cd ${ORG}/app-portal && ls src || echo missing"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-cd-read-or-push",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cd ${ORG}/app-portal && git stash list | head -3 || git push origin main"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-cd-read-or-gh-pr-merge",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cd ${ORG}/app-portal && git status --short || gh pr merge 1 --repo example-org/app-portal"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-cd-read-or-echo-then-remove",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cd ${ORG}/app-portal && ls src || echo none && rm -rf src"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-cd-read-or-ssh-key",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cd ${ORG}/app-portal && ls src || cat ${HOME}/.ssh/id_rsa"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
       "id": "queue-git-stash-apply",
       "fix_area": "queue",
       "harnesses": [
@@ -7086,6 +7227,36 @@
       "expect": "allow"
     },
     {
+      "id": "git-worktree-add-existing-branch-home-tilde",
+      "fix_area": "worktree-add",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git fetch origin main 2>&1 | tail -1; git worktree add ~/Code/app-portal-discovery-fix feat/discovery-review 2>&1 | tail -2"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-worktree-add-quoted-tilde",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git worktree add '~/Code/app-portal-discovery-fix' feat/discovery-review"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
       "id": "git-worktree-add-new-branch-from-local-main",
       "fix_area": "worktree-add",
       "harnesses": [
@@ -7340,6 +7511,38 @@
       },
       "cwd": "worktree",
       "expect": "allow"
+    },
+    {
+      "id": "queue-gh-api-logs-redirect-absolute-wc",
+      "fix_area": "redirect",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "gh api repos/example-org/app-portal/actions/jobs/123/logs > ${ORG}/app-portal/.tmp/job.log 2>&1; wc -l ${ORG}/app-portal/.tmp/job.log"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-redirect-absolute-then-run",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "gh api repos/example-org/app-portal/actions/jobs/123/logs > ${ORG}/app-portal/.tmp/job.log 2>&1; sh ${ORG}/app-portal/.tmp/job.log"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
     },
     {
       "id": "queue-gh-pr-view-json-redirect",

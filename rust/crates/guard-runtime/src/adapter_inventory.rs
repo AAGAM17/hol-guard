@@ -1,4 +1,4 @@
-//! Shared pieces of the Gemini and Antigravity detection kinds: the request
+//! Shared pieces of the Gemini, Antigravity, Grok and Kimi detection kinds: the request
 //! (home and workspace as Python holds them, plus its working directory when
 //! either is relative), the `_json_payload` reader, and an inventory that
 //! keeps found paths unique and walks skill roots with the same native
@@ -23,6 +23,7 @@ use super::zcode_artifacts::{Fields, Scope};
 pub(crate) const ERR_TEXT: &str = "native_runner_authority_adapter_text_undecodable";
 pub(crate) const ERR_NAME: &str = "native_runner_authority_adapter_name_undecodable";
 pub(crate) const ERR_VALUE: &str = "native_runner_authority_adapter_value_unrepresentable";
+pub(crate) const ERR_STAT: &str = "native_runner_authority_adapter_path_unexaminable";
 
 /// The directories one detection request names.
 pub(crate) struct Request {
@@ -36,6 +37,48 @@ fn path_arg(args: &Map<String, Value>, key: &str) -> Result<Option<PathBuf>, &'s
         Some(Value::String(path)) if !path.contains('\0') => Ok(Some(py_path(path))),
         None | Some(Value::Null) if key == "workspace" => Ok(None),
         _ => Err(ERR_INVALID),
+    }
+}
+
+/// A path field every request of one kind names (a string without NUL).
+pub(crate) fn required_path(args: &Value, key: &str) -> Result<PathBuf, &'static str> {
+    path_arg(args_object(args)?, key)?.ok_or(ERR_INVALID)
+}
+
+/// The OS error codes Python 3.12's `Path.is_file`, `is_dir` and `exists`
+/// treat as "absent" beyond not-found and not-a-directory.
+#[cfg(unix)]
+fn ignorable_code(code: i32) -> bool {
+    const EBADF: i32 = 9;
+    const ELOOP: i32 = if cfg!(target_os = "macos") { 62 } else { 40 };
+    code == EBADF || code == ELOOP
+}
+
+#[cfg(windows)]
+fn ignorable_code(code: i32) -> bool {
+    matches!(code, 21 | 123 | 1921)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn ignorable_code(_code: i32) -> bool {
+    false
+}
+
+/// `path.stat()` as Python 3.12's `Path.is_file`/`is_dir`/`exists` see it:
+/// `None` when absent, a refusal for any error Python would raise (a parent
+/// it may not search, an over-long name).
+pub(crate) fn py_stat(path: &Path) -> Result<Option<fs::Metadata>, &'static str> {
+    match fs::metadata(path) {
+        Ok(metadata) => Ok(Some(metadata)),
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ) || error.raw_os_error().is_some_and(ignorable_code) =>
+        {
+            Ok(None)
+        }
+        Err(_) => Err(ERR_STAT),
     }
 }
 
@@ -186,6 +229,31 @@ impl Inventory {
         if !self.found_paths.iter().any(|found| *found == path) {
             self.found_paths.push(path.into_owned());
         }
+    }
+
+    /// `found_paths.append`: kept even when already listed.
+    pub(crate) fn push_found(&mut self, path: &Path) {
+        self.found_paths.push(path.to_string_lossy().into_owned());
+    }
+
+    /// Python 3.12's `Path.is_file`, read from Python's `cwd`.
+    pub(crate) fn is_file(&self, path: &Path) -> Result<bool, &'static str> {
+        Ok(py_stat(&self.fs(path))?.is_some_and(|metadata| metadata.is_file()))
+    }
+
+    /// Python 3.12's `Path.is_dir`, read from Python's `cwd`.
+    pub(crate) fn is_dir(&self, path: &Path) -> Result<bool, &'static str> {
+        Ok(py_stat(&self.fs(path))?.is_some_and(|metadata| metadata.is_dir()))
+    }
+
+    /// Python 3.12's `Path.exists`, read from Python's `cwd`.
+    pub(crate) fn exists(&self, path: &Path) -> Result<bool, &'static str> {
+        Ok(py_stat(&self.fs(path))?.is_some())
+    }
+
+    /// Adds a warning; `finish` keeps only the first of equal ones.
+    pub(crate) fn warn(&mut self, warning: String) {
+        self.warnings.push(warning);
     }
 
     pub(crate) fn has_found(&self) -> bool {

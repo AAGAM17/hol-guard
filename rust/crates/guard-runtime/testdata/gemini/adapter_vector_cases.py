@@ -1,7 +1,7 @@
 """Fixture cases for `record_adapter_vectors.py`: Gemini extensions, settings,
 hooks and skills, and Antigravity's extension index, MCP bridges, skills and
-editor settings. Paths are relative to the fixture root; `<ROOT>` stands for
-it in contents.
+editor settings; the Grok and Kimi cases live in their own modules. Paths are
+relative to the fixture root; `<ROOT>` stands for it in contents.
 """
 
 from __future__ import annotations
@@ -46,6 +46,7 @@ def case(
     home: str = "home",
     workspace: str | None = "work",
     relative: bool = False,
+    env: dict[str, str] | None = None,
 ) -> dict:
     return {
         "name": name,
@@ -56,6 +57,7 @@ def case(
         "home": home,
         "workspace": workspace,
         "relative": relative,
+        "env": env or {},
     }
 
 
@@ -434,4 +436,12 @@ def gemini_extra() -> list[dict]:
 
 
 def cases(harness: str) -> list[dict]:
+    if harness == "grok":
+        from grok_vector_cases import grok_cases
+
+        return grok_cases()
+    if harness == "kimi":
+        from kimi_vector_cases import kimi_cases
+
+        return kimi_cases()
     return gemini_cases() + gemini_extra() if harness == "gemini" else antigravity_cases()

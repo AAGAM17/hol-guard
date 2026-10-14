@@ -1,4 +1,4 @@
-//! Replays Gemini and Antigravity detection vectors recorded from the
+//! Replays Gemini, Antigravity, Grok and Kimi detection vectors recorded from the
 //! original Python implementation (see `testdata/gemini/record_adapter_vectors.py`).
 //! Fixture trees and expected artifacts, paths and warnings come from Python,
 //! never from Rust output. `<ROOT>` is the fixture root.
@@ -11,6 +11,8 @@ use crate::runner_authority_op::KindResult;
 
 const GEMINI: &str = include_str!("../testdata/gemini/vectors.json");
 const ANTIGRAVITY: &str = include_str!("../testdata/antigravity/vectors.json");
+const GROK: &str = include_str!("../testdata/grok/vectors.json");
+const KIMI: &str = include_str!("../testdata/kimi/vectors.json");
 
 fn check(case: &Value, name: &str, root_text: &str, result: KindResult) -> Result<(), String> {
     if case["refused"] == true {
@@ -81,6 +83,25 @@ fn replays_every_recorded_antigravity_detection_case() {
 }
 
 #[test]
+fn replays_every_recorded_grok_detection_case() {
+    replay_all(GROK, "guard-grok-vectors.v1", crate::grok_detect::detect);
+}
+
+#[test]
+fn replays_every_recorded_kimi_detection_case() {
+    replay_all(KIMI, "guard-kimi-vectors.v1", crate::kimi_detect::detect);
+}
+
+fn valid_request(harness: &str) -> Value {
+    let mut valid = json!({"harness": harness, "home": "/nonexistent/home", "workspace": null});
+    if harness == "grok" {
+        valid["grok_home"] = json!("/nonexistent/grok");
+        valid["system_policy_paths"] = json!([]);
+    }
+    valid
+}
+
+#[test]
 fn malformed_requests_are_refused() {
     for (harness, detect) in [
         (
@@ -88,8 +109,10 @@ fn malformed_requests_are_refused() {
             crate::gemini_detect::detect as fn(&Value) -> KindResult,
         ),
         ("antigravity", crate::antigravity_detect::detect),
+        ("grok", crate::grok_detect::detect),
+        ("kimi", crate::kimi_detect::detect),
     ] {
-        let valid = json!({"harness": harness, "home": "/nonexistent/home", "workspace": null});
+        let valid = valid_request(harness);
         assert!(detect(&valid).is_ok(), "{harness}");
         for (key, value) in [
             ("harness", json!("claude-code")),
@@ -104,11 +127,53 @@ fn malformed_requests_are_refused() {
             args[key] = value.clone();
             assert!(detect(&args).is_err(), "{harness} {key}={value}");
         }
-        let relative = json!({"harness": harness, "home": "home", "workspace": null});
+        let mut relative = valid.clone();
+        relative["home"] = json!("home");
         assert!(
             detect(&relative).is_err(),
             "{harness}: a relative home needs cwd"
         );
         assert!(detect(&json!([])).is_err());
     }
+}
+
+#[test]
+fn malformed_grok_fields_are_refused() {
+    let detect = crate::grok_detect::detect;
+    let valid = valid_request("grok");
+    assert!(detect(&valid).is_ok());
+    for (key, value) in [
+        ("grok_home", json!(null)),
+        ("grok_home", json!(1)),
+        ("grok_home", json!("/x\u{0}y")),
+        ("grok_home", json!("relative")),
+        ("system_policy_paths", json!(null)),
+        (
+            "system_policy_paths",
+            json!("/etc/grok/managed_config.toml"),
+        ),
+        ("system_policy_paths", json!([1])),
+        ("system_policy_paths", json!(["relative.toml"])),
+        ("system_policy_paths", json!(["/x\u{0}y"])),
+    ] {
+        let mut args = valid.clone();
+        args[key] = value.clone();
+        assert!(detect(&args).is_err(), "grok {key}={value}");
+    }
+    let mut missing = valid.clone();
+    missing.as_object_mut().unwrap().remove("grok_home");
+    assert!(detect(&missing).is_err(), "grok_home is required");
+    let mut missing = valid.clone();
+    missing
+        .as_object_mut()
+        .unwrap()
+        .remove("system_policy_paths");
+    assert!(detect(&missing).is_err(), "system_policy_paths is required");
+    let mut relative = valid.clone();
+    relative["grok_home"] = json!("grok");
+    relative["cwd"] = json!("/nonexistent");
+    assert!(
+        detect(&relative).is_ok(),
+        "a relative grok_home reads from cwd"
+    );
 }

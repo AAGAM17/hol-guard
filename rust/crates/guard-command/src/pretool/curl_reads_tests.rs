@@ -34,6 +34,9 @@ fn plain_public_reads_are_proven() {
         "curl -H 'Accept: application/json' https://api.example.com/v1/status",
         "curl -m 5 --retry 2 --url https://example.com/a https://example.com/b",
         "curl -s -A probe/1.0 -- https://example.com/",
+        "curl -sS -D - https://example.com/api/health -o /dev/null",
+        "curl -sS --dump-header=- https://example.com/",
+        "curl -sSD /dev/null https://example.com/",
     ] {
         assert!(proven(command), "{command}");
     }
@@ -182,6 +185,7 @@ fn a_body_reaches_only_a_scratch_file_of_the_workspace() {
     for command in [
         "curl -s https://api.example.com/v1/items -o .tmp/items.json",
         "curl -s --output .tmp/reports/items.json https://api.example.com/v1/items",
+        "curl -s -D .tmp/headers.txt https://api.example.com/v1/items",
     ] {
         assert!(proven_in(command, context), "{command}");
     }
@@ -192,6 +196,9 @@ fn a_body_reaches_only_a_scratch_file_of_the_workspace() {
         "curl -s https://example.com/x -o .tmp/../x",
         "curl -s https://example.com/x -o ~/.tmp/x",
         "curl -s https://example.com/x -o .env",
+        "curl -s -D headers.txt https://example.com/x",
+        "curl -s --dump-header .git/x https://example.com/x",
+        "curl -s -D ~/.bashrc https://example.com/x",
     ] {
         assert!(!proven_in(command, context), "{command}");
     }

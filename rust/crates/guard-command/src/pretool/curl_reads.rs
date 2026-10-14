@@ -9,8 +9,8 @@
 //!
 //! Loopback, private, link-local and metadata addresses, rebinding names and
 //! names under reserved test suffixes stay reviewed: those resolve to local
-//! services rather than public content. The response body reaches a file
-//! only through `-o` naming a scratch file ([`output_targets`]); the redirect
+//! services rather than public content. The response body and headers reach
+//! a file only through `-o` or `-D` naming a scratch file ([`output_targets`]); the redirect
 //! projection holds `curl ... > file` to the same targets through
 //! [`NETWORK_READ_REASON`]. A URL whose path, query or fragment holds a
 //! credential shape, a JWT or a long opaque token stays reviewed, since the
@@ -55,7 +55,7 @@ const PLAIN_FLAGS: [&str; 17] = [
 /// would follow it (resending custom headers) without the destination check.
 const SHORT_FLAGS: &str = "fsSiIvN46gG";
 /// Single-letter options that take a value. They end a cluster.
-const SHORT_VALUES: &str = "mHXwoA";
+const SHORT_VALUES: &str = "mHXwoDA";
 
 const NUMERIC_OPTIONS: [&str; 6] = [
     "--connect-timeout",
@@ -213,6 +213,7 @@ fn short_value_safe(short: char, value: &str, context: super::PathContext<'_>) -
         'X' => "--request",
         'w' => "--write-out",
         'o' => "--output",
+        'D' => "--dump-header",
         'A' => "--user-agent",
         _ => return false,
     };
@@ -230,6 +231,13 @@ fn long_value_safe(option: &str, value: &str, context: super::PathContext<'_>) -
         // `%output{...}` makes curl write a file.
         "--write-out" => !value.to_ascii_lowercase().contains("%output"),
         "--output" => value == "/dev/null" || output_targets::scratch_output_target(value, context),
+        // Response headers go to stdout (`-`) like the body, or to a file
+        // held to the same targets as `--output`.
+        "--dump-header" => {
+            value == "-"
+                || value == "/dev/null"
+                || output_targets::scratch_output_target(value, context)
+        }
         "--user-agent" => !value.is_empty(),
         _ if NUMERIC_OPTIONS.contains(&option) => {
             !value.is_empty()

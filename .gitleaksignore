@@ -211,3 +211,5 @@ e68f4157823ead51250529ca2e2b0daf102afaee:rust/crates/guard-command/src/pretool/c
 1d845aa95ea8fd849dd03f5c13becbaf11e32f6c:rust/crates/guard-runtime/testdata/policy_integrity_rows/vectors.json:generic-api-key:3185
 1d845aa95ea8fd849dd03f5c13becbaf11e32f6c:rust/crates/guard-runtime/testdata/policy_integrity_rows/vectors.json:generic-api-key:3380
 1d845aa95ea8fd849dd03f5c13becbaf11e32f6c:rust/crates/guard-runtime/testdata/policy_integrity_rows/vectors.json:generic-api-key:3390
+# Synthetic private key header in a source-slice unit test, assembled from parts in a follow-up commit.
+1249cd32613b79fa4f2241ac931c98b29de738ce:rust/crates/guard-hook-core/src/source_slice.rs:private-key:130

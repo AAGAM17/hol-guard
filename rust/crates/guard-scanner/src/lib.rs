@@ -7,6 +7,9 @@ pub mod secret_detection;
 pub mod staged_scanner;
 
 mod masked_value;
+mod match_spans;
+
+pub use match_spans::scan_match_spans;
 
 use guard_rules::{CONTEXT_CHARS, MAX_MATCHES, MAX_SCAN_BYTES};
 use regex::{Regex, RegexBuilder};
@@ -251,6 +254,24 @@ fn is_sample(
     assignment_value(matched).is_some_and(|value| doc_sample_regex().is_match(value))
 }
 
+/// The matches of rule `index` in `text` that are not suppressed as samples.
+fn counted_matches<'t>(
+    index: usize,
+    text: &'t str,
+    suppress_samples: bool,
+    documentation_sample_context: bool,
+) -> impl Iterator<Item = regex::Match<'t>> {
+    let classifier = PATTERNS[index].classifier;
+    compiled()[index].find_iter(text).filter(move |matched| {
+        !is_sample(
+            classifier,
+            matched.as_str(),
+            suppress_samples,
+            documentation_sample_context,
+        )
+    })
+}
+
 fn classify_window(
     text: &str,
     suppress_samples: bool,
@@ -261,15 +282,9 @@ fn classify_window(
         if found.contains_key(def.classifier) {
             continue;
         }
-        let has_match = compiled()[index].find_iter(text).any(|matched| {
-            !is_sample(
-                def.classifier,
-                matched.as_str(),
-                suppress_samples,
-                documentation_sample_context,
-            )
-        });
-        if has_match {
+        let mut matches =
+            counted_matches(index, text, suppress_samples, documentation_sample_context);
+        if matches.next().is_some() {
             found.insert(
                 def.classifier,
                 ScanMatch {

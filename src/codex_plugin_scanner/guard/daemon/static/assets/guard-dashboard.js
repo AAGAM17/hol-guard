@@ -32944,10 +32944,20 @@ function QueueConnectionError(props) {
 }
 const CHUNK_RELOAD_STORAGE_KEY = "hol-guard-dashboard-chunk-reload";
 const CHUNK_RELOAD_DELAY_MS = 400;
+const MODULE_LINK_ERROR_PATTERNS = [
+  /does not provide an export named/,
+  // Chromium
+  /importing binding name .* is not found/,
+  // WebKit
+  /import not found:/,
+  // Gecko
+  /ambiguous indirect export:/
+  // Gecko
+];
 function isChunkLoadError(error) {
   const message = error instanceof Error ? error.message : String(error);
   const normalized = message.toLowerCase();
-  return normalized.includes("failed to fetch dynamically imported module") || normalized.includes("error loading dynamically imported module") || normalized.includes("importing a module script failed") || normalized.includes("loading chunk");
+  return normalized.includes("failed to fetch dynamically imported module") || normalized.includes("error loading dynamically imported module") || normalized.includes("importing a module script failed") || normalized.includes("loading chunk") || MODULE_LINK_ERROR_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 function defaultWait(ms) {
   return new Promise((resolve) => {

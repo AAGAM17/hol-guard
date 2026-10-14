@@ -120,6 +120,7 @@ from .command_queue_worker import (
     start_command_queue_worker,
     stop_command_queue_worker,
 )
+from .dashboard_bundle import pin_dashboard_bundle
 from .diagnostics import DaemonDiagnostics
 from .discovery import (
     DAEMON_DISCOVERY_CHALLENGE_TTL_SECONDS,
@@ -3892,6 +3893,9 @@ def _validate_dashboard_bundle() -> None:
         raise RuntimeError(
             "Guard dashboard bundle is missing. Run `pnpm install && pnpm run build` in the dashboard directory."
         )
+    # Serve the dashboard that matches this process's code, even after an
+    # in-place upgrade replaces the files on disk.
+    pin_dashboard_bundle(_STATIC_DIR)
 
 
 def _guard_daemon_idle_timeout_seconds(

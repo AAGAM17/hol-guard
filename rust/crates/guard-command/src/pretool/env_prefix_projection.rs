@@ -408,8 +408,22 @@ fn plain_scalar(value: &str) -> bool {
 
 /// Unsetting removes context; only names whose absence changes which config
 /// or executables a tool loads stay unproven.
+/// Commit identity a caller may clear so Git falls back to its configured
+/// author and committer; clearing one changes no program, path or config.
+const GIT_IDENTITY_SETTINGS: &[&str] = &[
+    "GIT_AUTHOR_NAME",
+    "GIT_AUTHOR_EMAIL",
+    "GIT_AUTHOR_DATE",
+    "GIT_COMMITTER_NAME",
+    "GIT_COMMITTER_EMAIL",
+    "GIT_COMMITTER_DATE",
+];
+
 fn inert_unset(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
+    if GIT_IDENTITY_SETTINGS.contains(&upper.as_str()) {
+        return true;
+    }
     assignment_name_shape(name)
         && !matches!(upper.as_str(), "PATH" | "HOME")
         && ![

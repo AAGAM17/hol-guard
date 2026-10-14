@@ -21,6 +21,11 @@ fn inert_prefixes_are_removed_in_place() {
         ("GIT_PAGER=cat git log -3", "git log -3"),
         ("env --unset=GH_TOKEN -- git status", "git status"),
         (
+            "env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL git commit -m 'test: isolate output'",
+            "git commit -m 'test: isolate output'",
+        ),
+        ("env --unset=GIT_COMMITTER_DATE git commit --amend --no-edit", "git commit --amend --no-edit"),
+        (
             "git status && LC_ALL=C rg -n 'a b' src | head -5",
             "git status && rg -n 'a b' src | head -5",
         ),
@@ -84,6 +89,8 @@ fn execution_changing_prefixes_leave_the_command_untouched() {
         "env -u PATH git status",
         "env -u HOME git status",
         "env -u GIT_CONFIG_NOSYSTEM git status",
+        "env -u GIT_DIR git status",
+        "env -u GIT_AUTHOR_NAME -u GIT_INDEX_FILE git commit -m x",
         "env FOO=$(id) ls",
         "env -u",
         "LC_ALL=C ls\nrm -rf x",

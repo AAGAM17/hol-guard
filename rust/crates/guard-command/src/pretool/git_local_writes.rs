@@ -59,8 +59,8 @@ const RULES: &[&str] = &[
 const PUSH_RULE: &str = "command.git.push";
 const PROPOSE_PERMISSION: &str = "command.github.permission.propose-remote";
 
-/// Read rules the packaged catalog ships disabled, so they never raise a
-/// review of their own.
+/// Rules the packaged catalog ships disabled; they count only on segments
+/// proven as reads (`git worktree list`), never raising a review of their own.
 const READ_RULES: &[&str] = &[
     "command.git.status",
     "command.git.log",
@@ -68,6 +68,7 @@ const READ_RULES: &[&str] = &[
     "command.git.show",
     "command.git.ls-files",
     "command.git.grep",
+    "command.git.worktree",
 ];
 
 const INDEX_HOOKS: &[&str] = &["post-index-change"];

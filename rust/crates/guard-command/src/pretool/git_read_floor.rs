@@ -45,6 +45,16 @@ pub(super) fn requires_review(
         return requires_review(&rest, moved, deadline, execution_environment)
             || requires_review(&rest, context, deadline, execution_environment);
     }
+    // `cd <dir> && <head>; <tail>`: the head runs only in `<dir>`, the tail
+    // after it there or alone in the original directory when the `cd` failed.
+    if let Some((cwd, rest, tail)) = super::safe_reads::leading_and_cd(model, context) {
+        let moved = super::PathContext {
+            cwd: Some(&cwd),
+            ..context
+        };
+        return requires_review(&rest, moved, deadline, execution_environment)
+            || requires_review(&tail, context, deadline, execution_environment);
+    }
     // Past this point every Git read is probed in one directory. A later
     // `cd` the read prefixes above did not account for moves the reads after
     // it somewhere this probe never looked.

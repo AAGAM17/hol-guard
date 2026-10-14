@@ -1,9 +1,10 @@
 #![cfg(unix)]
 
-//! `cd <sibling>; ...` sequences, `awk` reads of sibling files and `rustfmt`
-//! of sibling sources. After `cd <dir>;` every later segment runs in `<dir>`
-//! when the `cd` succeeded and in the original directory when it failed, so
-//! each one must be safe in both.
+//! `cd <sibling>; ...` and `cd <sibling> && ...; ...` sequences, `awk` reads
+//! of sibling files and `rustfmt` of sibling sources. After `cd <dir>;` every
+//! later segment runs in `<dir>` when the `cd` succeeded and in the original
+//! directory when it failed, so each one must be safe in both. Steps chained
+//! to the `cd` with `&&` or `|` run in `<dir>` only.
 
 use crate::git_helper_fixture as fixture;
 use fixture::*;
@@ -193,6 +194,56 @@ fn semicolon_cd_git_reads_need_helper_free_configuration_in_both_directories() {
         &["config", "core.fsmonitor", "./synthetic-never-execute"],
     );
     check(&space, &[], std::slice::from_ref(&command));
+}
+
+#[test]
+fn and_cd_reads_then_semicolon_reads_run_where_the_shell_runs_them() {
+    let (space, _cleanup) = space("and-cd");
+    let sibling = space.sibling.display();
+    check(
+        &space,
+        &[
+            format!(
+                "cd {sibling} && git status --short | rg '^UU|^AA' | head -30; \
+                 git status --short | rg -c '^UU'"
+            ),
+            format!("cd {sibling} && git status --short && ls src; git status"),
+            format!("cd {sibling} && ls src; ls"),
+        ],
+        &[
+            // `||` runs its right side in the original directory when the
+            // `cd` fails, and the tail runs in either directory.
+            format!("cd {sibling} && git status || rm -rf src; git status"),
+            format!("cd {sibling} && git status; rm -rf src"),
+            format!("cd {sibling} && git status; cat .env"),
+            format!("cd {sibling} && git status; cd src; git status"),
+            format!("cd {sibling} && git config core.pager id; git status"),
+            // `git log` can start a configured diff helper, and the helper
+            // probe runs in one directory only.
+            format!("cd {sibling} && git log -1; git status"),
+        ],
+    );
+}
+
+#[test]
+fn and_cd_git_reads_need_helper_free_configuration_where_they_run() {
+    let (space, _cleanup) = space("and-cd-git");
+    let command = format!(
+        "cd {} && git status --short; git status --short",
+        space.sibling.display()
+    );
+    check(&space, std::slice::from_ref(&command), &[]);
+    // The head runs in the sibling; a failed `cd` leaves the tail in the
+    // original directory.
+    for repository in [&space.sibling, &space.project] {
+        git(
+            repository,
+            &["config", "core.fsmonitor", "./synthetic-never-execute"],
+        );
+        check(&space, &[], std::slice::from_ref(&command));
+        git(repository, &["config", "--unset", "core.fsmonitor"]);
+    }
+    check(&space, std::slice::from_ref(&command), &[]);
 }
 
 #[test]

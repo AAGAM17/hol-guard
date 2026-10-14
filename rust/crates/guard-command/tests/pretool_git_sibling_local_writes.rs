@@ -197,3 +197,26 @@ fn stash_restores_and_identity_variables_are_local_writes() {
         session.config(&["--unset-all", key]);
     }
 }
+
+#[test]
+fn stash_listing_composes_with_worktree_listing() {
+    let (session, _) = sibling("stash-worktrees");
+    let primary = session.primary.display();
+    let worktree = session.worktree.display();
+    assert_allowed(
+        &session,
+        &format!("cd {primary} && git stash list | head -3 && git worktree list | grep -c fix"),
+    );
+    assert_allowed(
+        &session,
+        &format!(
+            "cd {primary} && git status --short && git stash list && git worktree list --porcelain"
+        ),
+    );
+    for command in [
+        format!("cd {primary} && git stash list && git worktree list -z"),
+        format!("cd {primary} && git stash list && git worktree remove --force {worktree}"),
+    ] {
+        assert_reviewed(&session, &command);
+    }
+}

@@ -5,7 +5,8 @@
 //!   `(cd <dir> && ls src); ls tests`. Segments chained to the `cd` with
 //!   `&&` or `|` run only in the new directory; every segment after a `;`
 //!   runs there when the `cd` succeeded and in the original directory when
-//!   it failed, so each is proven against both.
+//!   it failed, so each is proven against both. Git reads follow the same
+//!   split in the Git execution-context floor.
 //! * `cd <dir>; ls src`: nothing is chained to the `cd`, so every later
 //!   segment runs in `<dir>` when the `cd` succeeded and in the original
 //!   directory when it failed. Each is proven against both. A Git read is
@@ -107,6 +108,36 @@ pub(in crate::pretool) fn leading_semicolon_cd(
     Some((cwd, rest))
 }
 
+/// `cd <dir> && <head>; <tail>` with the head joined by `&&` or `|` and no
+/// other directory change. The shell groups it as `(cd <dir> && <head>);
+/// <tail>`: the head runs only in `<dir>`, and the tail runs there after the
+/// head or in the original directory when the `cd` failed. Returns the
+/// directory, every segment after the `cd`, and the tail on its own; both
+/// keep the original text and spans.
+pub(in crate::pretool) fn leading_and_cd(
+    model: &CanonicalCommandV1,
+    context: PathContext<'_>,
+) -> Option<(String, CanonicalCommandV1, CanonicalCommandV1)> {
+    if !exact_model(model) || model.segments[1..].iter().any(changes_directory) {
+        return None;
+    }
+    let separators = separators(model)?;
+    let tail = separators.iter().position(|separator| separator == ";")? + 1;
+    if separators.first().map(String::as_str) != Some("&&")
+        || !separators[..tail - 1]
+            .iter()
+            .all(|separator| matches!(separator.as_str(), "&&" | "|"))
+    {
+        return None;
+    }
+    let cwd = leading_cd_target(model, context)?;
+    let mut rest = model.clone();
+    rest.segments = model.segments[1..].to_vec();
+    let mut after = model.clone();
+    after.segments = model.segments[tail..].to_vec();
+    Some((cwd, rest, after))
+}
+
 fn cd_then_read_sequence(
     model: &CanonicalCommandV1,
     allow_git_helper_context: bool,
@@ -132,10 +163,13 @@ fn cd_then_read_sequence(
         cwd: Some(&cwd),
         ..context
     };
-    // After a leading `;` the Git floor splits the command and inspects each
-    // Git read in both directories. A read that needs the helper probe stays
+    // The Git floor splits both forms and inspects each Git read in every
+    // directory it can run in. A read that needs the helper probe stays
     // reviewed, because that probe runs in one directory only.
-    let allow_git_helper_context = allow_git_helper_context && !leading_semicolon;
+    let git = model.segments[1..]
+        .iter()
+        .any(|segment| segment.executable.as_deref().map(executable_basename) == Some("git"));
+    let allow_git_helper_context = allow_git_helper_context && !leading_semicolon && !git;
     let mut after_semicolon = false;
     model.segments[1..]
         .iter()
@@ -147,8 +181,7 @@ fn cd_then_read_sequence(
                 && !changes_directory(segment)
                 && (cwd_read_executable(segment.executable.as_deref())
                     || crate::pretool::version_probes::lone_probe_segment(segment))
-                && executable
-                    .is_some_and(|name| name != "gh" && (name != "git" || leading_semicolon))
+                && executable.is_some_and(|name| name != "gh")
                 && exact_safe_segment_with_context(model, segment, allow_git_helper_context, moved)
                 && (!after_semicolon
                     || exact_safe_segment_with_context(

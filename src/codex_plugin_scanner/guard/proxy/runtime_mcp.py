@@ -82,7 +82,7 @@ from ..store import GuardStore
 from ..tool_decision_evidence import tool_decision_scanner_evidence as _tool_decision_scanner_evidence
 from ._env import _build_scrubbed_env
 from .native_mcp_child_io import _ChildOutputFrame, _NativeChildProcess, _NativeMcpChildIo
-from .runtime_mcp_projection import McpCallProjector
+from .runtime_mcp_projection import McpCallProjector, review_artifact_payload
 from .stdio import (
     ProxyIoTimeoutError,
     _blocked_tool_response,
@@ -3215,35 +3215,16 @@ class RuntimeMcpGuardProxy:
         policy_action: str = "require-reapproval",
         scanner_evidence: tuple[dict[str, object], ...] = (),
     ) -> dict[str, Any]:
-        """Build the artifact payload for approval center queueing.
-
-        Includes browser intent metadata when the MCP tool call is a browser
-        automation call (HGBM063-HGBM065).
-        """
+        """Build the artifact payload for approval center queueing."""
         projection = self._call_projector.project(tool_name, params, artifact)
-        changed_fields: list[str] = ["runtime_tool_call"]
-
-        if projection.browser_intent is not None:
-            changed_fields.append("runtime_browser_tool_call")
-
-        payload: dict[str, Any] = {
-            "artifact_id": artifact.artifact_id,
-            "artifact_name": artifact.name,
-            "artifact_hash": artifact_hash,
-            "artifact_type": artifact.artifact_type,
-            "source_scope": artifact.source_scope,
-            "config_path": artifact.config_path,
-            "changed_fields": changed_fields,
-            "policy_action": policy_action,
-            "launch_target": projection.display_launch_target,
-            "risk_summary": projection.risk_summary,
-            "risk_signals": list(signals),
-        }
-        if projection.browser_intent is not None:
-            payload["browser_intent"] = projection.browser_intent
-        if scanner_evidence:
-            payload["scanner_evidence"] = list(scanner_evidence)
-        return payload
+        return review_artifact_payload(
+            projection,
+            artifact,
+            artifact_hash,
+            signals,
+            policy_action=policy_action,
+            scanner_evidence=scanner_evidence,
+        )
 
     def _queue_approval_center_response(
         self,

@@ -140,7 +140,7 @@ fn route_defers_everything_else() {
         "remember": true,
     }));
     assert_eq!(route(&remembered, &allow), Err(ROUTE_UNSUPPORTED));
-    for kind in ["queue", "observe", "inline_approval", "package"] {
+    for kind in ["observe", "inline_approval", "package"] {
         assert_eq!(
             route(&proxy(json!({"kind": kind})), &allow),
             Err(ROUTE_UNSUPPORTED)
@@ -218,6 +218,14 @@ fn view_binds_one_harness_with_layers() {
         harness_view(Some(&renamed), "codex"),
         Err("mcp_relay_view_invalid")
     );
+    assert_eq!(bound.receipt_redaction_level, None);
+    let mut levelled = view.clone();
+    levelled["harnesses"]["codex"]["receipt_redaction_level"] = json!("partial");
+    let bound = harness_view(Some(&levelled), "codex").unwrap();
+    assert_eq!(bound.receipt_redaction_level.as_deref(), Some("partial"));
+    levelled["harnesses"]["codex"]["receipt_redaction_level"] = json!("bogus");
+    let bound = harness_view(Some(&levelled), "codex").unwrap();
+    assert_eq!(bound.receipt_redaction_level, None);
     let mut extra = view;
     extra["unexpected"] = json!(true);
     assert_eq!(

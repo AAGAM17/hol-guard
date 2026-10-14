@@ -46,6 +46,7 @@ fn fresh(action: GuardAction, artifact_hash: &str) -> Resolved {
         },
         decision,
         mode: "enforce".to_owned(),
+        redaction_level: None,
     }
 }
 

@@ -19,10 +19,11 @@
 //! A call the proxy forwards only after claiming its saved allow or one-shot
 //! approval is held for the relay to claim (see `mcp_relay_decide_claim.rs`).
 //!
+//! A call queued under `safe-alternative` blocks (`mcp_relay_decide_queue.rs`).
 //! Every other call defers, and the relay answers it with the proxy's
 //! fail-closed "no native decision" response: remote, bundle or unverifiable
-//! saved policy, a call that needs a prompt, a queue or an observe override,
-//! and any binding, lane or evidence failure.
+//! saved policy, a call that needs a prompt (the `ask` mode), an observe
+//! override, and any binding, lane or evidence failure.
 
 use crate::approval_proof_op::Disposition;
 use crate::mcp_tool_policy_decision::Decision;
@@ -120,6 +121,8 @@ struct Resolved {
     identity: McpToolCallIdentityPayloadV1,
     decision: Decision,
     mode: String,
+    /// The bound `receipt_redaction_level`, which the inbox row is written with.
+    redaction_level: Option<String>,
 }
 
 /// The route the proxy takes for a decided call.
@@ -137,6 +140,15 @@ enum Routed {
     Claim {
         source: String,
         policy_action: String,
+    },
+    /// Queue an approval request, as the blocked-request mode answers it.
+    Queue {
+        policy_action: String,
+    },
+    /// The queue route's safe-alternative block (`mcp_relay_decide_queue.rs`).
+    SafeAlternative {
+        policy_action: String,
+        redaction_level: String,
     },
 }
 
@@ -187,7 +199,8 @@ fn decide(
             mode: resolved.mode.clone(),
             package_present: false,
             // Both only steer a call that is neither allowed nor blocked,
-            // which defers below whatever they are.
+            // which is answered only under `safe-alternative`, where the
+            // proxy consults neither; any other mode defers its queue route.
             asks_for_approval: false,
             inline_available: false,
             tool_name: request.build.tool_name.clone(),
@@ -221,6 +234,12 @@ fn decide(
                 .hold(context, Instant::now())
                 .map(|ticket| Answer::Claim { ticket })
                 .ok_or(EVIDENCE_FULL)
+        }
+        Routed::Queue { policy_action } => {
+            let mode = admitted.binding.review.blocked_request_mode.as_deref();
+            let level = resolved.redaction_level.as_deref();
+            let routed = queue::safe_alternative(mode, level, policy_action)?;
+            settle(request, &resolved, routed, None, policy_store)
         }
         routed => settle(request, &resolved, routed, None, policy_store),
     }
@@ -280,6 +299,7 @@ fn resolve(
         identity,
         decision,
         mode: view.mode,
+        redaction_level: view.receipt_redaction_level,
     })
 }
 
@@ -296,6 +316,7 @@ fn settle(
     let harness = request.build.harness.as_str();
     let tool = &request.build.tool_name;
     let server = &request.build.server_name;
+    let mut review = None;
     let (blocked, outcome, source, policy_action) = match routed {
         Routed::Forward {
             source,
@@ -330,7 +351,20 @@ fn settle(
             "policy-block".to_owned(),
             "block".to_owned(),
         ),
-        Routed::Claim { .. } => return Err(ROUTE_UNSUPPORTED),
+        Routed::SafeAlternative {
+            policy_action,
+            redaction_level,
+        } => {
+            review = Some(json!({"redaction_level": redaction_level}));
+            let (message, data) = queue::safe_alternative_block(tool, server, &decision.signals);
+            (
+                Some(Answer::Block { message, data }),
+                "block",
+                queue::SAFE_ALTERNATIVE_SOURCE.to_owned(),
+                policy_action,
+            )
+        }
+        Routed::Claim { .. } | Routed::Queue { .. } => return Err(ROUTE_UNSUPPORTED),
     };
     let mut evidence = json!({
         "kind": "mcp_tool_call",
@@ -347,6 +381,10 @@ fn settle(
     });
     if let Some(append) = evidence_append {
         evidence["evidence_append"] = Value::Array(append);
+    }
+    // The silent inbox row the drain writes after the block receipt.
+    if let Some(review) = review {
+        evidence["review"] = review;
     }
     match blocked {
         // The relay commits the ticket once the child answered the forward.
@@ -439,50 +477,14 @@ fn empty_store_answer(need: &Value) -> Result<Value, &'static str> {
     }
 }
 
-/// The proxy route for a decided call, when it is a forward or a block, or a
-/// forward that first claims the pending saved approval.
-fn route(proxy: &Value, decision: &Decision) -> Result<Routed, &'static str> {
-    if proxy["gate"].get("disable") == Some(&Value::Bool(true)) {
-        return Err(ROUTE_UNSUPPORTED);
-    }
-    let routed = &proxy["route"];
-    if !routed["need"].is_null() || !routed["decision_override"].is_null() {
-        return Err(ROUTE_UNSUPPORTED);
-    }
-    let route = &routed["route"];
-    let text = |key: &str| route.get(key).and_then(Value::as_str).map(str::to_owned);
-    let pending = decision.pending.is_some();
-    match route.get("kind").and_then(Value::as_str) {
-        Some("stored_block") if !pending => Ok(Routed::StoredBlock),
-        Some("terminal") if !pending => Ok(Routed::Terminal {
-            policy_action: text("policy_action").ok_or(ROUTE_UNSUPPORTED)?,
-        }),
-        Some("allow_and_forward") if route.get("remember") == Some(&Value::Bool(false)) => {
-            let source = text("decision_source").ok_or(ROUTE_UNSUPPORTED)?;
-            let policy_action = text("policy_action").ok_or(ROUTE_UNSUPPORTED)?;
-            // `approval_decision=decision if route["pass_approval_decision"]`:
-            // a pending decision is claimed before the forward.
-            match (pending, route.get("pass_approval_decision")) {
-                (false, _) => Ok(Routed::Forward {
-                    source,
-                    policy_action,
-                }),
-                (true, Some(Value::Bool(true))) => Ok(Routed::Claim {
-                    source,
-                    policy_action,
-                }),
-                _ => Err(ROUTE_UNSUPPORTED),
-            }
-        }
-        _ => Err(ROUTE_UNSUPPORTED),
-    }
-}
-
 #[path = "mcp_relay_decide_claim.rs"]
 mod claim;
 pub(crate) use claim::claim;
 #[path = "mcp_relay_decide_package.rs"]
 mod package;
+#[path = "mcp_relay_decide_queue.rs"]
+mod queue;
+use queue::route;
 #[path = "mcp_relay_decide_saved.rs"]
 mod saved;
 #[path = "mcp_relay_decide_store.rs"]

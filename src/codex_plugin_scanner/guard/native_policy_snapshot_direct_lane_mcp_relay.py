@@ -8,7 +8,9 @@ that decides such a call for the native relay needs the same three inputs, as
 the daemon had them when it published. A harness is bound only when the home
 and every settled workspace agree on its view, and the layers only when the
 publisher's command-control runtime holds readable ones; anything else is
-left out and the relay's call defers.
+left out and the relay's call defers. A bound harness also carries the
+receipt redaction level a queued call's silent inbox row is written with,
+when every config agrees on it; without it only such a call defers.
 """
 
 from __future__ import annotations
@@ -30,6 +32,9 @@ MCP_RELAY_VIEW_SCHEMA = "guard-mcp-relay-view.v1"
 # The harnesses whose MCP proxy the relay replaces.
 MCP_RELAY_HARNESSES = ("codex", "copilot", "cursor", "opencode")
 
+# The field a bound harness carries its receipt redaction level in.
+REDACTION_LEVEL_KEY = "receipt_redaction_level"
+_REDACTION_LEVELS = frozenset({"full", "partial", "none"})
 _MAX_VIEW_BYTES = 262_144
 _MAX_SAFE_INTEGER = 2**53 - 1
 
@@ -90,6 +95,16 @@ def harness_view(config: object, harness: str) -> dict[str, object] | None:
     return dict(stable) if isinstance(stable["config"].get("mode"), str) else None
 
 
+def uniform_redaction_level(configs: Iterable[object]) -> str | None:
+    """The receipt redaction level every compiled config resolves to."""
+
+    levels = {getattr(config, "receipt_redaction_level", None) for config in configs}
+    if len(levels) != 1:
+        return None
+    (level,) = levels
+    return level if isinstance(level, str) and level in _REDACTION_LEVELS else None
+
+
 def uniform_harness_views(configs: Iterable[object]) -> dict[str, object]:
     """The harness views every compiled config agrees on."""
 
@@ -97,10 +112,12 @@ def uniform_harness_views(configs: Iterable[object]) -> dict[str, object]:
     harnesses: dict[str, object] = {}
     if not compiled:
         return harnesses
+    level = uniform_redaction_level(compiled)
     for harness in MCP_RELAY_HARNESSES:
         views = [harness_view(config, harness) for config in compiled]
-        if views[0] is not None and all(view == views[0] for view in views[1:]):
-            harnesses[harness] = views[0]
+        bound = views[0]
+        if bound is not None and all(view == bound for view in views[1:]):
+            harnesses[harness] = bound if level is None else {**bound, REDACTION_LEVEL_KEY: level}
     return harnesses
 
 

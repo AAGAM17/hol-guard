@@ -4,7 +4,10 @@
 //! loaded, and binds the approval hash to that config plus the managed-policy
 //! and sandbox fields. The publisher binds a harness only when every config
 //! the lane settles agrees on those fields, and binds the extension-control
-//! layers the store verified. Without either the call defers.
+//! layers the store verified. Without either the call defers. The receipt
+//! redaction level a queued call's inbox row is written with is bound with
+//! the harness when every config agrees on it; without it a queued call
+//! defers.
 
 use guard_contracts::ContributedMcpLayerV1;
 use serde::Deserialize;
@@ -16,6 +19,8 @@ const VIEW_MISSING: &str = "mcp_relay_view_missing";
 const VIEW_INVALID: &str = "mcp_relay_view_invalid";
 const HARNESS_UNBOUND: &str = "mcp_relay_harness_unbound";
 const LAYERS_UNAVAILABLE: &str = "mcp_relay_layers_unavailable";
+/// `VALID_RECEIPT_REDACTION_LEVELS`.
+const REDACTION_LEVELS: [&str; 3] = ["full", "partial", "none"];
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -33,6 +38,9 @@ struct HarnessViewV1 {
     config: Map<String, Value>,
     /// The fields `build_tool_call_identity` binds into the approval token.
     hash_config: Map<String, Value>,
+    /// `receipt_redaction_level`, bound only when every config agrees on it.
+    #[serde(default)]
+    receipt_redaction_level: Option<String>,
 }
 
 /// One harness's view, ready for a call.
@@ -42,6 +50,8 @@ pub(super) struct HarnessView {
     pub(super) hash_config: Map<String, Value>,
     pub(super) mode: String,
     pub(super) layers: Vec<ContributedMcpLayerV1>,
+    /// One of `full`, `partial` or `none`; any other value reads as unbound.
+    pub(super) receipt_redaction_level: Option<String>,
 }
 
 pub(super) fn harness_view(
@@ -65,5 +75,8 @@ pub(super) fn harness_view(
         hash_config: entry.hash_config,
         mode,
         layers: parsed.extension_layers.ok_or(LAYERS_UNAVAILABLE)?,
+        receipt_redaction_level: entry
+            .receipt_redaction_level
+            .filter(|level| REDACTION_LEVELS.contains(&level.as_str())),
     })
 }

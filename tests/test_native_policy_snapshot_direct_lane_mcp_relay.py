@@ -13,11 +13,13 @@ from codex_plugin_scanner.guard.native_policy_snapshot_direct_lane_mcp_relay imp
     MCP_RELAY_BINDING_KEY,
     MCP_RELAY_DECIDE_FEATURE,
     MCP_RELAY_VIEW_SCHEMA,
+    REDACTION_LEVEL_KEY,
     NativePolicySnapshotMcpRelayMixin,
     extension_layers,
     harness_view,
     mcp_relay_view,
     uniform_harness_views,
+    uniform_redaction_level,
 )
 from codex_plugin_scanner.guard.runtime.extension_control_authority import (
     AuthorityHealth,
@@ -85,6 +87,23 @@ def test_only_harnesses_every_config_agrees_on_are_bound(tmp_path: Path) -> None
     assert set(uniform_harness_views([home])) == {"codex", "copilot", "cursor", "opencode"}
     assert set(uniform_harness_views([home, workspace])) == {"codex", "copilot", "opencode"}
     assert uniform_harness_views([]) == {}
+
+
+def test_a_bound_harness_carries_the_redaction_level_every_config_agrees_on(tmp_path: Path) -> None:
+    home = _config(tmp_path, receipt_redaction_level="partial")
+    workspace = _config(tmp_path, receipt_redaction_level="none")
+
+    bound = uniform_harness_views([home, _config(tmp_path, receipt_redaction_level="partial")])
+    assert {view[REDACTION_LEVEL_KEY] for view in bound.values()} == {"partial"}  # type: ignore[index]
+    assert uniform_redaction_level([home, workspace]) is None
+    assert uniform_redaction_level([_config(tmp_path, receipt_redaction_level="secret")]) is None
+    assert uniform_redaction_level([]) is None
+    # A disagreement leaves the harnesses bound without the level, so only a
+    # queued call defers.
+    unlevelled = uniform_harness_views([home, workspace])
+    assert set(unlevelled) == {"codex", "copilot", "cursor", "opencode"}
+    assert all(REDACTION_LEVEL_KEY not in view for view in unlevelled.values())  # type: ignore[operator]
+    assert unlevelled["codex"] == harness_view(home, "codex")
 
 
 def test_a_view_the_resident_would_read_differently_binds_nothing(tmp_path: Path) -> None:

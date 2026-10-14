@@ -74,6 +74,45 @@ class McpCallProjector:
         return projection
 
 
+def review_artifact_payload(
+    projection: McpCallProjection,
+    artifact: Any,
+    artifact_hash: str,
+    signals: tuple[str, ...],
+    *,
+    policy_action: str,
+    scanner_evidence: tuple[dict[str, object], ...] = (),
+) -> dict[str, Any]:
+    """The evaluation item a queued ``tools/call`` is written to the inbox with.
+
+    Includes browser intent metadata when the MCP tool call is a browser
+    automation call (HGBM063-HGBM065). ``projection`` is the call projected
+    with its artifact.
+    """
+
+    changed_fields: list[str] = ["runtime_tool_call"]
+    if projection.browser_intent is not None:
+        changed_fields.append("runtime_browser_tool_call")
+    payload: dict[str, Any] = {
+        "artifact_id": artifact.artifact_id,
+        "artifact_name": artifact.name,
+        "artifact_hash": artifact_hash,
+        "artifact_type": artifact.artifact_type,
+        "source_scope": artifact.source_scope,
+        "config_path": artifact.config_path,
+        "changed_fields": changed_fields,
+        "policy_action": policy_action,
+        "launch_target": projection.display_launch_target,
+        "risk_summary": projection.risk_summary,
+        "risk_signals": list(signals),
+    }
+    if projection.browser_intent is not None:
+        payload["browser_intent"] = projection.browser_intent
+    if scanner_evidence:
+        payload["scanner_evidence"] = list(scanner_evidence)
+    return payload
+
+
 def _projection(payload: dict[str, Any]) -> McpCallProjection:
     launch_target = payload["launch_target"]
     safe_params = payload["safe_params"]

@@ -23,6 +23,7 @@ pub struct PathContext<'a> {
 mod contained_wrapper;
 pub(crate) mod curl_reads;
 pub(crate) mod docker_reads;
+mod docker_start;
 pub(crate) mod kubectl_reads;
 pub(crate) mod port_probes;
 mod workspace_contained;
@@ -632,7 +633,8 @@ fn evaluate_single_command(
     if exact_safe_command_with_context(&model, false, context)
         && !bun_eval::node_inline_preload_configured(&model, execution_environment)
     {
-        let reason_code = curl_reads::proven_reason_code(&model);
+        let reason_code = docker_start::proven_reason_code(&model)
+            .unwrap_or_else(|| curl_reads::proven_reason_code(&model));
         return Ok(pretool_decision(
             model,
             "allow",

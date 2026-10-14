@@ -3,7 +3,8 @@
 //! `docker ps` and `docker images` (and their `container ls` / `image ls`
 //! spellings) print the same summary the daemon already exposes to `ps`:
 //! names, images, ports, status and the container command. They create,
-//! start, pull and change nothing. Every option is allowlisted.
+//! start, pull and change nothing. Every option is allowlisted. Starting an
+//! existing container is proven in `docker_start`.
 //!
 //! Still reviewed:
 //! - any option before the subcommand. `-H`/`--host`, `--context` and
@@ -53,9 +54,10 @@ pub(super) fn safe_docker_segment(
 }
 
 /// A whole `docker` segment, generic checks included, that the native proof
-/// accepts as a container or image listing. The compatibility layer uses it
-/// so it does not treat the same listing as a possibly sensitive operation.
-pub(crate) fn proven_read_segment(
+/// accepts as a container or image listing or as a start of existing
+/// containers. The compatibility layer uses it so it does not treat
+/// the same command as a possibly sensitive operation.
+pub(crate) fn proven_segment(
     model: &crate::CanonicalCommandV1,
     segment: &crate::CommandSegmentV1,
     context: super::PathContext<'_>,
@@ -77,7 +79,7 @@ pub(super) fn safe_docker_arguments(arguments: &[String]) -> bool {
         ["container", "ls" | "list" | "ps", rest @ ..] => (Listing::Containers, rest),
         ["images", rest @ ..] => (Listing::Images, rest),
         ["image", "ls" | "list", rest @ ..] => (Listing::Images, rest),
-        _ => return false,
+        _ => return super::docker_start::safe_start_arguments(&words),
     };
     listing_options_safe(listing, rest)
 }

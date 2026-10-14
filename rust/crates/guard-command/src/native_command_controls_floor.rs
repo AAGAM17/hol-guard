@@ -5,9 +5,9 @@ use guard_contracts::{NativeCommandPermissionObservationV1, PreToolResultV1};
 use crate::native_command_program::{NativeCommandProgram, ProgramRule};
 use crate::CanonicalCommandV1;
 
-/// A docker listing the native proof admits carries no container-runtime
-/// observation, so a disabled container-runtime extension, or one that depends
-/// on it, still blocks the listing here.
+/// A docker listing or container start the native proof admits carries no
+/// container-runtime observation, so a disabled container-runtime extension,
+/// or one that depends on it, still blocks the command here.
 pub(super) fn proof_owner_disabled(
     blocked_extensions: &BTreeSet<String>,
     command: Option<&CanonicalCommandV1>,
@@ -16,7 +16,7 @@ pub(super) fn proof_owner_disabled(
     blocked_extensions.contains("command.container-runtime")
         && command.is_some_and(|command| {
             command.segments.iter().any(|segment| {
-                crate::pretool::docker_reads::proven_read_segment(command, segment, context)
+                crate::pretool::docker_reads::proven_segment(command, segment, context)
             })
         })
 }

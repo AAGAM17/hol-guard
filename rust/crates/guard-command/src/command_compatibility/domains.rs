@@ -250,10 +250,11 @@ pub(super) fn observe(
 ) {
     let executable = basename(segment);
     let arguments = &segment.arguments;
-    // A proven container or image listing changes nothing and prints no
-    // container environment, credential or Compose project data.
+    // A proven container or image listing, or a start of an existing
+    // container, grants no new host access and prints no container
+    // environment, credential or Compose project data.
     if executable == "docker"
-        && !crate::pretool::docker_reads::proven_read_segment(command, segment, context)
+        && !crate::pretool::docker_reads::proven_segment(command, segment, context)
     {
         docker(segment, index, output);
     }

@@ -457,3 +457,6 @@ fn a_binding_without_the_published_state_defers() {
         Err(HookDirectDefer::SavedDecision)
     ));
 }
+
+#[path = "hook_direct_saved_subdirectory_tests.rs"]
+mod subdirectory;

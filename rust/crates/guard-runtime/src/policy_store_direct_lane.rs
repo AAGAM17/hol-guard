@@ -8,7 +8,9 @@
 //!
 //! - the publisher's ACK file still names this generation and digest, with an
 //!   unexpired lease (the publisher unlinks it whenever it withdraws its ACK);
-//! - the request workspace was settled by this snapshot;
+//! - the request workspace was settled by this snapshot, or, for a hook, is a
+//!   file-less canonical subdirectory of one
+//!   (`policy_store_direct_lane_subdirectory.rs`);
 //! - every watched non-database input still has the stat identity the
 //!   publisher observed before compiling.
 //!
@@ -208,10 +210,28 @@ impl PolicySnapshotStore {
     }
 
     /// Admission that also returns the binding, whose daemon state the
-    /// direct hook operation checks next.
+    /// direct operation checks next.
     pub(crate) fn admit_direct_hook(
         &self,
         workspace: &str,
+    ) -> Result<(Arc<AdmittedPolicySnapshot>, Arc<DirectLaneBinding>), DirectLaneDefer> {
+        self.admit_direct(workspace, false)
+    }
+
+    /// Hook admission, which also covers a file-less subdirectory of a
+    /// settled workspace on the current ACK, as the daemon's hook readiness
+    /// does (`policy_store_direct_lane_subdirectory.rs`).
+    pub(crate) fn admit_direct_hook_or_subdirectory(
+        &self,
+        workspace: &str,
+    ) -> Result<(Arc<AdmittedPolicySnapshot>, Arc<DirectLaneBinding>), DirectLaneDefer> {
+        self.admit_direct(workspace, true)
+    }
+
+    fn admit_direct(
+        &self,
+        workspace: &str,
+        file_less_subdirectory: bool,
     ) -> Result<(Arc<AdmittedPolicySnapshot>, Arc<DirectLaneBinding>), DirectLaneDefer> {
         if !cfg!(unix) {
             // Stat identity parity with the publisher is only established
@@ -224,7 +244,10 @@ impl PolicySnapshotStore {
             .ok()
             .and_then(|binding| binding.clone())
             .ok_or(DirectLaneDefer::Unbound)?;
-        if !binding.workspaces.contains(workspace) {
+        let known = binding.workspaces.contains(workspace)
+            || (file_less_subdirectory
+                && subdirectory::file_less_subdirectory(&binding.workspaces, workspace));
+        if !known {
             return Err(DirectLaneDefer::WorkspaceUnknown);
         }
         let snapshot = self.admit_binding_lease(&binding)?;
@@ -330,6 +353,9 @@ fn observe_input(path: &str) -> Option<DirectLaneStatV1> {
 fn observe_input(_path: &str) -> Option<DirectLaneStatV1> {
     None
 }
+
+#[path = "policy_store_direct_lane_subdirectory.rs"]
+mod subdirectory;
 
 #[path = "policy_store_direct_lane_review.rs"]
 mod review;

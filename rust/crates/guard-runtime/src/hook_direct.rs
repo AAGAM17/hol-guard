@@ -290,7 +290,7 @@ fn answer(
         .ok_or(HookDirectDefer::WorkspaceMissing)?;
     let workspace = settled_directory(&candidate)?;
     let (snapshot, binding) = policy_store
-        .admit_direct_hook(&workspace)
+        .admit_direct_hook_or_subdirectory(&workspace)
         .map_err(HookDirectDefer::Lane)?;
     if structured_mediation
         && !pi::structured_output_unrequired(

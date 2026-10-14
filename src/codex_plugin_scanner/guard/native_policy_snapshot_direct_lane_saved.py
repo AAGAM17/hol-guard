@@ -14,10 +14,15 @@ import os
 import sqlite3
 from collections.abc import Iterable, Mapping
 from contextlib import AbstractContextManager
-from typing import cast
+from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 from .native_policy_snapshot_direct_lane import DIRECT_HOOK_SAVED_DECISION_FEATURE
 from .runtime.extension_control_runtime import current_extension_control_binding_digest
+from .store_base import _now
+
+if TYPE_CHECKING:
+    from .native_policy_snapshot_publisher import NativePolicySnapshotPublisher
 
 # Mirrors the resident limits in guard-policy-snapshot's direct_lane module.
 _MAX_ENVIRONMENT_ENTRIES = 1024
@@ -94,6 +99,34 @@ def _integrity_state(store: object) -> dict[str, object] | None:
     return dict(state)
 
 
+def refresh_integrity_state(store: object) -> bool:
+    """Bring the stored policy-integrity state current with the store's own writer.
+
+    The resident accepts a saved decision only while the published state equals
+    the stored row. Readers refresh that row lazily: a fresh home has none, and
+    a saved decision advances the generation after its write refreshed it. So
+    the publisher refreshes it before observing its inputs, without minting a
+    key, so a fresh home binds a real state. A saved decision leaves the
+    effective policy unchanged and so republishes nothing; the reconcile
+    recheck below refreshes after it and rebinds the state it left. Returns
+    whether the stored row moved, which a key the publisher just minted does.
+    """
+
+    connect = getattr(store, "_connect", None)
+    refresh = getattr(store, "_refresh_policy_integrity_state", None)
+    load = getattr(store, "_load_policy_integrity_state", None)
+    if not callable(connect) or not callable(refresh) or not callable(load):
+        return False
+    try:
+        with cast("AbstractContextManager[object]", connect()) as connection:
+            before = load(connection)
+            refresh(connection, now=_now(), create_key=False)
+            return load(connection) != before
+    except (OSError, RuntimeError, ValueError, sqlite3.Error):
+        # The row stays as it was; a stale or missing one fails closed.
+        return False
+
+
 def with_saved_decision_state(
     binding: Mapping[str, object] | None,
     *,
@@ -116,3 +149,54 @@ def with_saved_decision_state(
     bound["exact_action_control_digest"] = digest
     bound["policy_integrity_state"] = state
     return bound
+
+
+def _database_stamp(guard_home: Path) -> tuple[tuple[int, int] | None, ...]:
+    stamps: list[tuple[int, int] | None] = []
+    for name in ("guard.db", "guard.db-wal"):
+        try:
+            metadata = (guard_home / name).stat()
+        except OSError:
+            stamps.append(None)
+            continue
+        stamps.append((metadata.st_mtime_ns, metadata.st_size))
+    return tuple(stamps)
+
+
+class NativePolicySnapshotSavedStateMixin:
+    """Rebind the lane once the stored policy-integrity state moves past the bound one."""
+
+    # The state the open lane bound, and the database stamp it was last checked at.
+    _direct_lane_integrity_state: dict[str, object] | None = None
+    _integrity_checked_stamp: tuple[tuple[int, int] | None, ...] | None = None
+
+    def _bind_relay_and_saved_state(self, binding: object, features: Iterable[str]) -> None:
+        """Record the relay view and the integrity state an ACKed binding carries."""
+
+        publisher = cast("NativePolicySnapshotPublisher", self)
+        publisher._bind_mcp_relay_view(binding, features)
+        state = binding.get("policy_integrity_state") if isinstance(binding, Mapping) else None
+        self._direct_lane_integrity_state = (
+            dict(cast(Mapping[str, object], state)) if isinstance(state, Mapping) else None
+        )
+
+    def _recheck_direct_lane_saved_state(self) -> None:
+        """Refresh after a database write and rebind once the state moved.
+
+        Only a write can move the state, so an unchanged database costs two
+        stats. The stamp is taken before the refresh, so a write that lands
+        during or after it is refreshed on the next reconcile. A refresh that
+        wrote the row costs one more refresh, which writes nothing.
+        """
+
+        publisher = cast("NativePolicySnapshotPublisher", self)
+        bound = self._direct_lane_integrity_state
+        if bound is None or publisher._direct_lane_ack_target is None:
+            return
+        stamp = _database_stamp(publisher.guard_home)
+        if stamp == self._integrity_checked_stamp:
+            return
+        self._integrity_checked_stamp = stamp
+        refresh_integrity_state(publisher.store)
+        if _integrity_state(publisher.store) != bound:
+            publisher._rebind_direct_lane()

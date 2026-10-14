@@ -26,7 +26,7 @@ from .native_policy_snapshot_direct_lane_review import (
     review_facts_bound,
     with_review_facts,
 )
-from .native_policy_snapshot_direct_lane_saved import with_saved_decision_state
+from .native_policy_snapshot_direct_lane_saved import refresh_integrity_state, with_saved_decision_state
 from .native_policy_snapshot_direct_lane_structured import (
     bound_structured_output_view,
     with_structured_output_view,
@@ -94,6 +94,7 @@ class NativePolicySnapshotPublicationMixin:
                 publisher._recheck_direct_lane_review_facts()
                 publisher._recheck_direct_lane_structured_output()
                 publisher._recheck_direct_lane_mcp_relay()
+                publisher._recheck_direct_lane_saved_state()
             with publisher._condition:
                 if publisher._closed:
                     return
@@ -159,8 +160,7 @@ class NativePolicySnapshotPublicationMixin:
         if current is None or current == bound:
             return
         # A lane published before the daemon recorded where it listens binds
-        # no origin, so learning that origin moves nothing the lane carries.
-        # The next publish binds it.
+        # no origin, so learning it moves nothing; the next publish binds it.
         if bound[0] is None and current[1] == bound[1]:
             return
         publisher._rebind_direct_lane()
@@ -239,18 +239,17 @@ class NativePolicySnapshotPublicationMixin:
             # A cold verified read may itself migrate authenticated catalog
             # state and close the mutation barrier. Recapture once before IPC;
             # accepting its previous epoch would also hide concurrent changes.
-            for _ in range(2):
+            for attempt in range(2):
                 with publisher._condition:
                     publish_epoch = publisher._epoch
-                    # Compile exactly this set. A workspace registered later
-                    # stays pending for the next publish; compiling its overlay
-                    # now would make the ACKed digest disagree with the
-                    # settled-only reconcile and withdraw readiness home-wide.
+                    # Compile exactly this set. A later workspace stays pending:
+                    # compiling its overlay now would make the ACKed digest disagree
+                    # with the settled-only reconcile and withdraw readiness home-wide.
                     compiled_workspaces = frozenset(publisher._workspace_paths)
-                # Observe inputs before compiling: a change after this point
-                # leaves the resident with a stat mismatch, never a stale pass.
-                # The binding is optional, so an observation failure only
-                # keeps the lane closed; publication reports its own errors.
+                refresh_integrity_state(publisher.store)
+                # Observe inputs before compiling: a later change leaves the resident
+                # a stat mismatch, never a stale pass. The binding is optional, so an
+                # observation failure only keeps the lane closed.
                 try:
                     direct_lane = direct_lane_binding(
                         inputs=publisher._current_policy_input_stats(),
@@ -267,6 +266,11 @@ class NativePolicySnapshotPublicationMixin:
                 context = publisher._publication_context(workspaces=compiled_workspaces)
                 if context is None:
                     return
+                # The context may mint the integrity key, which moves the state
+                # without a database write. Recapture so inputs follow the state.
+                if attempt == 0 and refresh_integrity_state(publisher.store):
+                    context = None
+                    continue
                 with publisher._condition:
                     if publisher._closed:
                         return
@@ -351,9 +355,8 @@ class NativePolicySnapshotPublicationMixin:
             with hold_command_control_authority_lock(publisher.guard_home, shared=True):
                 source_matches = publisher._compiled_business_source() == business_source
                 with publisher._condition:
-                    # A mutation may have invalidated the barrier while this
-                    # request was in flight. Do not let an older ACK make that
-                    # newer policy appear ready.
+                    # A mutation may have invalidated the barrier in flight; an
+                    # older ACK must not make that newer policy appear ready.
                     if publisher._closed or publisher._epoch != publish_epoch:
                         return
                     if not source_matches:
@@ -375,9 +378,8 @@ class NativePolicySnapshotPublicationMixin:
                             resident_fingerprint, resident_generation
                         )
                     ):
-                        # Hook reviews touch resident generation files while this
-                        # publish is in flight. Watch still matches the resident
-                        # that acknowledged the snapshot; do not drop it and pause.
+                        # Hook reviews touch resident generation files in flight; Watch
+                        # still matches the resident that ACKed, so do not drop it.
                         resident_fingerprint_confirmed = resident_fingerprint
                     if resident_fingerprint_confirmed is None:
                         publisher._acked = False
@@ -423,7 +425,7 @@ class NativePolicySnapshotPublicationMixin:
                         publisher._direct_lane_structured_output = bound_structured_output_view(
                             direct_lane, resident_features
                         )
-                        publisher._bind_mcp_relay_view(direct_lane, resident_features)
+                        publisher._bind_relay_and_saved_state(direct_lane, resident_features)
                         evidence_drain = isinstance(direct_lane, Mapping) and direct_lane.get("evidence_drain") is True
                         publisher._publish_direct_lane_ack(snapshot, evidence_drain=evidence_drain)
                     else:

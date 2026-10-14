@@ -20,6 +20,7 @@ from .native_policy_snapshot_constants import (
     NativePolicySnapshotError,
 )
 from .native_policy_snapshot_direct_lane_mcp_relay import NativePolicySnapshotMcpRelayMixin
+from .native_policy_snapshot_direct_lane_saved import NativePolicySnapshotSavedStateMixin
 from .native_policy_snapshot_harness_postures import binding_with_harness_postures
 from .native_policy_snapshot_publication import NativePolicySnapshotPublicationMixin
 from .native_policy_snapshot_publisher_inputs import NativePolicySnapshotPublisherInputs
@@ -111,6 +112,7 @@ class NativePolicySnapshotPublisher(
     NativePolicySnapshotWorkspaceReadinessMixin,
     NativePolicySnapshotPublicationMixin,
     NativePolicySnapshotMcpRelayMixin,
+    NativePolicySnapshotSavedStateMixin,
     NativePolicySnapshotPublisherInputs,
 ):
     """Asynchronously publish an authenticated snapshot and expose its barrier."""

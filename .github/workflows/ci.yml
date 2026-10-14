@@ -372,7 +372,8 @@ jobs:
             tests/test_guard_command_corpus_native_contract.py::test_native_contract_validates_every_authored_signature_without_rewriting_evidence \
             tests/test_pi_adapter.py::TestPiInstall::test_install_writes_managed_extension_that_denies_on_hook_errors \
             tests/test_pi_adapter.py::TestPiInstall::test_managed_extension_fails_safe_on_ambiguous_success_payloads \
-            tests/test_mcp_relay_handoff.py
+            tests/test_mcp_relay_handoff.py \
+            tests/test_mcp_relay_lane_ready_install.py
       - name: Provision bubblewrap so the gates see the Linux workspace sandbox
         # Without it every command the sandbox would contain falls back to
         # review, and the gates measure a host that Linux users with

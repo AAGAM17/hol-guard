@@ -1,27 +1,9 @@
-use super::store::require_no_saved_policy;
 use super::subject::{connection_hash, server_identity_hash, tool_name};
 use super::view::harness_view;
 use super::*;
-use crate::local_store_read::{schema_checksum, STORE_FILE_NAME, SUPPORTED_SCHEMA_VERSION};
 use crate::mcp_tool_policy_decision::Current;
 use guard_command::effect_decision::GuardAction;
 use guard_contracts::McpToolCallArtifactV1;
-use rusqlite::{params, Connection};
-use std::path::PathBuf;
-
-fn temp_home(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "mcp_relay_decide_{}_{}_{}",
-        std::process::id(),
-        tag,
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn artifact(metadata: Value) -> McpToolCallArtifactV1 {
     McpToolCallArtifactV1 {
@@ -218,80 +200,6 @@ fn view_binds_one_harness_with_layers() {
     assert_eq!(
         harness_view(Some(&extra), "codex"),
         Err("mcp_relay_view_invalid")
-    );
-}
-
-fn store(tag: &str) -> (PathBuf, Connection) {
-    let home = temp_home(tag);
-    let connection = Connection::open(home.join(STORE_FILE_NAME)).unwrap();
-    connection
-        .execute_batch(
-            "create table local_cli_schema_migration (singleton integer primary key,
-               version integer not null, checksum text not null);
-             create table policy_decisions (id integer primary key);
-             create table guard_local_once_approvals (id integer primary key);
-             create table sync_state (state_key text primary key, payload_json text not null);",
-        )
-        .unwrap();
-    connection
-        .execute(
-            "insert into local_cli_schema_migration (singleton, version, checksum) values (1, ?1, ?2)",
-            params![SUPPORTED_SCHEMA_VERSION, schema_checksum(SUPPORTED_SCHEMA_VERSION)],
-        )
-        .unwrap();
-    (home, connection)
-}
-
-#[test]
-fn store_without_saved_policy_answers_lookups() {
-    assert_eq!(require_no_saved_policy(&temp_home("absent")), Ok(()));
-    let (home, connection) = store("empty");
-    connection
-        .execute(
-            "insert into sync_state (state_key, payload_json) values ('policy_integrity', '{}')",
-            [],
-        )
-        .unwrap();
-    assert_eq!(require_no_saved_policy(&home), Ok(()));
-}
-
-#[test]
-fn store_with_saved_policy_defers() {
-    let cases = [
-        "insert into policy_decisions (id) values (1)",
-        "insert into guard_local_once_approvals (id) values (1)",
-        "insert into sync_state (state_key, payload_json) values ('policy_bundle', '{}')",
-    ];
-    for (index, change) in cases.into_iter().enumerate() {
-        let (home, connection) = store(&format!("saved{index}"));
-        connection.execute(change, []).unwrap();
-        assert_eq!(
-            require_no_saved_policy(&home),
-            Err("mcp_relay_saved_policy")
-        );
-    }
-}
-
-#[test]
-fn store_with_unknown_schema_defers() {
-    let (home, connection) = store("newer");
-    connection
-        .execute(
-            "update local_cli_schema_migration set version = ?1",
-            params![SUPPORTED_SCHEMA_VERSION + 1],
-        )
-        .unwrap();
-    assert_eq!(
-        require_no_saved_policy(&home),
-        Err("mcp_relay_store_unreadable")
-    );
-    let (home, connection) = store("unmarked");
-    connection
-        .execute("delete from local_cli_schema_migration", [])
-        .unwrap();
-    assert_eq!(
-        require_no_saved_policy(&home),
-        Err("mcp_relay_store_unreadable")
     );
 }
 

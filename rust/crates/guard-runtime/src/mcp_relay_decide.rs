@@ -5,9 +5,11 @@
 //! operation repeats that path for the calls whose answer needs nothing the
 //! resident cannot read itself: a workspace the current snapshot settled while
 //! the publisher's ACK holds, a harness the binding's MCP view covers, and a
-//! store without saved policy rows or one-shot approvals, so every saved
-//! lookup the policy names has no decision. Such a call is either forwarded
-//! (an allow or warn) or blocked (a terminal or stored block). A block's
+//! store whose saved lookups the resident reads as the proxy would: none at
+//! all, or only local rows the daemon's published integrity key verifies (see
+//! `mcp_relay_decide_store.rs` and `mcp_relay_decide_saved.rs`). Such a call
+//! is either forwarded (an allow or warn) or blocked (a terminal or stored
+//! block). A block's
 //! evidence is queued for the daemon's drain before the answer is returned.
 //! The proxy records a forward only after the child answered it, so a
 //! forward's evidence is held under a ticket the relay commits once the child
@@ -15,9 +17,10 @@
 //! a lost answer) leaves no allow receipt.
 //!
 //! Every other call defers, and the relay answers it with the proxy's
-//! fail-closed "no native decision" response: a saved policy row, a pending
-//! approval, a call that needs a prompt, a queue or an observe override, and
-//! any binding, lane or evidence failure.
+//! fail-closed "no native decision" response: remote, bundle or unverifiable
+//! saved policy, a saved allow or one-shot approval the proxy would claim, a
+//! call that needs a prompt, a queue or an observe override, and any binding,
+//! lane or evidence failure.
 
 use crate::mcp_tool_policy_decision::Decision;
 use crate::mcp_tool_policy_flow::{evaluate_pass, Ctx, Pass, Phase, Stop};
@@ -26,6 +29,7 @@ use guard_contracts::{
     McpToolArgumentsV1, McpToolCallBuildV1, McpToolCallHashInputV1, McpToolCallIdentityPayloadV1,
     McpToolPolicyObservationV1, McpToolPolicyProxyInputV1,
 };
+use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::path::Path;
@@ -135,11 +139,24 @@ fn decide(
         .clone()
         .ok_or(BINDING_INCOMPLETE)?;
     let view = view::harness_view(binding.mcp_relay.as_ref(), harness)?;
-    store::require_no_saved_policy(Path::new(&request.guard_home))?;
+    let connection = store::open(Path::new(&request.guard_home))?;
+    // One read snapshot for the store checks and every lookup they gate, so a
+    // row or state the daemon commits between them cannot slip past.
+    let snapshot = connection
+        .as_ref()
+        .map(Connection::unchecked_transaction)
+        .transpose()
+        .map_err(|_| store::STORE_UNREADABLE)?;
+    let saved = match &connection {
+        Some(connection) => store::saved(connection, &binding, &request.guard_home)?,
+        None => None,
+    };
 
     let identity = identity(request, &view, control_digest)?;
     let subject = subject::subject(request, &identity, &view)?;
-    let decision = run_policy(&subject)?;
+    let decision = run_policy(&subject, saved.as_ref())?;
+    drop(saved);
+    drop(snapshot);
     let proxy = crate::mcp_tool_policy_proxy::proxy_payload(
         &McpToolPolicyProxyInputV1 {
             catalog_state: request.catalog_state.clone(),
@@ -254,9 +271,12 @@ fn identity(
     })
 }
 
-/// Run the tool policy, answering each saved lookup it names as the empty
-/// store answers it.
-fn run_policy(subject: &guard_contracts::McpToolPolicySubjectV1) -> Result<Decision, &'static str> {
+/// Run the tool policy, answering each saved lookup it names from the store:
+/// the saved rows when there are any, the empty store's answer otherwise.
+fn run_policy(
+    subject: &guard_contracts::McpToolPolicySubjectV1,
+    saved: Option<&store::Saved<'_>>,
+) -> Result<Decision, &'static str> {
     let mut observations: Vec<McpToolPolicyObservationV1> = Vec::new();
     for _ in 0..MAX_POLICY_ROUNDS {
         let ctx = Ctx {
@@ -267,7 +287,10 @@ fn run_policy(subject: &guard_contracts::McpToolPolicySubjectV1) -> Result<Decis
             Ok(Pass::Final(decision)) => return Ok(*decision),
             Ok(Pass::Claimed { .. }) | Err(Stop::Fail(_)) => return Err(POLICY_FAILED),
             Err(Stop::Need(need)) => {
-                let result = empty_store_answer(&need)?;
+                let result = match saved {
+                    Some(saved) => saved.answer(&need)?,
+                    None => empty_store_answer(&need)?,
+                };
                 observations.push(McpToolPolicyObservationV1 { need, result });
             }
         }
@@ -320,6 +343,8 @@ fn object(value: Option<&Value>) -> Option<&Map<String, Value>> {
     value.and_then(Value::as_object)
 }
 
+#[path = "mcp_relay_decide_saved.rs"]
+mod saved;
 #[path = "mcp_relay_decide_store.rs"]
 mod store;
 #[path = "mcp_relay_decide_subject.rs"]

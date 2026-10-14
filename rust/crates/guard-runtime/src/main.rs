@@ -82,6 +82,10 @@ mod claim_reuse_binding_tests;
 mod claim_reuse_then_tests;
 #[cfg(test)]
 mod claim_reuse_vectors_tests;
+mod claude_code_config;
+mod claude_code_detect;
+#[cfg(all(test, unix))]
+mod claude_code_vectors_tests;
 mod claude_guard_question;
 mod claude_hook_bridge;
 mod claude_hook_bridge_auth;

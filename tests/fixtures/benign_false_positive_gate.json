@@ -1503,6 +1503,70 @@
       "expect": "allow"
     },
     {
+      "id": "gh-api-contents-base64-decode-head",
+      "fix_area": "gh-api",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "gh api repos/example/app/contents/README.md --jq .content | base64 -d | head -20"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "gh-api-contents-tr-base64-decode",
+      "fix_area": "gh-api",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "gh api repos/example/app/contents/README.md --jq .content | tr -d '\\n' | base64 --decode"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "gh-api-body-tr-strip-cr",
+      "fix_area": "gh-api",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "gh api repos/example/app/pulls/1 --jq .body | tr -d '\\r'"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "gh-pr-view-json-base64",
+      "fix_area": "gh-api",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "gh pr view 1 --repo example/app --json body | base64"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
       "id": "gh-api-paginate-stderr-merged",
       "fix_area": "gh-api",
       "harnesses": [

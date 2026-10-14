@@ -260,7 +260,11 @@ pub(super) fn exact_safe_segment_with_context(
             (segment.pipeline_index > 0 && segment.arguments.is_empty())
                 || safe_reads::safe_plain_file_arguments(&segment.arguments, context)
         }
-        "base64" => super::base64_reads::safe_base64_arguments(&segment.arguments, context),
+        "base64" => {
+            super::base64_reads::safe_base64_arguments(&segment.arguments, context)
+                || (segment.pipeline_index > 0
+                    && super::stdin_filters::safe_arguments(basename, &segment.arguments))
+        }
         "du" => super::metadata_reads::safe_du_arguments(&segment.arguments, context),
         "df" => super::metadata_reads::safe_df_arguments(&segment.arguments),
         "diff" => super::metadata_reads::safe_diff_arguments(&segment.arguments, context),
@@ -330,7 +334,7 @@ pub(super) fn exact_safe_segment_with_context(
             segment.pipeline_index > 0,
             context,
         ),
-        "sort" | "uniq" | "cut" => {
+        "sort" | "uniq" | "cut" | "tr" => {
             segment.pipeline_index > 0
                 && super::stdin_filters::safe_arguments(basename, &segment.arguments)
         }

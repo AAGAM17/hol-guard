@@ -194,6 +194,68 @@ fn fallback_reads_after_a_routed_add_stay_reviewed() {
     );
 }
 
+/// `git -C <checkout>` names the new checkout without a `cd`, in any
+/// spelling that resolves to it. A `mkdir` may run in the shell's own
+/// directory between the reads.
+#[test]
+fn routed_reads_in_the_new_worktree_are_allowed() {
+    let (_cleanup, home, repository) = repository("chain-dash-c");
+    let destination = repository.parent().unwrap().join("app-flat");
+    let destination = destination.display();
+    for command in [
+        "git worktree add -b flat ../app-flat origin/main && git -C ../app-flat status --short".to_owned(),
+        "git worktree add -b flat ../app-flat origin/main && git -C ../app-flat log --oneline | head -5".to_owned(),
+        "git worktree add -b flat ~/org/app-flat origin/main && git -C ~/org/app-flat status --short".to_owned(),
+        format!("git worktree add -b flat {destination} origin/main && git --no-pager -C {destination} log --oneline -3 && git -C ../app-flat status"),
+        "git worktree add -b flat ~/org/app-flat origin/main && mkdir -p ~/notes && git -C ~/org/app-flat status --short".to_owned(),
+    ] {
+        assert_allowed(&home, &repository, &command);
+    }
+}
+
+/// Reads routed anywhere but the new checkout, writes, a `;` that would run
+/// the read after a failed add, and anything else between the reads keep
+/// their review, as does a `mkdir` in or below the new checkout, which
+/// could follow a link the checkout brings.
+#[test]
+fn other_routed_work_after_a_worktree_add_stays_reviewed() {
+    let (_cleanup, home, repository) = repository("chain-dash-c-reviewed");
+    // A link made before the add that will lead into the new checkout.
+    std::os::unix::fs::symlink(
+        repository.parent().unwrap().join("app-flat"),
+        home.join("pending"),
+    )
+    .unwrap();
+    let add = "git worktree add -b flat ../app-flat origin/main";
+    for tail in [
+        "&& git -C .. status",
+        "&& git -C ../app-flat/.. status",
+        "&& git -C ../link/../app-flat status",
+        "&& git -C '~/org/app-flat' status",
+        "&& git -C ../app-flat commit --allow-empty -m wip",
+        "&& git -C ../app-flat push origin flat",
+        "&& git -C ../app-flat -c core.fsmonitor=true status",
+        "&& git -C ../app-flat -C ../service status",
+        "&& git -C ../app-flat log -- ../service",
+        "&& git -C ../app-flat status && git status",
+        "&& git -C ../app-flat status && ls",
+        "&& touch ../app-flat/.gitattributes && git -C ../app-flat status",
+        "; git -C ../app-flat status",
+        "|| git -C ../app-flat status",
+        "&& mkdir -p ../app-flat/notes && git -C ../app-flat status",
+        "&& mkdir -p ~/org/app-flat/notes/keys && git -C ../app-flat status",
+        "&& mkdir -p ~/pending/notes && git -C ../app-flat status",
+        "&& mkdir -p ~/.ssh/keys && git -C ../app-flat status",
+    ] {
+        assert_reviewed(&home, &repository, &format!("{add} {tail}"));
+    }
+    assert_reviewed(
+        &home,
+        &repository,
+        "git worktree add -b flat ../link/flat origin/main && git -C ../link/flat status",
+    );
+}
+
 /// Without `-b` or `--detach`, `git worktree add <path> <branch>` checks an
 /// existing local branch out into the new checkout, running the same
 /// checkout as the `-b` form. The proof reads that branch's tip.

@@ -4,6 +4,7 @@ use std::time::Instant;
 
 #[path = "worktree_add_chain.rs"]
 pub(super) mod chain;
+pub(crate) use chain::new_checkout_route;
 #[path = "worktree_add_names.rs"]
 mod names;
 
@@ -292,19 +293,11 @@ fn proven_checkout(
     deadline: Option<Instant>,
     execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
 ) -> Option<(PathBuf, Option<String>)> {
-    if !segment.environment_names.is_empty() {
-        return None;
-    }
-    let spec = parse(segment)?;
-    let chdir_cwd = match spec.chdir {
-        Some(directory) => Some(resolve_chdir(directory, context)?),
-        None => None,
-    };
+    let (spec, destination, chdir_cwd) = planned_checkout(segment, context)?;
     let context = super::PathContext {
         cwd: chdir_cwd.as_deref().or(context.cwd),
         ..context
     };
-    let destination = fresh_destination(spec.destination, context)?;
     super::git_worktree::worktree_add_execution_free(
         segment.executable.as_deref().unwrap_or("git"),
         &spec.leading,
@@ -319,6 +312,30 @@ fn proven_checkout(
     )
     .unwrap_or(false)
     .then_some((destination, chdir_cwd))
+}
+
+/// The checkout `git worktree add` would create, with the directory its
+/// own `-C` enters, before any probe of the repository.
+fn planned_checkout<'a>(
+    segment: &'a CommandSegmentV1,
+    context: super::PathContext<'_>,
+) -> Option<(WorktreeAdd<'a>, PathBuf, Option<String>)> {
+    if !segment.environment_names.is_empty() {
+        return None;
+    }
+    let spec = parse(segment)?;
+    let chdir_cwd = match spec.chdir {
+        Some(directory) => Some(resolve_chdir(directory, context)?),
+        None => None,
+    };
+    let destination = fresh_destination(
+        spec.destination,
+        super::PathContext {
+            cwd: chdir_cwd.as_deref().or(context.cwd),
+            ..context
+        },
+    )?;
+    Some((spec, destination, chdir_cwd))
 }
 
 fn parse(segment: &CommandSegmentV1) -> Option<WorktreeAdd<'_>> {

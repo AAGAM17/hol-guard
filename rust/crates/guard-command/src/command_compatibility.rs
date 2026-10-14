@@ -305,6 +305,19 @@ pub(crate) fn compatibility_observations_in(
         // operand is not a redirect and stays in place.
         let merged = crate::pretool::without_stderr_merge(segment);
         let cli_segment = merged.as_ref().unwrap_or(segment);
+        // A `-C` into the checkout an earlier `git worktree add` creates
+        // cannot be route-checked before that directory exists. The
+        // subcommand is the same either way, so it is attributed as the
+        // unrouted form; the native proof still decides the read.
+        let unrouted = git
+            .then(|| crate::pretool::new_checkout_route(command, index, context))
+            .flatten()
+            .map(|position| {
+                let mut unrouted = cli_segment.clone();
+                unrouted.arguments.drain(position..position + 2);
+                unrouted
+            });
+        let cli_segment = unrouted.as_ref().unwrap_or(cli_segment);
         let proof_context = match &leading_cd {
             Some((cd_index, cwd)) if index > *cd_index => crate::pretool::PathContext {
                 cwd: Some(cwd.as_str()),

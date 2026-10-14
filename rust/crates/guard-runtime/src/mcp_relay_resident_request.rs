@@ -7,6 +7,7 @@ use guard_command::mcp_decision::{build_configured_environment_hash, build_mcp_s
 use guard_contracts::{McpToolArgumentsV1, McpToolCallServerIdentityV1};
 use serde_json::{json, Map, Value};
 
+use super::python_wire::python_canonical;
 use super::{ProcessFacts, RelayFacts};
 use crate::mcp_relay_args::RelayArgs;
 use crate::mcp_relay_catalog::{CatalogSnapshot, RelayCatalog};
@@ -157,7 +158,8 @@ pub(super) fn launcher_home(home: &OsString) -> Option<String> {
 }
 
 /// The resident request for one call and the catalog it is decided against,
-/// or `None` when the call is not sent.
+/// or `None` when the call is not sent. `params` are already
+/// `python_canonical`, as the proxy decoded them.
 pub(super) fn decide_request(
     facts: &RelayFacts,
     params: &Map<String, Value>,
@@ -179,9 +181,10 @@ pub(super) fn decide_request(
         Some(Value::Object(definition)) => {
             let mut entry = definition.clone();
             entry.remove("name");
-            if !python_stable(&Value::Object(entry.clone())) {
+            // The proxy's catalog holds the decoded `tools/list` page.
+            let Value::Object(entry) = python_canonical(&Value::Object(entry))? else {
                 return None;
-            }
+            };
             (!entry.is_empty()).then_some(entry)
         }
         Some(_) => return None,
@@ -257,30 +260,5 @@ pub(super) fn arguments(
             value: other.clone(),
         },
     };
-    let stable = match &arguments {
-        McpToolArgumentsV1::Mapping { entries } => {
-            entries.iter().all(|(_, value)| python_stable(value))
-        }
-        McpToolArgumentsV1::Json { .. } => true,
-        McpToolArgumentsV1::Other { value } => python_stable(value),
-    };
-    stable.then_some(arguments)
-}
-
-/// Whether every number keeps its text through `json.loads` and
-/// `json.dumps`: only integers in their shortest form do.
-pub(super) fn python_stable(value: &Value) -> bool {
-    match value {
-        Value::Number(number) => {
-            let text = number.to_string();
-            let digits = text.strip_prefix('-').unwrap_or(&text);
-            text != "-0"
-                && !digits.is_empty()
-                && digits.bytes().all(|byte| byte.is_ascii_digit())
-                && (digits == "0" || !digits.starts_with('0'))
-        }
-        Value::Array(items) => items.iter().all(python_stable),
-        Value::Object(map) => map.values().all(python_stable),
-        Value::Null | Value::Bool(_) | Value::String(_) => true,
-    }
+    Some(arguments)
 }

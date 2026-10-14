@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use guard_contracts::McpToolArgumentsV1;
 use serde_json::json;
 
-use super::request::{arguments, delegated_tool, launcher_home, launcher_path, python_stable};
+use super::request::{arguments, delegated_tool, launcher_home, launcher_path};
 use super::*;
 use crate::mcp_relay_decide::McpRelayDecideRequestV1;
 
@@ -71,7 +71,7 @@ fn process(cwd: &Path) -> ProcessFacts {
     }
 }
 
-fn facts() -> RelayFacts {
+pub(super) fn facts() -> RelayFacts {
     let guard_home = temp_dir("facts");
     let args = relay_args(&guard_home, None);
     relay_facts(&args, &launch(identity()), &process(&guard_home)).unwrap()
@@ -227,18 +227,6 @@ fn arguments_keep_the_host_order() {
 }
 
 #[test]
-fn only_integers_keep_their_number_text() {
-    let parse = |text: &str| serde_json::from_str::<Value>(text).unwrap();
-    // The parser reads "-0" as the integer zero, as Python does.
-    for text in ["0", "-0", "-7", "12345678901234567890123", "[1,{\"a\":2}]"] {
-        assert!(python_stable(&parse(text)), "{text}");
-    }
-    for text in ["1.5", "1e5", "-0.0", "[1.0]", "{\"a\":2E1}"] {
-        assert!(!python_stable(&parse(text)), "{text}");
-    }
-}
-
-#[test]
 fn request_matches_the_decide_wire_shape() {
     let facts = facts();
     let catalog = RelayCatalog::default();
@@ -278,7 +266,6 @@ fn calls_the_relay_cannot_send_are_not_requested() {
         json!({"name": 7}),
         json!({"name": "caf\u{e9}"}),
         json!({"name": "composio_x", "arguments": {}}),
-        json!({"name": "read", "arguments": {"a": 1.5}}),
     ] {
         assert!(
             decide_request(&facts, &params(call.clone()), None, &catalog).is_none(),

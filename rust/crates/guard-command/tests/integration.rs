@@ -117,6 +117,7 @@ pub mod pretool_read_output_scratch;
 pub mod pretool_recursive_copies;
 pub mod pretool_recursive_file_search;
 pub mod pretool_rust_version_probe;
+pub mod pretool_scratch_checkout_copies;
 pub mod pretool_search_data;
 pub mod pretool_sibling_glob_reads;
 pub mod pretool_sibling_glob_search;

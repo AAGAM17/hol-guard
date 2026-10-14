@@ -9,6 +9,10 @@
 //! such a chain, so no earlier segment can swap the leaf for a symlink before
 //! a later segment opens it.
 
+#[path = "chain_directory_copies.rs"]
+mod directory_copies;
+pub(super) use directory_copies::mkdir_chain;
+
 use crate::CanonicalCommandV1;
 use std::path::{Component, Path};
 
@@ -22,6 +26,11 @@ const CHAIN_PEERS: &[&str] = &[
 /// Every segment is a plain peer spelled by name, with no wrapper, no
 /// environment assignment and no path override.
 pub(super) fn peers_only(model: &CanonicalCommandV1) -> bool {
+    plain_chain(model, &[])
+}
+
+/// Like [`peers_only`], but `extra` names may also appear in the chain.
+pub(super) fn plain_chain(model: &CanonicalCommandV1, extra: &[&str]) -> bool {
     model.confidence == "exact"
         && model.uncertainty_reason.is_none()
         && !model.path_overridden
@@ -30,10 +39,9 @@ pub(super) fn peers_only(model: &CanonicalCommandV1) -> bool {
             segment.wrapper_chain.is_empty()
                 && segment.environment_names.is_empty()
                 && !segment.path_overridden
-                && segment
-                    .executable
-                    .as_deref()
-                    .is_some_and(|executable| CHAIN_PEERS.contains(&executable))
+                && segment.executable.as_deref().is_some_and(|executable| {
+                    CHAIN_PEERS.contains(&executable) || extra.contains(&executable)
+                })
         })
 }
 
@@ -91,13 +99,15 @@ pub(super) fn absent_reads_bounded(
 /// copied into a chain-local temporary file that later peers print or compare.
 /// Reading such a copy discloses nothing a read of the source would not, and
 /// `safe_copy_arguments` still holds the source to the ordinary read proof.
-/// The destination still passes every check a single `cp` gets.
+/// The destination still passes every check a single `cp` gets. A third
+/// shape, a copy into a directory an earlier `mkdir` creates, is described in
+/// `chain_directory_copies.rs`.
 pub(super) fn copy_segments_allowed(
     model: &CanonicalCommandV1,
     segment: &crate::CommandSegmentV1,
     context: super::PathContext<'_>,
 ) -> bool {
-    if model.segments.len() == 1 {
+    if model.segments.len() == 1 || directory_copies::copies_beside_mkdir(model, segment, context) {
         return true;
     }
     let (source, destination) = match segment.arguments.as_slice() {

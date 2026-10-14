@@ -4476,6 +4476,102 @@
       "expect": "allow"
     },
     {
+      "id": "session-copy-scratch-files-into-workspace",
+      "fix_area": "scratch-checkout",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cp ${TMP_ORG}/app/README.md ${TMP_ORG}/app/package.json ${ORG}/app-portal/src/"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "session-mkdir-copy-scratch-file-into-workspace",
+      "fix_area": "scratch-checkout",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "mkdir -p ${ORG}/app-portal/src/lib/discovery && cp ${TMP_ORG}/app/README.md ${ORG}/app-portal/src/lib/discovery/"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "session-ls-scratch-checkout-bin",
+      "fix_area": "scratch-checkout",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "ls ${TMP_ORG}/app/node_modules/.bin/vitest 2>&1 | head -1"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-copy-scratch-file-into-git-hooks",
+      "fix_area": "scratch-checkout",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cp ${TMP_ORG}/app/README.md ${ORG}/app-portal/.git/hooks/pre-commit"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-copy-scratch-file-into-ssh",
+      "fix_area": "scratch-checkout",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cp ${TMP_ORG}/app/README.md ${HOME}/.ssh/authorized_keys"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-copy-ssh-key-into-workspace",
+      "fix_area": "scratch-checkout",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "cp ${HOME}/.ssh/id_ed25519 ${ORG}/app-portal/src/"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
+    },
+    {
       "id": "queue-grep-rln-e-two-dirs",
       "fix_area": "queue",
       "harnesses": [

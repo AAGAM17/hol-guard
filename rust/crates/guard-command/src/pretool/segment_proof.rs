@@ -281,7 +281,8 @@ pub(super) fn exact_safe_segment_with_context(
                     ))
         }
         "mktemp" | "mkdir" | "touch" | "mv" | "ln" | "rm" => {
-            model.segments.len() == 1
+            (model.segments.len() == 1
+                || (basename == "mkdir" && super::chain_temporary::mkdir_chain(model)))
                 && (basename != "ln" && basename != "rm"
                     || super::directory_targets::home_targets_unquoted(segment))
                 && (safe_reads::safe_file_mutation_arguments(basename, &segment.arguments, context)

@@ -60,6 +60,7 @@ pub(super) fn safe_listing_arguments(
                 && !super::search::skill_link_resolves_over_home(argument, context))
             || super::listing_reads::absent_listing_operand(argument, context)
             || super::tool_bin_listing::tool_bin_listing_operand(argument, context)
+            || super::tool_bin_listing::node_bin_listing_operand(argument, context)
             || super::tool_bin_listing::credential_file_metadata_operand(argument, context)
             || super::tool_bin_listing::global_package_listing_operand(argument, context)
     })

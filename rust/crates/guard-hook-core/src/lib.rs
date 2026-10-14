@@ -392,6 +392,15 @@ fn review_source(
     if let Some((family, _)) = sensitive_path_family(Path::new(candidate)) {
         return HookReviewResponseV1::deny("sensitive_path", sensitive_reason(family));
     }
+    // A failed read of a missing file returns the host's error text, not file
+    // content. No file backs the reference, so the presented text is reviewed
+    // on its own, as for any inline output.
+    if host_reported_error(&request.payload)
+        && source_missing(candidate, cwd, home)
+        && source_missing(&target, cwd, home)
+    {
+        return review_presented_output(request, source);
+    }
     let allow_external =
         matches!(request.harness.as_str(), "pi" | "omp") && request.source_ref_external_allowed;
     let candidate_decision =
@@ -448,25 +457,62 @@ fn review_source(
         }
         // Hosts may add line anchors or headers. Scan the entire presentation
         // independently, but never promote a partial excerpt to original output.
-        let output = extract_payload_output(&request.payload);
-        let excerpt_truncated = request
-            .payload
-            .get("tool_response_summary")
-            .and_then(|summary| summary.get("excerpt_truncated"))
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        if output.truncated
-            || excerpt_truncated
-            || output.text.chars().count() != source.output_chars as usize
-            || sha256_text(&output.text) != source.output_sha256
-        {
-            return inconclusive_source();
-        }
-        return review_inline(request);
+        return review_presented_output(request, source);
     }
     let mut response = HookReviewResponseV1::allow("source_full_scan_allow");
     response.reviewed_output_sha256 = Some(source.output_sha256.clone());
     response
+}
+
+/// Review the text the host presented on its own. Only complete output whose
+/// digest matches the reference is reviewed; a partial excerpt is never
+/// promoted to original output.
+fn review_presented_output(
+    request: &NativeHookRequestV1,
+    source: &HookSourceFileRefV1,
+) -> HookReviewResponseV1 {
+    let output = extract_payload_output(&request.payload);
+    let excerpt_truncated = request
+        .payload
+        .get("tool_response_summary")
+        .and_then(|summary| summary.get("excerpt_truncated"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if output.truncated
+        || excerpt_truncated
+        || output.text.chars().count() != source.output_chars as usize
+        || sha256_text(&output.text) != source.output_sha256
+    {
+        return inconclusive_source();
+    }
+    review_inline(request)
+}
+
+/// Whether the host reported the tool call as failed.
+fn host_reported_error(payload: &Value) -> bool {
+    ["is_error", "isError"]
+        .iter()
+        .any(|key| payload.get(*key).and_then(Value::as_bool) == Some(true))
+}
+
+/// Whether nothing exists at `target`. Oh My Pi's `path:selector` form
+/// counts as missing only when the base path before the selector is missing
+/// too. Any error other than "not found" leaves the path treated as present.
+fn source_missing(target: &str, cwd: &Path, home: &Path) -> bool {
+    let missing = |candidate: &str| {
+        guard_secure_fs::resolve_candidate(candidate, Some(cwd), home).is_ok_and(|path| {
+            std::fs::symlink_metadata(path)
+                .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+        })
+    };
+    if !missing(target) {
+        return false;
+    }
+    let name_start = target.rfind(['/', '\\']).map_or(0, |index| index + 1);
+    match target[name_start..].rfind(':') {
+        Some(colon) => missing(&target[..name_start + colon]),
+        None => true,
+    }
 }
 
 /// Whether the output is a line-numbered slice of `file` that no whole-file

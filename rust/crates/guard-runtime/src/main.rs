@@ -205,6 +205,7 @@ mod direct_tool_context_op;
 #[cfg(test)]
 mod direct_tool_context_tests;
 mod direct_tool_managed_bun;
+mod discovery_placement_op;
 mod edge;
 mod edge_git_push;
 mod encrypted_secret_store;

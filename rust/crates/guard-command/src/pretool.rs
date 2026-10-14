@@ -80,6 +80,7 @@ mod trusted_location;
 pub(crate) use git_routes::{git_dir_route_within_scope, git_route_within_workspace};
 mod apply_patch_writes;
 mod lockfile_install;
+mod omp_hashline_writes;
 mod pure_expression;
 mod read_paths;
 mod source_reads;

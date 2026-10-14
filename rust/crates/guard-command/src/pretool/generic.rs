@@ -321,6 +321,20 @@ fn evaluate_envelope(
         && signals.command.as_deref().is_some_and(|patch| {
             super::apply_patch_writes::routine_apply_patch(patch, home_dir, cwd)
         });
+    // Oh My Pi sends an edit as `edit` with a hashline patch in `input`. Its
+    // `+` rows are file content, so the patch has its own proof too.
+    let omp_hashline_edit = (event == "PreToolUse"
+        && harness == "omp"
+        && signals.tool_name.as_deref() == Some("edit")
+        && signals.url_values.is_empty()
+        && signals.path_values.is_empty()
+        && signals.command.is_none()
+        && !signals.independent_sensitive_target)
+        .then(|| omp::strict_tool_input(payload))
+        .flatten()
+        .filter(|input| input.len() == 1)
+        .and_then(|input| input.get("input")?.as_str())
+        .and_then(|patch| super::omp_hashline_writes::evaluate_hashline_edit(patch, home_dir, cwd));
     // Exporting only Git-config isolation (`GIT_CONFIG_GLOBAL=/dev/null`)
     // removes configuration sources, so the remaining command's allow carries.
     if let Some(projected) = signals
@@ -585,6 +599,31 @@ fn evaluate_envelope(
             "native_exact_safe_file_write",
             "The Rust authority proved every file this patch adds or updates is an ordinary workspace file that clears sensitive-path checks.",
         )
+    } else if let Some(edit) = omp_hashline_edit {
+        let action = generic_action(
+            harness,
+            event,
+            PreToolActionTypeV1::FileWrite,
+            PreToolOperationV1::Write,
+            true,
+            false,
+        );
+        match edit {
+            super::omp_hashline_writes::HashlineEdit::Routine => generic_result(
+                action,
+                "allow",
+                "native_exact_safe_file_write",
+                "The Rust authority proved every file this edit changes is an ordinary workspace or worktree file that clears sensitive-path checks.",
+            ),
+            // The edit cannot apply, so stopping it costs nothing. Saying why
+            // lets the agent fix the path instead of waiting on an approval.
+            super::omp_hashline_writes::HashlineEdit::MissingTarget => generic_result(
+                action,
+                "block",
+                evaluate::MISSING_PATH,
+                "HOL Guard did not run this edit because a file it names does not exist. Check the path, for example by listing its parent directory, and try again with the correct one.",
+            ),
+        }
     } else if let Some(omp_result) = omp_result {
         omp_result
     } else if let Some(pure_result) = pure_eval::evaluate(harness, event, payload, &signals) {

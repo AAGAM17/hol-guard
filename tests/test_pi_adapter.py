@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -11,7 +12,6 @@ from codex_plugin_scanner.guard.adapters.base import HarnessContext
 from codex_plugin_scanner.guard.adapters.contracts import contract_for
 from codex_plugin_scanner.guard.adapters.pi_extension_previous_source import previous_managed_extension_source
 from codex_plugin_scanner.guard.adapters.pi_extension_source import managed_extension_source
-from codex_plugin_scanner.guard.adapters.pi_support import stable_suffix
 from codex_plugin_scanner.guard.approvals import queue_blocked_approvals
 from codex_plugin_scanner.guard.cli.commands_support_codex_tool_output_messages import (
     _codex_tool_output_request_summary,
@@ -176,7 +176,7 @@ class TestPiDetect:
         assert result.harness == "pi"
         assert any(path.endswith(".pi/agent/settings.json") for path in result.config_paths)
         artifact_ids = {artifact.artifact_id for artifact in result.artifacts}
-        assert f"pi:pi-global:package:{stable_suffix('npm:@demo/pi-tools@1.2.3')}" in artifact_ids
+        assert f"pi:pi-global:package:{hashlib.sha256(b'npm:@demo/pi-tools@1.2.3').hexdigest()[:16]}" in artifact_ids
         assert "pi:pi-global:extension:demo.ts" in artifact_ids
         assert "pi:pi-global:skill:skills/ship" in artifact_ids
         assert "pi:pi-global:prompt:review.md" in artifact_ids

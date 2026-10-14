@@ -220,6 +220,7 @@ mod profiles;
 mod toolchains;
 mod user_site;
 mod validation;
+mod venv;
 mod workspace;
 mod workspace_linked;
 mod workspace_linux;

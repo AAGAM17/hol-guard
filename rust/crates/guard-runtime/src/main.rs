@@ -166,6 +166,9 @@ mod continuation_lineage;
 mod continuation_metadata;
 mod continuation_store;
 mod contributed_mcp_decision_op;
+mod copilot_detect;
+#[cfg(all(test, unix))]
+mod copilot_vectors_tests;
 mod critical_floor_op;
 mod cursor_hook_bridge;
 mod cursor_hook_bridge_response;

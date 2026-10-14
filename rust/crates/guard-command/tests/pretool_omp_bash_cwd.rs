@@ -119,15 +119,21 @@ fn bash_cwd_in_a_linked_worktree_of_a_session_repository_is_the_command_director
         );
     }
     // A copied `.git` file names the worktree's registry entry, but the
-    // registry's backlink still names the real checkout.
+    // registry's backlink still names the real checkout, so the copy is
+    // judged as a leading `cd` into it.
     let forged = session.home.join("forged");
     std::fs::create_dir_all(&forged).unwrap();
     std::fs::copy(session.worktree.join(".git"), forged.join(".git")).unwrap();
-    let result = omp(
-        &session,
-        json!({"command": probe, "cwd": forged.to_str().unwrap()}),
-    );
-    assert_ne!(result.minimum_action, "allow", "{}", result.reason_code);
+    let directory = forged.canonicalize().unwrap();
+    let directory = directory.to_str().unwrap();
+    for command in [probe, "cat .env", "rm -rf ~/notes"] {
+        let projected = omp(
+            &session,
+            json!({"command": format!("cd '{directory}' && {command}")}),
+        );
+        let result = omp(&session, json!({"command": command, "cwd": directory}));
+        assert_eq!(outcome(&result), outcome(&projected), "{command}");
+    }
 }
 
 #[test]

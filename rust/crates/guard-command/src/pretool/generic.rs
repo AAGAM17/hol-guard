@@ -16,6 +16,9 @@ mod extract;
 mod omp;
 #[path = "generic_omp_bash_cwd.rs"]
 mod omp_bash_cwd;
+#[cfg(all(test, unix))]
+#[path = "generic_omp_bash_cwd_tests.rs"]
+mod omp_bash_cwd_tests;
 #[path = "open_quote.rs"]
 mod open_quote;
 #[path = "generic_pure_eval.rs"]

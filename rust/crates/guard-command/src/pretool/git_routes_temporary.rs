@@ -27,7 +27,7 @@ pub(in crate::pretool) fn owned_temporary_directory(
 
 /// The canonical shared temporary roots (`/tmp`, which is `/private/tmp` on
 /// macOS) that sibling checkouts may sit below; none off Unix.
-pub(super) fn owned_temporary_roots() -> Vec<std::path::PathBuf> {
+pub(in crate::pretool) fn owned_temporary_roots() -> Vec<std::path::PathBuf> {
     if cfg!(not(unix)) {
         return Vec::new();
     }

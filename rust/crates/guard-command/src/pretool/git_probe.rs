@@ -6,6 +6,10 @@ use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
+#[path = "git_probe_repository.rs"]
+mod repository;
+pub(super) use repository::repository_inert;
+
 /// Wall-clock budget for one configuration probe. A loaded host can need more
 /// than a second for the config, attribute and index queries together; the
 /// caller's overall deadline still caps it and an expired probe still reviews.

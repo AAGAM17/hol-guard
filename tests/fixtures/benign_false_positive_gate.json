@@ -4,10 +4,6 @@
   "pending_fix": {
     "gauntlet-python-local-test-script@cursor": "native_command_review_required",
     "pytest-quiet@cursor": "native_command_review_required",
-    "session-ls-echo-cd-repo-git-status-remote-log@claude-code": "native_git_execution_context_review",
-    "session-ls-echo-cd-repo-git-status-remote-log@codex": "native_git_execution_context_review",
-    "session-ls-echo-cd-repo-git-status-remote-log@omp": "native_git_execution_context_review",
-    "session-ls-echo-cd-repo-git-status-remote-log@zcode": "native_git_execution_context_review",
     "session-rm-workspace-file@cursor": "native_command_extension_review"
   },
   "cases": [
@@ -8801,10 +8797,6 @@
   "pending_pr": {
     "gauntlet-python-local-test-script@cursor": "unassigned",
     "pytest-quiet@cursor": "unassigned",
-    "session-ls-echo-cd-repo-git-status-remote-log@claude-code": "unassigned",
-    "session-ls-echo-cd-repo-git-status-remote-log@codex": "unassigned",
-    "session-ls-echo-cd-repo-git-status-remote-log@omp": "unassigned",
-    "session-ls-echo-cd-repo-git-status-remote-log@zcode": "unassigned",
     "session-rm-workspace-file@cursor": "unassigned"
   },
   "pending_always": {}

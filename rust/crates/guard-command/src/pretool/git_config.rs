@@ -328,9 +328,7 @@ fn probe(
     if operation == "config" {
         return super::git_config_reads::credential_free(&command, &remaining[1..], deadline);
     }
-    if matches!(operation, "status" | "diff")
-        && !super::git_probe::submodules_are_inert(&command, remaining, deadline)?
-    {
+    if !super::git_probe::repository_inert(&command, operation, remaining, deadline)? {
         return Some(false);
     }
     Some(true)

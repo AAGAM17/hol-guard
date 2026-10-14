@@ -96,22 +96,25 @@ pub(in crate::pretool) fn skill_link_resolves_over_home(
     let Some(canonical) = std::fs::canonicalize(&expanded).ok() else {
         return false;
     };
-    // A bounded read admits `..` only from the working directory, which the
-    // kernel walks physically. Fold the spelling against the canonical cwd
-    // so `../../.claude/skills/<link>` still names the skill root.
-    // Only a leading run of `..` folds exactly: a later one could step back
-    // out of a symlinked directory the lexical fold cannot see, so that
-    // spelling is treated as naming the skill root.
+    // Only a target that holds the home directory can be a skill link over
+    // it, so a spelling the fold below cannot follow is refused exactly then.
+    let holds_home = home.starts_with(&canonical);
+    // The kernel walks `..` physically. Fold the spelling against the
+    // canonical cwd so `../../.claude/skills/<link>` still names the skill
+    // root. Only a leading run of `..` folds exactly: a later one, or one
+    // behind a rooted or `~` spelling, could step back out of a symlinked
+    // directory the lexical fold cannot see, so that spelling is treated as
+    // naming the skill root. `/tmp/org/..` lists a directory below no home.
     let mut parts = value.split('/').skip_while(|part| *part == "..");
     let spelled = if parts.any(|part| part == "..") {
-        return true;
+        return holds_home;
     } else if value.split('/').any(|part| part == "..") {
         let cwd = expanded_operand(".", context).and_then(|cwd| std::fs::canonicalize(cwd).ok());
         match cwd {
             Some(cwd) if !value.starts_with('~') && !Path::new(value).has_root() => {
                 fold_parents(&cwd.join(value))
             }
-            _ => return true,
+            _ => return holds_home,
         }
     } else {
         expanded

@@ -309,6 +309,37 @@ fn glob_path_selectors_prove_the_fixed_directory_without_allowing_escape() {
     assert!(!allowed(&omp(&f, "glob", json!({"path": "linke?/*"}))));
     write(f.project.join("src/.env"), "synthetic marker\n");
     assert!(!allowed(&omp(&f, "glob", json!({"path": "src/**/*.ts"}))));
+    // A literal last name can only return names that end in it, so the walk
+    // may pass hidden or linked children.
+    write(f.project.join("src/AGENTS.md"), "synthetic instructions\n");
+    for path in [
+        "src/**/AGENTS.md",
+        "src/**/{AGENTS,CLAUDE}.md",
+        "src/AGENTS.md;src/**/AGENTS.md",
+        "**/AGENTS.md",
+    ] {
+        let result = omp(
+            &f,
+            "glob",
+            json!({"path": path, "hidden": true, "gitignore": false, "limit": 30}),
+        );
+        assert!(allowed(&result), "{path}: {}", result.reason_code);
+    }
+    for path in [
+        "src/**/.env",
+        "src/**/.ENV",
+        "src/**/id_rsa",
+        "src/**/credentials.json",
+        "src/**/*.env",
+        "src/**/AGENTS.md\\",
+        "src/**/",
+        "src/**/..",
+        "src/**/../../.ssh/AGENTS.md",
+        "~/**/AGENTS.md",
+        "../**/AGENTS.md",
+    ] {
+        assert!(!allowed(&omp(&f, "glob", json!({"path": path}))), "{path}");
+    }
 }
 
 #[test]

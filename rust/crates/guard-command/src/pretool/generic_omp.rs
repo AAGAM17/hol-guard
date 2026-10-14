@@ -272,6 +272,7 @@ fn listing_target_proven(
     }
     let has_glob_selector =
         signals.tool_name.as_deref() == Some("glob") && target.contains(['*', '?', '[', '{']);
+    let selector = target;
     // OMP glob uses `path` for the complete selector, not just a directory.
     // Prove its fixed directory prefix; the tool returns names, not contents.
     let target = if signals.tool_name.as_deref() == Some("glob") {
@@ -283,8 +284,15 @@ fn listing_target_proven(
         target
     };
     // A wildcard can traverse hidden or symlinked children even when the
-    // literal prefix is ordinary. Prove the entire reachable prefix tree.
+    // literal prefix is ordinary. Prove the entire reachable prefix tree,
+    // unless the walk starts inside the session folder and the last
+    // component is a literal ordinary name: then every name the host returns
+    // ends in that name.
+    let literal_name = has_glob_selector
+        && literal_name_selector(selector)
+        && walk_inside_session(target, context);
     if has_glob_selector
+        && !literal_name
         && !super::super::search_scope::unfiltered_directory_scope_proven(
             target,
             context.path.home_dir,
@@ -296,8 +304,9 @@ fn listing_target_proven(
     // `find` and a `pattern` walk the tree below the root and return names
     // only, so an ordinary project root is fine even with a `.env` inside;
     // reading that file stays gated. A walk from the home directory or above
-    // it reaches credential stores and agent state, so it stays on review.
-    if recursive && walk_covers_home(target, context) {
+    // it reaches credential stores and agent state, so it stays on review,
+    // and so does a literal-name glob that skipped the tree proof.
+    if (recursive || literal_name) && walk_covers_home(target, context) {
         return false;
     }
     // A glob entry without wildcards matches only itself, so the host returns
@@ -315,6 +324,26 @@ fn listing_target_proven(
             context.path.home_dir,
             context.path.cwd,
         )
+}
+
+/// Whether a glob selector ends in a literal file name, such as
+/// `docs/**/AGENTS.md`, that names no credential or sensitive location.
+fn literal_name_selector(selector: &str) -> bool {
+    let Some((_, name)) = selector.rsplit_once('/') else {
+        return false;
+    };
+    // The host may match case-insensitively, so judge the lowered name too.
+    !name.is_empty()
+        && name != "."
+        && name != ".."
+        && !name.contains(['*', '?', '[', ']', '{', '}', '\\'])
+        && !name.chars().any(char::is_control)
+        && [name.to_owned(), name.to_ascii_lowercase()]
+            .iter()
+            .all(|name| {
+                !super::super::sensitive_read_path_argument(name)
+                    && !super::super::sensitive_command(name)
+            })
 }
 
 /// Maximum patterns proven from one glob's `{a,b}` alternatives.
@@ -419,6 +448,22 @@ fn walk_covers_home(target: &str, context: &OmpContext<'_>) -> bool {
     match (std::fs::canonicalize(root), std::fs::canonicalize(home)) {
         (Ok(root), Ok(home)) => home.starts_with(root),
         _ => true,
+    }
+}
+
+fn walk_inside_session(target: &str, context: &OmpContext<'_>) -> bool {
+    let Some(cwd) = context.path.cwd else {
+        return false;
+    };
+    if target.starts_with('~') {
+        return false;
+    }
+    match (
+        std::fs::canonicalize(std::path::Path::new(cwd).join(target)),
+        std::fs::canonicalize(cwd),
+    ) {
+        (Ok(root), Ok(cwd)) => root.starts_with(cwd),
+        _ => false,
     }
 }
 

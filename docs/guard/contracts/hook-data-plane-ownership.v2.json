@@ -384,6 +384,7 @@
     "src/codex_plugin_scanner/guard/native_sensitive_request.py",
     "src/codex_plugin_scanner/guard/native_policy_bundle.py",
     "src/codex_plugin_scanner/guard/native_mcp_proxy_decision.py",
+    "src/codex_plugin_scanner/guard/native_mcp_relay_server_report.py",
     "src/codex_plugin_scanner/guard/native_daemon_lifecycle.py",
     "src/codex_plugin_scanner/guard/native_mcp_sensitive_read.py",
     "src/codex_plugin_scanner/guard/native_mcp_runtime_evidence.py",

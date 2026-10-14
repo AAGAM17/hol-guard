@@ -5,7 +5,9 @@
 //! otherwise every `tools/call` of the session would defer and be refused.
 //! A lane is ready only when the resident can decide the session's calls at
 //! all (`mcp_relay_decide_session.rs`): a config that prompts or observes,
-//! or a store holding remote policy, hands the session to the proxy too.
+//! or a store holding remote policy, hands the session to the proxy too, and
+//! so does a server whose catalog the resident has no report of or whose
+//! catalog offers a tool the proxy decides (`mcp_relay_servers.rs`).
 //! The answer is only `ready` or `not_ready` with the lane's defer code. It
 //! carries no verdict, no binding state and no key, and it never stands in
 //! for a decision: each call is still admitted by `mcp_relay_decide`, which
@@ -31,6 +33,8 @@ pub(crate) struct McpRelayReadyRequestV1 {
     /// The workspace the session's decisions are admitted under.
     pub(crate) workspace: String,
     pub(crate) harness: String,
+    /// The server the session runs.
+    pub(crate) server: crate::mcp_relay_servers::RelayServerV1,
 }
 
 pub(crate) fn evaluate(
@@ -61,7 +65,11 @@ fn readiness(
     if binding.exact_action_control_digest.is_none() {
         return Err(BINDING_INCOMPLETE);
     }
-    crate::mcp_relay_decide::session_decidable(&binding, &request.guard_home, &request.harness)
+    if request.server.harness != request.harness {
+        return Err(crate::mcp_relay_servers::SERVER_UNKNOWN);
+    }
+    crate::mcp_relay_decide::session_decidable(&binding, &request.guard_home, &request.harness)?;
+    policy_store.mcp_relay_servers().relayable(&request.server)
 }
 
 /// `Path.resolve(strict=True)` of a directory, as the lane settles it.

@@ -230,8 +230,7 @@ pub(super) fn decide_request(
 /// resident does not answer. Every other call reaches the resident, which
 /// defers one the proxy's package parser finds an intent in.
 pub(super) fn delegated_tool(name: &str) -> bool {
-    let tail = name.rsplit("__").next().unwrap_or(name);
-    tail.to_ascii_lowercase().starts_with("composio_")
+    crate::mcp_relay_servers::composio_tool(name)
 }
 
 /// The call arguments as the proxy received them, in host key order.

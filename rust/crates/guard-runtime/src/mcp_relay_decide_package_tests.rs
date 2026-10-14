@@ -162,3 +162,46 @@ fn a_package_intent_after_the_claim_rolls_it_back() {
         assert!(case.connection.is_autocommit(), "{id}: no open transaction");
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn a_call_sent_to_the_package_policy_hands_its_server_to_the_proxy() {
+    use crate::mcp_relay_servers::{RelayServerV1, SERVER_PROXY_TOOLS, SERVER_UNKNOWN};
+    use crate::policy_store::policy_store_direct_lane::tests::fixture;
+
+    let fixture = fixture("relay-package-server");
+    let servers = fixture.store.mcp_relay_servers();
+    let server = RelayServerV1 {
+        harness: "codex".to_owned(),
+        server_name: "files".to_owned(),
+        source_scope: "project".to_owned(),
+        config_path: "/work/.codex/config.toml".to_owned(),
+        server_id: None,
+        identity_hash: "d".repeat(64),
+    };
+    let mut call = request(
+        "bash",
+        mapping(json!([["command", "npm install left-pad"]])),
+    );
+    super::super::mark_package_server(&call, &fixture.store);
+    // A call without a server identity names no server.
+    assert_eq!(servers.relayable(&server), Err(SERVER_UNKNOWN));
+    call.build.server_identity = Some(
+        serde_json::from_value(json!({
+            "config_path": "/work/.codex/config.toml",
+            "command": "files-mcp",
+            "args_hash": "e".repeat(64),
+            "package_name": null,
+            "package_version": null,
+            "package_source": "unknown",
+            "transport": "stdio",
+            "env_keys": [],
+            "env_values_hash": "f".repeat(64),
+            "identity_hash": "d".repeat(64),
+        }))
+        .unwrap(),
+    );
+    servers.record(&server, false);
+    super::super::mark_package_server(&call, &fixture.store);
+    assert_eq!(servers.relayable(&server), Err(SERVER_PROXY_TOOLS));
+}

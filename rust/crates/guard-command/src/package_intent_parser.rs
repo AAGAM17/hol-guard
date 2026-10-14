@@ -349,6 +349,12 @@ fn dispatch_intent(
     }
 }
 
+/// Whether `extract_package_intent_request` reads the arguments of
+/// `tool_name` as shell commands (`_SHELL_TOOL_NAMES`).
+pub fn shell_tool_name(tool_name: &str) -> bool {
+    normalize_tool_name(tool_name).is_some_and(|name| SHELL_TOOL_NAMES.contains(&name.as_str()))
+}
+
 /// `extract_package_intent_request`  (package_intent_parser.py :1541-…).
 ///
 /// `environment` is the one each `parse_package_intent` resolves the launch

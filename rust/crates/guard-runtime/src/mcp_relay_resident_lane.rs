@@ -41,6 +41,14 @@ impl ResidentRelayAuthority {
                 "guard_home": facts.guard_home,
                 "workspace": facts.workspace.as_deref().unwrap_or(&facts.hash_workspace),
                 "harness": facts.harness,
+                "server": {
+                    "harness": facts.harness,
+                    "server_name": facts.server_name,
+                    "source_scope": facts.source_scope,
+                    "config_path": facts.config_path,
+                    "server_id": facts.server_id,
+                    "identity_hash": facts.server_identity.get("identity_hash"),
+                },
             },
         });
         let guard_home = PathBuf::from(&facts.guard_home);

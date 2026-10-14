@@ -158,7 +158,32 @@ pub(crate) fn evaluate(
     request: McpRelayDecideRequestV1,
     policy_store: &PolicySnapshotStore,
 ) -> Result<Vec<u8>, String> {
-    encode(decide(&request, policy_store))
+    let answer = decide(&request, policy_store);
+    if matches!(
+        answer,
+        Err(package::PACKAGE_INTENT | package::PACKAGE_AMBIGUOUS)
+    ) {
+        mark_package_server(&request, policy_store);
+    }
+    encode(answer)
+}
+
+/// Hand later sessions of a server whose call went to the package policy to
+/// the proxy, which decides such calls (`mcp_relay_servers.rs`).
+fn mark_package_server(request: &McpRelayDecideRequestV1, policy_store: &PolicySnapshotStore) {
+    let build = &request.build;
+    let Some(identity) = build.server_identity.as_ref() else {
+        return;
+    };
+    let server = crate::mcp_relay_servers::RelayServerV1 {
+        harness: build.harness.clone(),
+        server_name: build.server_name.clone(),
+        source_scope: build.source_scope.clone(),
+        config_path: build.config_path.clone(),
+        server_id: build.server_id.clone(),
+        identity_hash: identity.identity_hash.clone(),
+    };
+    policy_store.mcp_relay_servers().record(&server, true);
 }
 
 fn encode(answer: Result<Answer, &'static str>) -> Result<Vec<u8>, String> {

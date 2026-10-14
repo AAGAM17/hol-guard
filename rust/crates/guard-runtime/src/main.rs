@@ -437,6 +437,7 @@ mod mcp_relay_pending;
 mod mcp_relay_ready;
 #[cfg(unix)]
 mod mcp_relay_resident;
+mod mcp_relay_servers;
 mod mcp_runtime_evidence_op;
 mod mcp_sensitive_read;
 #[cfg(test)]

@@ -492,6 +492,7 @@ mod policy_lookup_groups;
 mod policy_lookup_reuse;
 mod policy_snapshot_build;
 mod policy_store;
+mod project_identity;
 mod prompt_analyze_op;
 mod protect_request_op;
 mod pyjson;

@@ -10,18 +10,20 @@
 //! - `reuse_diagnostic`: `approval_reuse_validation_reason`.
 //!
 //! The proxy composes each candidate with the portable Git identity of the
-//! workspace, which the resident does not derive. It answers only when that
-//! composition cannot change the result: no workspace row is bound anywhere
-//! but this workspace, so the portable read sees exactly what a read under
-//! any other identity sees, and that read neither outranks the local one nor
-//! reports anything of its own. Every other answer defers the call.
+//! workspace (`resolve_policy_decision_lookup`,
+//! `store_portable_project_memory.py`). The resident derives that identity
+//! itself (`project_identity`) and composes it the same way. It answers only
+//! when the identity resolves exactly, every portable row is bound to that
+//! identity, and no workspace row is bound anywhere but this workspace or its
+//! identity. Every other answer defers the call.
 
-use super::store::{Probe, Saved, STORE_UNREADABLE};
+use super::store::{Probe, Saved, SAVED_REMOTE, STORE_UNREADABLE};
 use super::POLICY_NEED;
 use crate::context_digest::python_strip;
-use crate::mcp_tool_policy_lookup::{most_restrictive, severity, without_permission_elevation};
+use crate::mcp_tool_policy_lookup::{most_restrictive, without_permission_elevation};
 use crate::memory_pattern::{verdict, MemoryRequest};
 use crate::policy_decision_lookup_op::{evaluate_non_consuming, workspace_policy_key};
+use crate::project_identity::{resolve, PortableIdentity, PORTABLE_PROJECT_IDENTITY_PREFIX};
 use guard_contracts::{ApprovalReuseDiagnosticRequestV1, APPROVAL_REUSE_DIAGNOSTIC_REQUEST_SCHEMA};
 use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
@@ -29,11 +31,6 @@ use serde_json::{json, Value};
 const SAVED_LOOKUP: &str = "mcp_relay_saved_lookup_failed";
 const SAVED_PORTABLE: &str = "mcp_relay_saved_portable_workspace";
 const SAVED_DIAGNOSTIC: &str = "mcp_relay_saved_diagnostic_failed";
-const PORTABLE_PREFIX: &str = "git-project:v1:";
-/// A well-formed portable identity, read in place of the one the proxy would
-/// derive; no row is bound to either once the workspace rows are confined.
-const PROBE_PORTABLE: &str =
-    "git-project:v1:0000000000000000000000000000000000000000000000000000000000000000";
 
 fn field<'a>(value: &'a Value, key: &str) -> &'a Value {
     value.get(key).unwrap_or(&Value::Null)
@@ -58,6 +55,7 @@ impl Saved<'_> {
     pub(super) fn answer(&self, need: &Value) -> Result<Value, &'static str> {
         match need.get("kind").and_then(Value::as_str) {
             Some("grant_lookup") => {
+                self.portable_rows_bound_to(None)?;
                 let lookup = self.probe(&Probe {
                     harness: text(need, "harness")?,
                     artifact_id: text(need, "selector")?,
@@ -69,7 +67,10 @@ impl Saved<'_> {
                 Ok(json!({"decision": field(&lookup, "decision")}))
             }
             Some("policy_lookup") => self.policy_lookup(need),
-            Some("reuse_diagnostic") => Ok(json!({"reason": self.diagnosis(need)?})),
+            Some("reuse_diagnostic") => {
+                self.portable_rows_bound_to(None)?;
+                Ok(json!({"reason": self.diagnosis(need)?}))
+            }
             _ => Err(POLICY_NEED),
         }
     }
@@ -92,7 +93,8 @@ impl Saved<'_> {
             artifact_name: optional(need, "memory_artifact_name")?,
             harness: Some(harness),
         });
-        let portable = self.portable_composes(probe.workspace)?;
+        let identity = self.portable_identity(probe.workspace)?;
+        let portable = identity.as_deref();
         let mut lookups = vec![self.candidate(&probe, portable)?];
         for id in memory
             .exact_artifact_ids
@@ -115,67 +117,90 @@ impl Saved<'_> {
         Ok(observed)
     }
 
-    /// One candidate as the proxy reads it: the local lookup, which the
-    /// portable composition must leave as it is.
-    fn candidate(&self, probe: &Probe<'_>, portable: bool) -> Result<Value, &'static str> {
-        let local = self.probe(probe)?;
-        if !portable {
-            return Ok(local);
-        }
+    /// One candidate as the proxy reads it (`Prober::candidate`): the local
+    /// lookup composed most restrictive with the restrictive-only lookup
+    /// under the workspace's portable identity, when it has one.
+    fn candidate(&self, probe: &Probe<'_>, portable: Option<&str>) -> Result<Value, &'static str> {
+        let Some(portable) = portable else {
+            return self.probe(probe);
+        };
         let preview = without_permission_elevation(self.probe(&Probe {
-            workspace: Some(PROBE_PORTABLE),
+            workspace: Some(portable),
             ..*probe
         })?);
-        if !field(&preview, "ignored_local_integrity").is_null()
-            || field(&preview, "authority_revision") != field(&local, "authority_revision")
-        {
-            return Err(SAVED_PORTABLE);
-        }
-        let shadow = field(&preview, "decision");
-        let held = field(&local, "decision");
-        if !shadow.is_null()
-            && (held.is_null() || severity(shadow.get("action")) > severity(held.get("action")))
-        {
-            return Err(SAVED_PORTABLE);
-        }
-        Ok(local)
+        let local = self.probe(probe)?;
+        most_restrictive(&[local, preview]).ok_or(SAVED_LOOKUP)
     }
 
-    /// Whether the proxy may compose a portable identity for `workspace`
-    /// (`_portable_project_workspace`), once no workspace row is bound to
-    /// another workspace. A workspace that already names a portable identity
-    /// reads only that identity, so it defers.
-    fn portable_composes(&self, workspace: Option<&str>) -> Result<bool, &'static str> {
+    /// The portable identity the proxy composes for `workspace`
+    /// (`_portable_project_workspace`), once every portable row is bound to
+    /// it and no workspace row is bound to another workspace. A workspace
+    /// that already names a portable identity reads only that identity, and
+    /// one whose identity does not resolve exactly, defers.
+    fn portable_identity(&self, workspace: Option<&str>) -> Result<Option<String>, &'static str> {
         let Some(workspace) = workspace.filter(|value| !python_strip(value).is_empty()) else {
-            return Ok(false);
+            self.portable_rows_bound_to(None)?;
+            return Ok(None);
         };
-        if python_strip(workspace).starts_with(PORTABLE_PREFIX) {
+        if python_strip(workspace).starts_with(PORTABLE_PROJECT_IDENTITY_PREFIX) {
             return Err(SAVED_PORTABLE);
         }
         let key = workspace_policy_key(Some(workspace)).ok_or(SAVED_PORTABLE)?;
-        let bound_elsewhere = |query: &str, values: &[&str]| {
-            self.connection
-                .query_row(
-                    query,
-                    rusqlite::params_from_iter(values.iter().copied()),
-                    |_| Ok(()),
-                )
-                .optional()
-                .map(|found| found.is_some())
-                .map_err(|_| STORE_UNREADABLE)
+        let identity = match resolve(workspace) {
+            PortableIdentity::Absent => None,
+            PortableIdentity::Identity(identity) => Some(identity),
+            PortableIdentity::Unknown => return Err(SAVED_PORTABLE),
         };
-        if bound_elsewhere(
+        self.portable_rows_bound_to(identity.as_deref())?;
+        // Without an identity, the key stands in for it.
+        let own = identity.as_deref().unwrap_or(key.as_str());
+        if self.any(
             "select 1 from policy_decisions where scope = 'workspace' \
-             and workspace is not null and workspace not in (?1, ?2) limit 1",
-            &[key.as_str(), workspace],
-        )? || bound_elsewhere(
+             and workspace is not null and workspace not in (?1, ?2, ?3) limit 1",
+            &[key.as_str(), workspace, own],
+        )? || self.any(
             "select 1 from guard_local_once_approvals \
-             where workspace is not null and workspace <> ?1 limit 1",
-            &[key.as_str()],
+             where workspace is not null and workspace not in (?1, ?2) limit 1",
+            &[key.as_str(), own],
         )? {
             return Err(SAVED_PORTABLE);
         }
-        Ok(true)
+        Ok(identity)
+    }
+
+    /// Defers unless every row bound to a portable identity is bound to
+    /// `identity`: a local save keys every workspace, so a row under another
+    /// identity came from elsewhere.
+    fn portable_rows_bound_to(&self, identity: Option<&str>) -> Result<(), &'static str> {
+        for table in &self.portable_tables {
+            let elsewhere = match identity {
+                None => true,
+                Some(identity) => self.any(
+                    &format!(
+                        "select 1 from {table} where workspace like 'git-project:v1:%' \
+                         and workspace <> ?1 limit 1"
+                    ),
+                    &[identity],
+                )?,
+            };
+            if elsewhere {
+                return Err(SAVED_REMOTE);
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether `query` finds a row.
+    fn any(&self, query: &str, values: &[&str]) -> Result<bool, &'static str> {
+        self.connection
+            .query_row(
+                query,
+                rusqlite::params_from_iter(values.iter().copied()),
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|found| found.is_some())
+            .map_err(|_| STORE_UNREADABLE)
     }
 
     fn probe(&self, probe: &Probe<'_>) -> Result<Value, &'static str> {

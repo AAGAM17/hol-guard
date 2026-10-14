@@ -6,9 +6,10 @@
 //! With saved rows the resident reads them itself, on one read-only snapshot,
 //! with the integrity evidence the proxy would ship: the key and state the
 //! daemon published, which the store must still hold, protected. Remote or
-//! bundle authority, a raw portable-workspace row, an integrity state other
-//! than the published protected one, a newer or unknown schema, and a store it
-//! cannot read all defer the call.
+//! bundle authority, an integrity state other than the published protected
+//! one, a newer or unknown schema, and a store it cannot read all defer the
+//! call; a row bound to a portable identity defers every lookup but one whose
+//! workspace resolves to that identity.
 
 use crate::local_store_read::{
     open_read_only, schema_version, table_exists, STORE_FILE_NAME, SUPPORTED_SCHEMA_VERSION,
@@ -21,8 +22,10 @@ use std::path::Path;
 use zeroize::Zeroizing;
 
 pub(super) const STORE_UNREADABLE: &str = "mcp_relay_store_unreadable";
-const SAVED_REMOTE: &str = "mcp_relay_saved_remote_policy";
+pub(super) const SAVED_REMOTE: &str = "mcp_relay_saved_remote_policy";
 const SAVED_UNVERIFIABLE: &str = "mcp_relay_saved_policy_unverifiable";
+/// The tables whose rows a lookup reads under a workspace.
+const PORTABLE_TABLES: [&str; 2] = ["policy_decisions", "guard_local_once_approvals"];
 
 /// `REMOTE_POLICY_SOURCES` (`policy_integrity.py`).
 const REMOTE_SOURCES_SQL: &str = "('cloud-sync', 'team-policy', 'policy-bundle', \
@@ -55,6 +58,8 @@ pub(super) struct Saved<'c> {
     pub(super) integrity_state: Value,
     pub(super) key_b64: Zeroizing<String>,
     pub(super) key_id: String,
+    /// The tables holding a row bound to a portable identity.
+    pub(super) portable_tables: Vec<&'static str>,
 }
 
 /// `None` when the store holds no saved row, so every lookup misses; the
@@ -91,14 +96,15 @@ pub(super) fn saved<'c>(
     if !has_local_policy && !has_local_once {
         return Ok(None);
     }
-    // A raw portable identity is never written by a local save, which keys
-    // every workspace; such a row came from elsewhere.
-    for table in ["policy_decisions", "guard_local_once_approvals"] {
+    // A row bound to a portable identity is read only by a lookup whose
+    // workspace the resident resolves to that identity.
+    let mut portable_tables = Vec::new();
+    for table in PORTABLE_TABLES {
         if shape.any(
             table,
             &format!("select 1 from {table} where workspace like 'git-project:v1:%'"),
         )? {
-            return Err(SAVED_REMOTE);
+            portable_tables.push(table);
         }
     }
     let (integrity_state, key) = published_integrity(binding)?;
@@ -117,6 +123,7 @@ pub(super) fn saved<'c>(
         integrity_state,
         key_b64: Zeroizing::new(Base64UrlUnpadded::encode_string(&key.key)),
         key_id: key.key_id.clone(),
+        portable_tables,
     }))
 }
 

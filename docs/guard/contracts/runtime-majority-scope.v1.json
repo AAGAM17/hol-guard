@@ -2002,6 +2002,44 @@
         "entry_points": [],
         "reason": "Audit receipt metadata, advisory aliases, CI gate results, empty outcomes and Cloud audit normalization shape the workspace supply-chain audit report. Install-time package decisions do not call them.",
         "evidence": "rg -l 'native_audit_receipt_metadata|native_advisory_aliases|native_ci_gate_result|native_empty_audit_outcome|native_normalize_cloud_audit_response' src -g '*.py' lists only supply_chain_workspace_audit.py outside native_package_audit_projection.py; it is not in the runtime import closure."
+      },
+      {
+        "id": "managed-policy-delivery-sync",
+        "category": "async_control_plane",
+        "path": "src/codex_plugin_scanner/guard/policy_bundle_delivery.py",
+        "symbols": [
+          "validated_managed_policy_delivery",
+          "effective_policy_bundle_acknowledgement"
+        ],
+        "entry_points": [],
+        "reason": "Validating a managed policy delivery received from Cloud and building the acknowledgement the supervisor reports back. Both run in background sync, not when a hook or MCP proxy request is decided.",
+        "evidence": "validated_managed_policy_delivery is called only from runtime/managed_controls_sync.py and daemon/managed_policy_delivery.py, and effective_policy_bundle_acknowledgement only from runtime/runner.py; all three callers are outside runtime scope. The retained effective_projection_digest and policy_bundle_acknowledgement_payload do not reference them, and the report validates this reference closure on every run."
+      },
+      {
+        "id": "aibom-inventory-instruction-roles",
+        "category": "offline_reporting",
+        "path": "src/codex_plugin_scanner/guard/aibom_detection.py",
+        "symbols": [
+          "InstructionRole",
+          "_DOC_DIRECTORY_ROLES",
+          "_NAME_ROLES",
+          "instruction_role_for_path",
+          "discover_shared_workspace_aibom_artifacts"
+        ],
+        "entry_points": [],
+        "reason": "Classifying instruction files by role and listing shared workspace AIBOM artifacts for the inventory contract. Inventory is built for reports and Cloud sync, not on a hook call.",
+        "evidence": "instruction_role_for_path is called only from inventory_contract_metadata.py and discover_shared_workspace_aibom_artifacts only from inventory_contract.py; both are outside runtime scope. InstructionRole and the role tables are reached only from these two. The retained adapter detection, Codex skill discovery and MCP metadata enrichment do not reference them, and the report validates this reference closure on every run."
+      },
+      {
+        "id": "review-event-sequence-recovery-binding",
+        "category": "async_control_plane",
+        "path": "src/codex_plugin_scanner/guard/store_review_event_outbox_binding.py",
+        "symbols": [
+          "normalized_delivery_binding"
+        ],
+        "entry_points": [],
+        "reason": "Normalizing a stored delivery binding while recovering review-event outbox sequences. Recovery runs in background Cloud delivery.",
+        "evidence": "The only caller of normalized_delivery_binding is store_review_event_sequence_recovery.py, which is outside runtime scope. The retained binding helpers (bind_review_events_for_request, load_review_oauth_binding, review_event_oauth_subject_hash) do not reference it, and the report validates this reference closure on every run."
       }
     ],
     "dynamic_imports": [

@@ -940,19 +940,19 @@
    "approval_queued": null,
    "reason": "HOL Guard blocked this action.",
    "reason_code": "native_file_read_review",
-   "text": "HOL Guard blocked this action. This reads a file outside what Guard treats as safe to read. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
+   "text": "HOL Guard blocked this action. This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
   },
   {
    "approval_queued": true,
    "reason": "HOL Guard blocked this action.",
    "reason_code": "native_file_read_review",
-   "text": "HOL Guard blocked this action. This reads a file outside what Guard treats as safe to read. It is waiting for the user to approve it in the HOL Guard inbox (`hol-guard approvals`). Do not retry the same action until it is approved; continue with other work meanwhile."
+   "text": "HOL Guard blocked this action. This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. It is waiting for the user to approve it in the HOL Guard inbox (`hol-guard approvals`). Do not retry the same action until it is approved; continue with other work meanwhile."
   },
   {
    "approval_queued": false,
    "reason": "HOL Guard blocked this action.",
    "reason_code": "native_file_read_review",
-   "text": "HOL Guard blocked this action. This reads a file outside what Guard treats as safe to read. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
+   "text": "HOL Guard blocked this action. This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
   },
   {
    "approval_queued": null,
@@ -1102,19 +1102,19 @@
    "approval_queued": null,
    "reason": "",
    "reason_code": "native_file_read_review",
-   "text": "This reads a file outside what Guard treats as safe to read. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
+   "text": "This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
   },
   {
    "approval_queued": true,
    "reason": "",
    "reason_code": "native_file_read_review",
-   "text": "This reads a file outside what Guard treats as safe to read. It is waiting for the user to approve it in the HOL Guard inbox (`hol-guard approvals`). Do not retry the same action until it is approved; continue with other work meanwhile."
+   "text": "This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. It is waiting for the user to approve it in the HOL Guard inbox (`hol-guard approvals`). Do not retry the same action until it is approved; continue with other work meanwhile."
   },
   {
    "approval_queued": false,
    "reason": "",
    "reason_code": "native_file_read_review",
-   "text": "This reads a file outside what Guard treats as safe to read. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
+   "text": "This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
   },
   {
    "approval_queued": null,
@@ -1264,19 +1264,19 @@
    "approval_queued": null,
    "reason": "   ",
    "reason_code": "native_file_read_review",
-   "text": "This reads a file outside what Guard treats as safe to read. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
+   "text": "This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
   },
   {
    "approval_queued": true,
    "reason": "   ",
    "reason_code": "native_file_read_review",
-   "text": "This reads a file outside what Guard treats as safe to read. It is waiting for the user to approve it in the HOL Guard inbox (`hol-guard approvals`). Do not retry the same action until it is approved; continue with other work meanwhile."
+   "text": "This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. It is waiting for the user to approve it in the HOL Guard inbox (`hol-guard approvals`). Do not retry the same action until it is approved; continue with other work meanwhile."
   },
   {
    "approval_queued": false,
    "reason": "   ",
    "reason_code": "native_file_read_review",
-   "text": "This reads a file outside what Guard treats as safe to read. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
+   "text": "This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
   },
   {
    "approval_queued": null,
@@ -1426,19 +1426,19 @@
    "approval_queued": null,
    "reason": "\u3000\u2003 padded \u00e9 \t\n",
    "reason_code": "native_file_read_review",
-   "text": "padded \u00e9 This reads a file outside what Guard treats as safe to read. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
+   "text": "padded \u00e9 This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
   },
   {
    "approval_queued": true,
    "reason": "\u3000\u2003 padded \u00e9 \t\n",
    "reason_code": "native_file_read_review",
-   "text": "padded \u00e9 This reads a file outside what Guard treats as safe to read. It is waiting for the user to approve it in the HOL Guard inbox (`hol-guard approvals`). Do not retry the same action until it is approved; continue with other work meanwhile."
+   "text": "padded \u00e9 This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. It is waiting for the user to approve it in the HOL Guard inbox (`hol-guard approvals`). Do not retry the same action until it is approved; continue with other work meanwhile."
   },
   {
    "approval_queued": false,
    "reason": "\u3000\u2003 padded \u00e9 \t\n",
    "reason_code": "native_file_read_review",
-   "text": "padded \u00e9 This reads a file outside what Guard treats as safe to read. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
+   "text": "padded \u00e9 This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
   },
   {
    "approval_queued": null,
@@ -1588,19 +1588,19 @@
    "approval_queued": null,
    "reason": "\u001c\u001d\u001e\u001f inner  spaces \u0085",
    "reason_code": "native_file_read_review",
-   "text": "inner  spaces This reads a file outside what Guard treats as safe to read. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
+   "text": "inner  spaces This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
   },
   {
    "approval_queued": true,
    "reason": "\u001c\u001d\u001e\u001f inner  spaces \u0085",
    "reason_code": "native_file_read_review",
-   "text": "inner  spaces This reads a file outside what Guard treats as safe to read. It is waiting for the user to approve it in the HOL Guard inbox (`hol-guard approvals`). Do not retry the same action until it is approved; continue with other work meanwhile."
+   "text": "inner  spaces This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. It is waiting for the user to approve it in the HOL Guard inbox (`hol-guard approvals`). Do not retry the same action until it is approved; continue with other work meanwhile."
   },
   {
    "approval_queued": false,
    "reason": "\u001c\u001d\u001e\u001f inner  spaces \u0085",
    "reason_code": "native_file_read_review",
-   "text": "inner  spaces This reads a file outside what Guard treats as safe to read. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
+   "text": "inner  spaces This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
   },
   {
    "approval_queued": null,
@@ -1750,19 +1750,19 @@
    "approval_queued": null,
    "reason": "\ud83d\udd12 locked",
    "reason_code": "native_file_read_review",
-   "text": "\ud83d\udd12 locked This reads a file outside what Guard treats as safe to read. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
+   "text": "\ud83d\udd12 locked This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
   },
   {
    "approval_queued": true,
    "reason": "\ud83d\udd12 locked",
    "reason_code": "native_file_read_review",
-   "text": "\ud83d\udd12 locked This reads a file outside what Guard treats as safe to read. It is waiting for the user to approve it in the HOL Guard inbox (`hol-guard approvals`). Do not retry the same action until it is approved; continue with other work meanwhile."
+   "text": "\ud83d\udd12 locked This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. It is waiting for the user to approve it in the HOL Guard inbox (`hol-guard approvals`). Do not retry the same action until it is approved; continue with other work meanwhile."
   },
   {
    "approval_queued": false,
    "reason": "\ud83d\udd12 locked",
    "reason_code": "native_file_read_review",
-   "text": "\ud83d\udd12 locked This reads a file outside what Guard treats as safe to read. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
+   "text": "\ud83d\udd12 locked This reads a file outside what Guard treats as safe to read. A search is checked against every file it can reach, so search a narrower folder or one file, use `rg` with a `-g` file filter, or find files by name with `find` or `glob`. No approval is waiting in HOL Guard for this action. Do not retry it or work around the block; continue with a permitted alternative or tell the user what is blocked."
   },
   {
    "approval_queued": null,

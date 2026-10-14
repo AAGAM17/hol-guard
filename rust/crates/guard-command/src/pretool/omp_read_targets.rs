@@ -65,7 +65,18 @@ fn bounded_omp_directory_read_target_without_selector(
         return false;
     }
     if path.split(['/', '\\']).any(|part| part == "..") {
-        return false;
+        // A climb is proved only to the root of a linked worktree of the
+        // session's repository beside the checkout (see `sibling`).
+        return cwd
+            .and_then(|cwd| {
+                super::super::directory_targets::sibling::linked_root(
+                    path,
+                    std::path::Path::new(cwd),
+                )
+            })
+            .is_some_and(|root| {
+                resolved_path_allowed_for_operation(&root, home_dir, cwd, false, true)
+            });
     }
     if path.contains([
         '$', '`', '|', ';', '&', '<', '>', '\n', '\r', '\0', '*', '?', '[', ']', '{', '}',

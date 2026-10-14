@@ -398,7 +398,7 @@ fn moves_head(original: &CommandSegmentV1) -> bool {
 
 /// A Git read whose configuration the session probe proves starts no
 /// helper. The writes proven here change no configuration it reads.
-fn configured_read(
+pub(in crate::pretool) fn configured_read(
     model: &CanonicalCommandV1,
     index: usize,
     context: super::PathContext<'_>,

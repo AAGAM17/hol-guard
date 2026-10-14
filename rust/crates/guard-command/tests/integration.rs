@@ -70,6 +70,7 @@ pub mod pretool_git_redirect_commit_chain;
 pub mod pretool_git_ref_reads;
 pub mod pretool_git_session_ops;
 pub mod pretool_git_sibling_local_writes;
+pub mod pretool_git_sibling_worktree_cleanup;
 pub mod pretool_git_sibling_worktree_ops;
 pub mod pretool_git_submodules;
 pub mod pretool_git_temp_repository;

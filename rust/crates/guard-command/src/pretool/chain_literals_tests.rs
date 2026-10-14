@@ -356,6 +356,12 @@ mod envelope {
         let (action, reason) = verdict(chain, &ws);
         assert_ne!(action, "allow", "{reason}");
         assert_ne!(reason, super::super::EVALUATION_FAILED);
+        // A Git read after the `cd` keeps Git's reapproval floor, not a
+        // failed evaluation.
+        let read = format!("{chain} && cat reports/weekly.md && git status --short");
+        let (action, reason) = verdict(&read, &ws);
+        assert_ne!(action, "allow", "{reason}");
+        assert_ne!(reason, super::super::EVALUATION_FAILED);
         // After a directory change the expansion stays opaque.
         let (action, reason) = verdict("cd .git && cat $(pwd)/config", &ws);
         assert_ne!(action, "allow", "{reason}");

@@ -15,8 +15,16 @@ pub(super) fn requires_review(
     execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
 ) -> bool {
     // Reads in a checkout the same command creates were proven against the
-    // repository whose configuration the new worktree shares.
-    if super::worktree_add::chain::proven(model, context, deadline, execution_environment) {
+    // repository whose configuration the new worktree shares; reads after a
+    // proven worktree removal were each proven helper-free on their own.
+    if super::worktree_add::chain::proven(model, context, deadline, execution_environment)
+        || super::worktree_maintenance::chain::proven(
+            model,
+            context,
+            deadline,
+            execution_environment,
+        )
+    {
         return false;
     }
     // A proven read prefix holds no Git segment and changes nothing a later

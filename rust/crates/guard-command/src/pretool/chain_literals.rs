@@ -109,9 +109,27 @@ pub(super) fn rejudge(
     match projected.minimum_action.as_str() {
         "allow" | "warn" | "block" => projected,
         "sandbox-required" if launches_as_judged(&projected, &command, context) => projected,
-        "review" if unevaluated && projected.reason_code != EVALUATION_FAILED => projected,
+        // A command the raw text could not evaluate keeps the review its
+        // literal form earns, Git's reapproval floor included.
+        "review" | "require-reapproval"
+            if unevaluated && projected.reason_code != EVALUATION_FAILED =>
+        {
+            projected
+        }
+        // The sandbox would launch the raw text, which was never judged.
+        "sandbox-required" if unevaluated => reviewed(projected),
         _ => raw,
     }
+}
+
+fn reviewed(mut projected: PreToolResultV1) -> PreToolResultV1 {
+    projected.minimum_action = "review".into();
+    projected.policy_action = "review".into();
+    projected.decision = "deny".into();
+    projected.explicitly_benign = false;
+    projected.reason_code = "native_command_review_required".into();
+    projected.reason = "HOL Guard requires review because protected execution cannot run this command as it was judged.".into();
+    projected
 }
 
 fn launches_as_judged(

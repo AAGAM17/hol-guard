@@ -108,6 +108,9 @@ fn a_list_after_cd_into_a_sibling_root_runs_contained_there() {
         // the rest running in the session directory; `;` peels like `&&`.
         format!("cd {}; node scripts/report.mjs", tree.display()),
         format!("cd {} ; npm run build && ls dist", tree.display()),
+        // `..` into a linked worktree of the session's repository is that
+        // worktree's root, as the checkout a chain creates beside it is.
+        "cd ../app-report && node scripts/report.mjs && cat reports/weekly.md".to_owned(),
     ] {
         assert_eq!(
             contained(&reason("omp", &home, &main, &command)),
@@ -123,9 +126,11 @@ fn a_sibling_cd_the_sink_would_not_rebase_keeps_its_review() {
     let (home, main, _tree) = fixture();
     let projects = main.parent().unwrap();
     for command in [
-        // The shell resolves `..` against its logical `$PWD`, which the
-        // reported cwd may not show, so a relative parent is never proved.
-        "cd ../app-report && node scripts/report.mjs && cat reports/weekly.md".to_owned(),
+        // A relative parent is proved only into a linked worktree of the
+        // session's repository.
+        "cd ../other && npm run build && ls dist".to_owned(),
+        "cd ../plain && npm run build && ls dist".to_owned(),
+        "cd .. && npm run build && ls dist".to_owned(),
         // Not a repository root, or no repository at all.
         format!(
             "cd {}/app-report/scripts && node report.mjs && cat out.md",

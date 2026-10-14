@@ -5,6 +5,9 @@
 //! proved only when every backslash in its segment survives the shell, and
 //! only in the exact spelling of its canonical path.
 
+#[path = "directory_targets_sibling.rs"]
+pub(crate) mod sibling;
+
 pub(crate) fn safe_directory_target(target: &str) -> bool {
     // Windows spells an absolute directory with backslash separators. Check
     // a drive-absolute target in its forward-slash form; a backslash anywhere
@@ -70,8 +73,9 @@ pub(super) fn verified_cwd_target(value: &str, context: super::PathContext<'_>) 
 /// POSIX `cd` skips the CDPATH search for operands that begin with `.` or
 /// `..`; any other relative operand needs proof that CDPATH is unset. The
 /// lexical join is what a logical `cd` reaches, so the caller's spelling
-/// check rejects symlinked components. `..` is never proved: the shell
-/// resolves it against its logical `$PWD`, which may name a symlinked
+/// check rejects symlinked components. `..` is proved only into a linked
+/// worktree of the session's repository (see `sibling`): elsewhere the
+/// shell resolves it against its logical `$PWD`, which may name a symlinked
 /// parent the reported cwd does not show. On Windows a `:` can name a
 /// drive-relative path (`C:src`) or an alternate data stream, and Git Bash
 /// resolves a root-relative `/etc` against its own root rather than the
@@ -83,7 +87,7 @@ fn relative_cwd_target(value: &str, context: super::PathContext<'_>) -> Option<s
     {
         return None;
     }
-    let dotted = value == "." || value.starts_with("./");
+    let dotted = value == "." || value.starts_with("./") || value.starts_with("../");
     if !dotted && !context.cdpath_unset {
         return None;
     }
@@ -95,7 +99,9 @@ fn relative_cwd_target(value: &str, context: super::PathContext<'_>) -> Option<s
     for component in base.join(value).components() {
         match component {
             std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => return None,
+            std::path::Component::ParentDir => {
+                return sibling::linked_root(value, base);
+            }
             other => joined.push(other),
         }
     }

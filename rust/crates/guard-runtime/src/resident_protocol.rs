@@ -123,6 +123,9 @@ pub(crate) fn capabilities() -> RuntimeCapabilitiesV1 {
         // compiled and advertised on unix only.
         #[cfg(unix)]
         features.push(crate::claude_session_start::SESSION_START_FEATURE.into());
+        // The relay runs its MCP server in its own process group, so it is
+        // advertised on unix only.
+        features.push(crate::mcp_relay::RELAY_FEATURE.into());
     }
     features.push(crate::claude_hook_bridge::BRIDGE_FEATURE.into());
     features.push(crate::codex_hook_bridge::BRIDGE_FEATURE.into());

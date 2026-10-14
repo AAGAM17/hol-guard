@@ -5,19 +5,18 @@
 //! with the scrubbed environment, and relays JSON-RPC between the host on
 //! stdio and the child without a Python process or per-frame resident round
 //! trips. Every `tools/call` is decided in one round trip to the resident's
-//! `mcp_relay_decide` op, and anything it does not decide is blocked. The
-//! relay feature is not advertised in the runtime capabilities until the
-//! decisions it defers are covered, so installers keep launching the Python
-//! proxy.
+//! `mcp_relay_decide` op, and anything it does not decide is blocked. A
+//! session whose calls the resident cannot decide never reaches that point:
+//! at startup the relay hands it to the Python proxy (`mcp_relay_lane`), so
+//! installers select the relay wherever the runtime advertises it.
 //!
 //! Unix only: the child session relies on process groups.
 
 /// `hol-guard-runtime` subcommand that runs the relay.
 pub(crate) const RELAY_COMMAND: &str = "mcp-relay";
 
-/// Capability string installers will gate relay selection on. It is not
-/// advertised until every `tools/call` route is native.
-#[cfg_attr(not(all(test, unix)), allow(dead_code))]
+/// Capability string installers gate relay selection on; advertised on unix.
+#[cfg_attr(not(unix), allow(dead_code))]
 pub(crate) const RELAY_FEATURE: &str = "mcp-stdio-relay-v1";
 
 /// Run the relay; returns the process exit status.

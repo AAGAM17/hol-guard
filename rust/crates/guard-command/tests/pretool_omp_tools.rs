@@ -358,6 +358,138 @@ fn grep_allows_only_directories_without_reachable_secrets() {
 }
 
 #[test]
+fn semicolon_path_lists_prove_every_entry() {
+    let f = fixture();
+    let sibling = f.home.join("clean");
+    let absolute = format!("src; {}", sibling.display());
+    for path in [
+        absolute.as_str(),
+        "src;~/clean",
+        "src; ~/clean;",
+        "~/clean/*; src/*.rs",
+    ] {
+        let result = omp(
+            &f,
+            "glob",
+            json!({"path": path, "hidden": true, "gitignore": false}),
+        );
+        assert!(allowed(&result), "{path}: {}", result.reason_code);
+        assert_eq!(result.reason_code, "native_omp_directory_listing");
+    }
+    let result = omp(
+        &f,
+        "grep",
+        json!({"pattern": "fn main", "path": "src; ~/clean"}),
+    );
+    assert!(allowed(&result), "{}", result.reason_code);
+    assert_eq!(result.reason_code, "native_bounded_search_scope");
+    // Agents often grep a few known files at once. Each file entry needs the
+    // bounded file-read proof a lone file gets.
+    let files = format!(
+        "{};{};{}",
+        f.project.join("calc.py").display(),
+        f.project.join("src/main.rs").display(),
+        sibling.join("a.txt").display()
+    );
+    for path in [files.as_str(), "calc.py; src/main.rs; src"] {
+        let result = omp(&f, "grep", json!({"pattern": "x", "path": path}));
+        assert!(allowed(&result), "{path}: {}", result.reason_code);
+        assert_eq!(result.reason_code, "native_bounded_search_scope");
+    }
+    for path in [
+        "calc.py; ~/.ssh/id_rsa",
+        "calc.py; ~/.codex/auth.json",
+        "calc.py; ~/secret-dir/.env",
+        "calc.py; missing.py",
+        "calc.py; src/*.rs",
+    ] {
+        let result = omp(&f, "grep", json!({"pattern": "x", "path": path}));
+        assert!(!allowed(&result), "{path}: {}", result.reason_code);
+    }
+    for path in [
+        "src; ~/.ssh",
+        "src; ~/secret-dir",
+        "src; ~/missing-directory",
+        "src; ../../../etc",
+        "src; ~/.ss*/*",
+        "src;{~/clean,~/.ssh}",
+        "src\\; ~/.ssh",
+        "\"src\"; ~/clean",
+        " src; ~/clean",
+        "[\"src\"]; ~/clean",
+        ";",
+    ] {
+        assert!(!allowed(&omp(&f, "glob", json!({"path": path}))), "{path}");
+        assert!(
+            !allowed(&omp(&f, "grep", json!({"pattern": "x", "path": path}))),
+            "{path}"
+        );
+    }
+    // A glob entry without wildcards names one file, and the host returns
+    // only that name. It carries the bounded file-read proof.
+    for path in [
+        "calc.py",
+        "calc.py;src/**/main.rs",
+        "src/main.rs; ~/clean/*",
+    ] {
+        let result = omp(
+            &f,
+            "glob",
+            json!({"path": path, "hidden": true, "gitignore": false, "limit": 100}),
+        );
+        assert!(allowed(&result), "{path}: {}", result.reason_code);
+        assert_eq!(result.reason_code, "native_omp_directory_listing");
+    }
+    for path in [
+        "calc.py; ~/.ssh/id_rsa",
+        "calc.py; ~/.codex/auth.json",
+        "calc.py; ~/secret-dir/.env",
+        "~/secret-dir/.env",
+    ] {
+        let result = omp(&f, "glob", json!({"path": path}));
+        assert!(!allowed(&result), "{path}: {}", result.reason_code);
+    }
+    // An existing literal that contains `;` is searched whole, not split.
+    write(f.project.join("a;b/notes.md"), "synthetic fixture\n");
+    assert!(!allowed(&omp(&f, "glob", json!({"path": "a;b"}))));
+    write(f.project.join("c;src/notes.md"), "synthetic fixture\n");
+    assert!(!allowed(&omp(&f, "glob", json!({"path": "c;src:1-5"}))));
+}
+
+#[test]
+fn brace_globs_prove_every_alternative() {
+    let f = fixture();
+    write(f.project.join("app/lib/index.ts"), "synthetic fixture\n");
+    write(
+        f.project.join("app/tests/index.test.ts"),
+        "synthetic fixture\n",
+    );
+    for path in [
+        "app/{lib,tests}",
+        "app/{lib,tests}/*.ts",
+        "~/{clean,project/app/lib}",
+    ] {
+        let result = omp(&f, "glob", json!({"path": path}));
+        assert!(allowed(&result), "{path}: {}", result.reason_code);
+        assert_eq!(result.reason_code, "native_omp_directory_listing");
+    }
+    for path in [
+        "~/{clean,.ssh}",
+        "~/{clean,secret-dir}",
+        "~/{clean,.ss*}",
+        "~/clean/{.,x}./.ssh",
+        "{lib,app}",
+        "app/{lib,{tests}}",
+        "app/{lib,tests",
+        "app/lib,tests}",
+        "app/\\{lib,tests}",
+        "app/{a,b,c,d,e,f}/{a,b,c,d,e,f}",
+    ] {
+        assert!(!allowed(&omp(&f, "glob", json!({"path": path}))), "{path}");
+    }
+}
+
+#[test]
 fn eval_allows_literal_tool_programs() {
     let f = fixture();
     for code in [

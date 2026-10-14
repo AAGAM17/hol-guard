@@ -16,7 +16,7 @@ pub(super) fn observe(
     result: &mut CompatibilityObservations,
     probe: crate::pretool::github_conversation::ProbeContext<'_>,
 ) {
-    match classify(&segment.arguments, dollars_single_quoted(&segment.text)) {
+    match classify(&segment.arguments, &segment.text) {
         Some(mut capabilities) => {
             // One secret-free comment or review reply on the work tree's own
             // repository is review conversation, owned like a routine
@@ -59,7 +59,7 @@ pub(super) fn arguments_are_read_only(arguments: &[String], text: &str) -> bool 
                     .split('=')
                     .next()
                     .is_some_and(|flags| flags.contains('w')))
-    }) && classify(arguments, dollars_single_quoted(text)).is_some_and(|capabilities| {
+    }) && classify(arguments, text).is_some_and(|capabilities| {
         !capabilities.is_empty()
             && capabilities
                 .iter()
@@ -67,9 +67,10 @@ pub(super) fn arguments_are_read_only(arguments: &[String], text: &str) -> bool 
     })
 }
 
-/// True when every `$` in the raw segment text sits inside single quotes, so
-/// the shell passes it through literally instead of expanding a variable.
-fn dollars_single_quoted(text: &str) -> bool {
+/// True when every `target` in the raw segment text is literal: inside single
+/// quotes, or escaped with a backslash, so the shell passes it through instead
+/// of expanding a variable or running a command substitution.
+fn literal_everywhere(text: &str, target: char) -> bool {
     let mut quote: Option<char> = None;
     let mut escaped = false;
     for character in text.chars() {
@@ -81,7 +82,7 @@ fn dollars_single_quoted(text: &str) -> bool {
             }
             _ if escaped => escaped = false,
             _ if character == '\\' => escaped = true,
-            _ if character == '$' => return false,
+            _ if character == target => return false,
             Some(_) if character == '"' => quote = None,
             None if matches!(character, '\'' | '"') => quote = Some(character),
             _ => {}
@@ -90,18 +91,21 @@ fn dollars_single_quoted(text: &str) -> bool {
     true
 }
 
-fn classify(original: &[String], literal_dollars: bool) -> Capabilities {
+fn classify(original: &[String], text: &str) -> Capabilities {
     // Quoted dynamic-looking values are deliberately outside this small native
     // grammar too. Distinguishing their expansion provenance needs literal proof.
     // The one exception is a single-quoted `gh api graphql` document whose
     // `$variables` it declares itself: the shell never expands those.
+    // A backtick the raw text escapes or single-quotes is Markdown code
+    // formatting in a body, never a command substitution.
     let graphql = original.len() > 1 && original[0] == "api" && original[1] == "graphql";
     if original.iter().any(|value| {
-        value.contains(['`', '\0'])
+        value.contains('\0')
+            || (value.contains('`') && !literal_everywhere(text, '`'))
             || value.starts_with('@')
             || (value.contains('$')
                 && !(graphql
-                    && literal_dollars
+                    && literal_everywhere(text, '$')
                     && value
                         .strip_prefix("query=")
                         .is_some_and(api::graphql_text_is_static)))

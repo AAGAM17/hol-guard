@@ -5,29 +5,42 @@ use super::{basename, CanonicalCommandV1, CommandSegmentV1, CompatibilityObserva
 
 #[path = "interpreter.rs"]
 mod interpreter;
+#[path = "redirects.rs"]
+mod redirects;
+use redirects::Redirect;
+
+const SENSITIVE_PATHS: [&str; 9] = [
+    ".aws/",
+    ".ssh/",
+    ".docker/",
+    ".kube/",
+    ".env",
+    ".netrc",
+    ".npmrc",
+    ".pypirc",
+    ".git-credentials",
+];
+
+/// A credential location named anywhere in the value, even inside prose.
+fn sensitive_path(value: &str) -> bool {
+    let value = value.to_ascii_lowercase().replace('\\', "/");
+    SENSITIVE_PATHS.iter().any(|needle| value.contains(needle))
+}
 
 fn sensitive(value: &str) -> bool {
-    let value = value.to_ascii_lowercase().replace('\\', "/");
-    [
-        ".aws/",
-        ".ssh/",
-        ".docker/",
-        ".kube/",
-        ".env",
-        ".netrc",
-        ".npmrc",
-        ".pypirc",
-        ".git-credentials",
-        "credential",
-        "secret",
-        "password",
-        "api_key",
-        "api-key",
-        "token",
-        "private_key",
-    ]
-    .iter()
-    .any(|needle| value.contains(needle))
+    let lowered = value.to_ascii_lowercase();
+    sensitive_path(value)
+        || [
+            "credential",
+            "secret",
+            "password",
+            "api_key",
+            "api-key",
+            "token",
+            "private_key",
+        ]
+        .iter()
+        .any(|needle| lowered.contains(needle))
 }
 
 fn option(arguments: &[String], names: &[&str]) -> bool {
@@ -365,8 +378,18 @@ pub(super) fn observe(
             | "chown"
             | "chgrp"
     );
-    let redirect = segment.text.contains('>');
-    if write_command || redirect || interpreter {
+    // A quoted `>` in a POSIX argument (a Markdown placeholder or arrow in a
+    // comment body) writes nothing; interpreter code keeps the raw check.
+    let redirect = if interpreter || command.dialect != "posix" {
+        if segment.text.contains('>') {
+            Redirect::Output
+        } else {
+            Redirect::None
+        }
+    } else {
+        redirects::posix_redirect(&segment.text)
+    };
+    if write_command || redirect != Redirect::None || interpreter {
         if [".hol-guard", ".codex/", ".claude/", "hol-guard/config"]
             .iter()
             .any(|path| normalized.contains(path))
@@ -387,7 +410,21 @@ pub(super) fn observe(
         ]
         .iter()
         .any(|operation| normalized.contains(operation));
-        if sensitive(&segment.text) && (write_command || redirect || interpreter_write) {
+        // A stderr merge or discard writes no file, but still shows the agent
+        // what the command reads: any sensitive path operand keeps review.
+        // Multi-word prose, such as a comment body, still counts when it names
+        // a credential location, but words like "token" in it are just text.
+        let output_write = write_command || redirect == Redirect::Output || interpreter_write;
+        if (output_write && sensitive(&segment.text))
+            || (redirect == Redirect::Stderr
+                && segment.tokens.iter().any(|token| {
+                    if token.contains(char::is_whitespace) {
+                        sensitive_path(token)
+                    } else {
+                        sensitive(token)
+                    }
+                }))
+        {
             output.rule("command.shell-mutations.sensitive-file-write", index, true);
         }
     }

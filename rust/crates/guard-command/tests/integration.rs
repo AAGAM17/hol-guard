@@ -107,6 +107,7 @@ pub mod pretool_npm_reads;
 pub mod pretool_omp_agent_listing;
 pub mod pretool_omp_artifact_search;
 pub mod pretool_omp_bash_cwd;
+pub mod pretool_omp_eval_contained_bash;
 pub mod pretool_omp_eval_read_helpers;
 pub mod pretool_omp_fp_proofs;
 pub mod pretool_omp_home_documents;

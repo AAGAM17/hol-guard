@@ -41,6 +41,10 @@ pub(crate) struct ScriptConstants {
     pub(crate) guard_home: String,
     /// `_guard_hook_arg_value("--home")`.
     pub(crate) home: Option<String>,
+    /// `GUARD_RECOVERY_COMMAND`: the install-time daemon recovery the
+    /// client runs as `[*GUARD_RECOVERY_COMMAND, failure_kind]` when its
+    /// daemon does not answer.
+    pub(crate) recovery_command: Vec<String>,
     /// `GUARD_HOOK_TIMEOUT_SECONDS`: `str(int)`, at least one.
     pub(crate) timeout_seconds: u64,
 }
@@ -102,13 +106,19 @@ pub(crate) fn normalize(text: &str) -> Option<(String, ScriptConstants)> {
     let PyVal::Str(guard_home) = rendered_value(guard_home?)? else {
         return None;
     };
-    for list in [cli?, recovery?, inherit?] {
+    for list in [cli?, inherit?] {
         rendered_value(list)?.as_list()?;
     }
+    let recovery_command = rendered_value(recovery?)?
+        .as_list()?
+        .iter()
+        .map(|item| item.as_str().map(str::to_owned))
+        .collect::<Option<Vec<_>>>()?;
     let argv = rendered_value(argv?)?;
     let constants = ScriptConstants {
         guard_home,
         home: hook_arg_value(argv.as_list()?, "--home"),
+        recovery_command,
         timeout_seconds: parse_timeout(timeout?)?,
     };
     Some((lines.join("\n"), constants))

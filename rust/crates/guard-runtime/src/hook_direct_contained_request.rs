@@ -102,6 +102,21 @@ pub(super) fn write_and_route(
     )))
 }
 
+/// Write `serialized` as a fresh private request snapshot under `temp`,
+/// reclaiming stale ones first: the request path, or `None` with nothing
+/// left behind.
+pub(crate) fn write_snapshot(temp: &Path, serialized: &[u8]) -> Option<PathBuf> {
+    cleanup_stale_requests(temp);
+    let directory = private_directory(temp)?;
+    let request = directory.join(REQUEST_FILE_NAME);
+    if write_request(&request, serialized).is_some() {
+        return Some(request);
+    }
+    let _ = std::fs::remove_file(&request);
+    let _ = std::fs::remove_dir(&directory);
+    None
+}
+
 /// A new owner-only directory under `temp`, named as `mkdtemp` names one.
 fn private_directory(temp: &Path) -> Option<PathBuf> {
     for _ in 0..NAME_ATTEMPTS {

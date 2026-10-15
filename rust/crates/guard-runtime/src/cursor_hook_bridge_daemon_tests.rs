@@ -1,19 +1,22 @@
 //! The Cursor bridge's daemon lane: a hook no resident answered, posted to
 //! a scripted loopback daemon and answered as the client would answer the
-//! daemon's body, or left to the client.
+//! daemon's body, or failed closed.
 
 use std::io::BufReader;
 use std::net::TcpListener;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use base64ct::{Base64UrlUnpadded, Encoding};
+use hmac::{Hmac, Mac};
 use serde_json::{json, Value};
+use sha2::Sha256;
 
 use super::*;
 use crate::claude_hook_bridge_fixture::{
     closed_port, read_request, write_private, write_response, GuardHome, Request as DaemonRequest,
 };
-use crate::cursor_hook_bridge_response::ALLOW_STDOUT;
+use crate::cursor_hook_bridge_response::{ALLOW_STDOUT, UNAVAILABLE_STDOUT};
 
 const TOKEN: &str = "cursor-daemon-token-fixture";
 const SHELL: &[u8] =
@@ -45,6 +48,9 @@ fn client_for(home: &GuardHome, budget: Duration) -> Client {
     Client {
         guard_home: home.home_text().to_owned(),
         home: Some("/h".to_owned()),
+        // No start command: a daemon failure fails closed at once.
+        recovery_command: Vec::new(),
+        event: "beforeShellExecution".to_owned(),
         deadline: Instant::now() + budget,
     }
 }
@@ -111,6 +117,11 @@ fn exchange<T>(
     let answered = bridge(&client, raw);
     let request = daemon.join().unwrap().expect("the daemon was asked");
     (answered, request, home)
+}
+
+/// The client's `_cursor_unavailable_response` for a `before*` hook.
+fn closed() -> (String, i32) {
+    (UNAVAILABLE_STDOUT.to_owned(), 2)
 }
 
 fn printed(fields: &[(&str, &str)]) -> String {
@@ -238,8 +249,8 @@ fn every_installed_event_is_answered_from_the_daemon() {
 }
 
 #[test]
-fn a_daemon_answer_the_bridge_cannot_reproduce_is_left_to_the_client() {
-    let replies: [(&str, u16, &str); 11] = [
+fn a_daemon_answer_the_bridge_cannot_reproduce_fails_closed() {
+    let replies: [(&str, u16, &str); 9] = [
         ("server-error", 500, r#"{"policy_action":"allow"}"#),
         ("overload", 429, r#"{"error":"overload"}"#),
         ("busy", 503, r#"{"error":"busy"}"#),
@@ -249,74 +260,83 @@ fn a_daemon_answer_the_bridge_cannot_reproduce_is_left_to_the_client() {
         ("unknown-action", 200, r#"{"policy_action":"maybe"}"#),
         ("no-action", 200, "{}"),
         ("bom", 200, "\u{feff}{\"policy_action\":\"allow\"}"),
-        (
-            "signed-link",
-            200,
-            r#"{"policy_action":"review","approval_url":"http://127.0.0.1:4781/approvals/req-1"}"#,
-        ),
-        (
-            "signed-request-link",
-            200,
-            r#"{"policy_action":"review","approval_requests":[{"approval_url":"http://localhost:4781/approvals/req-2"}]}"#,
-        ),
     ];
     for (label, status, body) in replies {
         let (answered, _request, _home) = ask(label, SHELL, status, body);
-        assert_eq!(answered, None, "{label}");
+        assert_eq!(answered, Some(closed()), "{label}");
     }
-    // An observer's body must still be a JSON object.
+    // An observer's body must still be a JSON object; its fail-closed
+    // answer is the client's `{}`.
     let (answered, _request, _home) = ask("after-list", AFTER_SHELL, 200, "[]");
-    assert_eq!(answered, None);
+    assert_eq!(answered, Some(("{}\n".to_owned(), 0)));
+}
+
+/// Whether `token` is a dashboard session token signed with [`TOKEN`].
+fn signed_with_fixture_token(token: &str) -> bool {
+    let mut parts = token.split('.');
+    let (Some("gld1"), Some(payload), Some(signature), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return false;
+    };
+    let mut mac = <Hmac<Sha256>>::new_from_slice(TOKEN.as_bytes()).unwrap();
+    mac.update(payload.as_bytes());
+    Base64UrlUnpadded::encode_string(&mac.finalize().into_bytes()) == signature
 }
 
 #[test]
-fn a_restrictive_daemon_answer_the_bridge_cannot_render_is_handed_to_the_client() {
-    // The client renders these from the bridge's copy instead of posting
-    // the hook again, so the daemon reviews it once.
-    let handed: [(&str, &str); 3] = [
+fn a_restrictive_daemon_answer_with_a_loopback_link_is_signed_natively() {
+    // The bridge signs the link as the client would and answers the hook
+    // itself, so the daemon reviews it once and no client runs.
+    let linked: [(&str, &str, &str, i32); 3] = [
         (
             "review-link",
             r#"{"policy_action":"review","approval_url":"http://127.0.0.1:4781/approvals/req-1"}"#,
+            "http://127.0.0.1:4781/approvals/req-1",
+            0,
         ),
         (
             "review-request-link",
             r#"{"policy_action":"review","approval_requests":[{"approval_url":"http://localhost:4781/approvals/req-2"}]}"#,
+            "http://localhost:4781/approvals/req-2",
+            0,
         ),
         (
             "block-link",
             r#"{"policy_action":"block","approval_url":"http://127.0.0.1:4781/approvals/req-3"}"#,
+            "http://127.0.0.1:4781/approvals/req-3",
+            2,
         ),
     ];
-    for (label, body) in handed {
-        assert_eq!(
-            ask_reply(label, SHELL, 200, body),
-            Reply::Handoff(body.to_owned()),
-            "{label}"
-        );
+    for (label, body, url, expected_code) in linked {
+        let Reply::Answered(stdout, code) = ask_reply(label, SHELL, 200, body);
+        assert_eq!(code, expected_code, "{label}");
+        let answer: Value = serde_json::from_str(&stdout).unwrap();
+        let message = answer["user_message"].as_str().unwrap();
+        let prefix = format!("{url}#guard-token=");
+        let token = message
+            .split_once(&prefix)
+            .and_then(|(_, rest)| rest.strip_suffix('.'))
+            .unwrap_or_else(|| panic!("{label}: {message}"));
+        assert!(signed_with_fixture_token(token), "{label}: {token}");
     }
-    let oversized = format!(
-        r#"{{"policy_action":"review","reason":"{}","approval_url":"http://127.0.0.1:4781/approvals/req-4"}}"#,
-        "r".repeat(MAX_HANDOFF_REPLY_BYTES)
-    );
-    let kept: [(&str, u16, &str); 4] = [
+    let (stdout, code) = closed();
+    let refused: [(&str, u16, &str); 3] = [
         ("unknown-action", 200, r#"{"policy_action":"maybe"}"#),
         ("server-error", 500, r#"{"policy_action":"review"}"#),
         ("list", 200, "[]"),
-        ("oversized", 200, oversized.as_str()),
     ];
-    for (label, status, body) in kept {
+    for (label, status, body) in refused {
         assert_eq!(
             ask_reply(label, SHELL, status, body),
-            Reply::Client,
+            Reply::Answered(stdout.clone(), code),
             "{label}"
         );
     }
-    // An observer always renders, so it is never handed over.
-    assert_eq!(handoff(Kind::After, r#"{"policy_action":"block"}"#), None);
 }
 
 #[test]
-fn a_daemon_the_bridge_cannot_ask_is_left_to_the_client() {
+fn a_daemon_the_bridge_cannot_ask_fails_closed() {
     let no_state = GuardHome::new("cursor-daemon-no-state");
     write_private(&no_state.home.join("daemon-auth-token"), TOKEN);
     let no_token = daemon_home("no-token", "127.0.0.1", closed_port(), false);
@@ -326,12 +346,17 @@ fn a_daemon_the_bridge_cannot_ask_is_left_to_the_client() {
     write_private(&spaced.home.join("daemon-auth-token"), "tok\n");
     for home in [&no_state, &no_token, &remote, &unreachable, &spaced] {
         let client = client_for(home, Duration::from_secs(20));
-        assert_eq!(respond(&client, SHELL), None, "{}", home.home_text());
+        assert_eq!(
+            respond(&client, SHELL),
+            Some(closed()),
+            "{}",
+            home.home_text()
+        );
     }
 }
 
 #[test]
-fn a_daemon_that_does_not_answer_in_time_leaves_the_client_time() {
+fn a_daemon_that_does_not_answer_in_time_fails_closed_in_time() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let daemon = std::thread::spawn(move || {
@@ -344,22 +369,21 @@ fn a_daemon_that_does_not_answer_in_time_leaves_the_client_time() {
     });
     let home = daemon_home("timeout", "127.0.0.1", port, true);
     let client = client_for(&home, Duration::from_secs(2));
-    assert_eq!(respond(&client, SHELL), None);
+    assert_eq!(respond(&client, SHELL), Some(closed()));
     assert!(Instant::now() < client.deadline);
     daemon.join().unwrap();
 }
 
 #[test]
-fn hooks_the_client_keeps_never_reach_the_daemon() {
+fn hooks_the_bridge_cannot_send_fail_closed_without_the_daemon() {
     let home = daemon_home("kept", "127.0.0.1", closed_port(), true);
     let client = client_for(&home, Duration::from_secs(20));
     for raw in [
         &br#"{"hook_event_name":"beforeSubmitPrompt","prompt":"hi"}"#[..],
         br#"{"hook_event_name":"afterFileEdit","file_path":"/tmp/a"}"#,
         br#"{"hook_event_name":"stop"}"#,
-        b"[]",
     ] {
         assert_eq!(prepared_request(&client, raw), None);
-        assert_eq!(respond(&client, raw), None);
+        assert_eq!(respond(&client, raw), Some(closed()));
     }
 }

@@ -174,7 +174,7 @@ fn routed_response(original: &Map<String, Value>, command: &[String]) -> Value {
 
 #[cfg(unix)]
 #[path = "hook_direct_contained_request.rs"]
-mod request;
+pub(crate) mod request;
 
 #[cfg(not(unix))]
 mod request {

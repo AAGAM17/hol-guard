@@ -3,9 +3,11 @@
 
 use std::time::{Duration, Instant};
 
+use guard_command::hook_adapter_value::parse_python_json;
 use serde_json::{json, Value};
 
 use super::*;
+use crate::cursor_hook_bridge_response::{FIXED_NOW, UNAVAILABLE_STDOUT};
 use crate::cursor_hook_bridge_script::{normalize, ported_constants, ScriptConstants};
 
 fn client_text(guard_home: &str, hook_argv: &str, timeout: &str) -> String {
@@ -36,6 +38,11 @@ fn rendered_constants_are_read_back_from_the_client() {
         ScriptConstants {
             guard_home: "/g h".to_owned(),
             home: Some("/home/u".to_owned()),
+            recovery_command: vec![
+                "/bin/hol-guard".to_owned(),
+                "guard".to_owned(),
+                "daemon".to_owned(),
+            ],
             timeout_seconds: 57,
         }
     );
@@ -100,9 +107,15 @@ fn scratch(label: &str) -> std::path::PathBuf {
 /// A guard home with the daemon auth token file the client may sign a
 /// loopback review link with, or without it.
 fn guard_home(label: &str, tokened: bool) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
     let root = scratch(label);
     if tokened {
-        std::fs::write(root.join("daemon-auth-token"), "3f".repeat(32)).unwrap();
+        // The client loads the token only from a private file in a private
+        // directory.
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let token = root.join("daemon-auth-token");
+        std::fs::write(&token, "3f".repeat(32)).unwrap();
+        std::fs::set_permissions(&token, std::fs::Permissions::from_mode(0o600)).unwrap();
     }
     root
 }
@@ -124,25 +137,29 @@ fn the_workspace_is_the_first_directory_the_client_would_pick() {
         "cwd": dir("cwd"),
     }));
     assert_eq!(
-        workspace(&payload, Some(format!("\t{}\n", dir("project")).into())),
+        workspace(
+            &payload,
+            Some(format!("\t{}\n", dir("project")).into()),
+            false
+        ),
         Ok(Some(dir("project")))
     );
     assert_eq!(
-        workspace(&payload, Some(missing.clone().into())),
+        workspace(&payload, Some(missing.clone().into()), false),
         Ok(Some(dir("root")))
     );
-    assert_eq!(workspace(&payload, None), Ok(Some(dir("root"))));
+    assert_eq!(workspace(&payload, None, false), Ok(Some(dir("root"))));
     let camel = map(json!({"workspace_roots": [], "workspaceRoots": [dir("root")]}));
-    assert_eq!(workspace(&camel, None), Ok(Some(dir("root"))));
+    assert_eq!(workspace(&camel, None, false), Ok(Some(dir("root"))));
     let not_list = map(json!({"workspace_roots": dir("root"), "cwd": dir("cwd")}));
-    assert_eq!(workspace(&not_list, None), Ok(Some(dir("cwd"))));
+    assert_eq!(workspace(&not_list, None, false), Ok(Some(dir("cwd"))));
     let nothing = map(json!({"workspace_roots": [missing], "cwd": 7}));
-    assert_eq!(workspace(&nothing, None), Ok(None));
+    assert_eq!(workspace(&nothing, None, false), Ok(None));
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStringExt;
         let undecodable = std::ffi::OsString::from_vec(b"/\xff".to_vec());
-        assert_eq!(workspace(&nothing, Some(undecodable)), Err(()));
+        assert_eq!(workspace(&nothing, Some(undecodable), false), Err(()));
     }
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -151,6 +168,8 @@ fn test_client() -> Client {
     Client {
         guard_home: "/g".to_owned(),
         home: Some("/h".to_owned()),
+        recovery_command: Vec::new(),
+        event: "preToolUse".to_owned(),
         deadline: Instant::now() + Duration::from_secs(5),
     }
 }
@@ -245,10 +264,22 @@ fn answers_match_the_client_for_every_vector() {
     for vector in vectors {
         let event = vector["event"].as_str().unwrap();
         let response = vector["response"].as_str().unwrap();
-        let expected = vector["stdout"].as_str().map(|stdout| {
-            let code = vector["exit_code"].as_i64().unwrap();
-            (stdout.to_owned(), i32::try_from(code).unwrap())
-        });
+        let Some(stdout) = vector["stdout"].as_str() else {
+            // The client signs review links and keeps lone surrogates, which
+            // the review and surrogate vectors check; anything else the
+            // bridge does not answer fails closed.
+            if !(response.to_ascii_lowercase().contains("approval") || response.contains("\\ud800"))
+            {
+                assert_eq!(
+                    answer(Kind::PreToolUse, event, response, &home),
+                    None,
+                    "{event:?} {response}"
+                );
+            }
+            continue;
+        };
+        let code = vector["exit_code"].as_i64().unwrap();
+        let expected = Some((stdout.to_owned(), i32::try_from(code).unwrap()));
         assert_eq!(
             answer(Kind::PreToolUse, event, response, &home),
             expected,
@@ -270,6 +301,17 @@ fn reviews_and_prompts_match_the_client_in_either_guard_home() {
     );
     let vectors = fixture["vectors"].as_array().unwrap();
     assert!(vectors.len() >= 200);
+    FIXED_NOW.with(|now| now.set(fixture["now_micros"].as_i64()));
+    let signed = vectors
+        .iter()
+        .filter(|vector| {
+            vector["stdout"]
+                .as_str()
+                .unwrap()
+                .contains("#guard-token=gld1.")
+        })
+        .count();
+    assert!(signed >= 30);
     let untokened = guard_home("review-untokened", false);
     let tokened = guard_home("review-tokened", true);
     for vector in vectors {
@@ -285,10 +327,11 @@ fn reviews_and_prompts_match_the_client_in_either_guard_home() {
         } else {
             Kind::PreToolUse
         };
-        let expected = vector["stdout"].as_str().map(|stdout| {
-            let code = vector["exit_code"].as_i64().unwrap();
-            (stdout.to_owned(), i32::try_from(code).unwrap())
-        });
+        let code = vector["exit_code"].as_i64().unwrap();
+        let expected = Some((
+            vector["stdout"].as_str().unwrap().to_owned(),
+            i32::try_from(code).unwrap(),
+        ));
         assert_eq!(
             answer(kind, event, response, home),
             expected,
@@ -297,13 +340,12 @@ fn reviews_and_prompts_match_the_client_in_either_guard_home() {
             vector["case"]
         );
     }
-    // A link shape the bridge does not reproduce is left to a client that
-    // holds a token.
+    // A link the client leaves unsigned is shown as it is.
     let odd = r#"{"policy_action":"review","reason":"r","approval_url":"https://guard.example/approvals/a?b=c"}"#;
-    assert_eq!(
-        answer(Kind::PreToolUse, "beforeShellExecution", odd, &tokened),
-        None
-    );
+    let (stdout, code) = answer(Kind::PreToolUse, "beforeShellExecution", odd, &tokened).unwrap();
+    assert_eq!(code, 0);
+    assert!(stdout.contains("a?b=c.") && !stdout.contains("guard-token"));
+    FIXED_NOW.with(|now| now.set(None));
     std::fs::remove_dir_all(untokened).unwrap();
     std::fs::remove_dir_all(tokened).unwrap();
 }

@@ -8,11 +8,10 @@
 //! exactly as the daemon would is asked first, and its answer is rendered
 //! as the daemon's would be; a prompt always goes to the daemon.
 //!
-//! Before the daemon is contacted, anything the bridge cannot answer exactly
-//! as the client would runs the client unchanged, with the hook it already
-//! read. Once the daemon has been asked, the bridge never hands the hook to
-//! Python: every failure writes the client's fail-closed answer, so the
-//! daemon is never asked twice.
+//! A hook the bridge cannot read, and a home with no daemon to ask, get the
+//! client's own fail-closed answer, and so does every failure once the
+//! daemon has been asked. Python runs only when the client's configuration
+//! cannot be read.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -22,8 +21,8 @@ use crate::bounded_hook_bridge::{
 };
 use crate::bounded_hook_bridge_grok_render::{
     approval_request_ids, approval_wait_seconds, dump_object, event_labels_are_ascii, event_name,
-    failure_stdout, is_observe_event, json_object, pretool_event_conflict, quote_component,
-    rewrite_decision, to_native, WAITING_ACTIONS,
+    failure_stdout, failure_stdout_for, is_observe_event, json_object, pretool_event_conflict,
+    quote_component, rewrite_decision, to_native, WAITING_ACTIONS,
 };
 use crate::bounded_hook_bridge_grok_script::{invocation, read_ported_script, Invocation};
 use crate::bounded_hook_bridge_render::member;
@@ -48,6 +47,9 @@ const PRETOOL_EVENT: &str = "PreToolUse";
 const HOOK_DEADLINE: &str = "daemon hook deadline exhausted";
 const POLL_SECONDS: f64 = 1.0;
 const POLL_INTERVAL_SECONDS: f64 = 0.2;
+const OVERSIZE_REASON: &str =
+    "HOL Guard blocked this action because hook input exceeded the safe size limit.";
+const CONFLICT_REASON: &str = "HOL Guard blocked this action because hook event labels conflict.";
 
 /// Seconds left before `deadline`, never negative.
 fn seconds_left(deadline: Instant) -> f64 {
@@ -85,8 +87,6 @@ struct Daemon {
 pub(crate) enum Route {
     /// Write `stdout` and exit with `exit_code`.
     Respond { stdout: String, exit_code: i32 },
-    /// Run the client with the hook; the daemon was not asked.
-    Delegate,
 }
 
 /// The client's state after `_configure_grok_invocation`.
@@ -103,6 +103,16 @@ impl Client {
     fn fail(prefix: &str) -> Route {
         Route::Respond {
             stdout: failure_stdout(prefix),
+            exit_code: 0,
+        }
+    }
+
+    /// `_fail(prefix, reason=reason)`, answered as PreToolUse when the
+    /// hook's labels conflict, as `_fail` does.
+    fn refuse(prefix: &str, reason: &str) -> Route {
+        let conflict = json_object(prefix).is_some_and(|payload| pretool_event_conflict(&payload));
+        Route::Respond {
+            stdout: failure_stdout_for(if conflict { "{}" } else { prefix }, reason),
             exit_code: 0,
         }
     }
@@ -323,27 +333,35 @@ impl Client {
         )
     }
 
-    /// `main` after the hook was read: the client's answer, or
-    /// [`Route::Delegate`] while the client would still answer differently.
+    /// `main` after the hook was read: the client's answer.
     pub(crate) fn route(&self, raw: &[u8]) -> Route {
         if raw.len() > MAX_HOOK_INPUT_BYTES {
-            return Route::Delegate;
+            // `_HookInputError.prefix`: the first bytes, decoded leniently.
+            let prefix = String::from_utf8_lossy(&raw[..MAX_HOOK_INPUT_BYTES]);
+            return Self::refuse(&prefix, OVERSIZE_REASON);
         }
         let body = raw.strip_prefix(b"\xef\xbb\xbf").unwrap_or(raw);
         let Ok(prefix) = std::str::from_utf8(body) else {
-            return Route::Delegate;
+            // Undecodable input is `_fail("{}")`.
+            return Self::fail("{}");
         };
         let Some(original) = json_object(prefix) else {
-            return Route::Delegate;
+            return Self::fail(prefix);
         };
-        if !event_labels_are_ascii(&original) || pretool_event_conflict(&original) {
-            return Route::Delegate;
+        if pretool_event_conflict(&original) {
+            return Self::refuse(prefix, CONFLICT_REASON);
+        }
+        // Labels outside ASCII are never Grok's own, and this bridge cannot
+        // read them as Python's `str.strip` would: they are refused as a
+        // PreToolUse.
+        if !event_labels_are_ascii(&original) {
+            return Self::fail("{}");
         }
         let Stamp::Text(mut text) = stamp_hook_input_text(prefix, &current_environment()) else {
-            return Route::Delegate;
+            return Self::fail(prefix);
         };
         let Some(mut payload) = json_object(&text) else {
-            return Route::Delegate;
+            return Self::fail(prefix);
         };
         // `_grok_invocation_payload`.
         if let Some(workspace) = &self.invocation.workspace {
@@ -362,7 +380,7 @@ impl Client {
             return Self::fail(prefix);
         }
         let Some(daemon) = self.daemon_auth() else {
-            return Route::Delegate;
+            return Self::fail(prefix);
         };
         let cap = if event == PROMPT_EVENT { 10.0 } else { 5.0 };
         let mut timeout = (self.timeout_seconds * 0.5)
@@ -412,13 +430,9 @@ impl Client {
     }
 }
 
-/// `_fail(prefix)` for a hook the client could not run: a PreToolUse label
-/// conflict answers as PreToolUse, like the client's conflict refusal.
-fn fail_closed(raw: &[u8]) -> i32 {
-    let body = raw.strip_prefix(b"\xef\xbb\xbf").unwrap_or(raw);
-    let prefix = std::str::from_utf8(body).unwrap_or("{}");
-    let conflict = json_object(prefix).is_some_and(|payload| pretool_event_conflict(&payload));
-    write_stdout(&failure_stdout(if conflict { "{}" } else { prefix }));
+/// `_fail("{}")`: the answer when the hook could not be read at all.
+fn fail_closed() -> i32 {
+    write_stdout(&failure_stdout("{}"));
     0
 }
 
@@ -435,20 +449,14 @@ pub(crate) fn run(python_argv: &[String], started: Instant) -> i32 {
         })
     });
     let Some(client) = client else {
-        return run_python(python_argv, None, started.elapsed(), false)
-            .unwrap_or_else(|| fail_closed(b"{}"));
+        return run_python(python_argv, None, started.elapsed(), false).unwrap_or_else(fail_closed);
     };
     let Input::Read(raw) = read_hook_input(client.deadline) else {
-        return fail_closed(b"{}");
+        return fail_closed();
     };
-    match client.route(&raw) {
-        Route::Respond { stdout, exit_code } => {
-            write_stdout(&stdout);
-            exit_code
-        }
-        Route::Delegate => run_python(python_argv, Some(&raw), started.elapsed(), false)
-            .unwrap_or_else(|| fail_closed(&raw)),
-    }
+    let Route::Respond { stdout, exit_code } = client.route(&raw);
+    write_stdout(&stdout);
+    exit_code
 }
 
 #[cfg(all(test, unix))]

@@ -9065,22 +9065,24 @@ def test_guard_hook_claude_docker_saved_allow_does_not_lower_terminal_block(
     workspace_dir = tmp_path / "workspace"
     _build_guard_fixture(home_dir, workspace_dir)
 
-    def saved_allow_lookup(_store, _harness, artifact_id, *, artifact_hash=None, **_kwargs):
-        return {
-            "decision": {
-                "action": "allow",
-                "scope": "workspace",
-                "artifact_id": artifact_id,
-                "artifact_hash": artifact_hash,
-            },
+    def saved_allow_lookup(_store, current, _legacy, _alias):
+        decision = {
+            "action": "allow",
+            "scope": "workspace",
+            "artifact_id": current["artifact_id"],
+            "artifact_hash": current["artifact_hash"],
+        }
+        lookup = {
+            "decision": decision,
             "ignored_local_integrity": None,
             "trust_status": {"trusted": True},
             "authority_revision": 1,
         }
+        return lookup, decision
 
     monkeypatch.setattr(
         GuardStore,
-        "resolve_policy_decision_lookup_with_memory_pattern",
+        "resolve_runtime_saved_decision",
         saved_allow_lookup,
     )
     event = {
@@ -15480,28 +15482,25 @@ def test_guard_hook_exact_v1_allow_cannot_hide_matching_legacy_block(tmp_path, c
 
     def saved_decision_lookup(
         _store: GuardStore,
-        _harness: str,
-        _artifact_id: str,
-        *,
-        artifact_hash: str,
-        **kwargs: object,
-    ) -> dict[str, object]:
-        assert kwargs["consume_one_shot"] is False
-        action = "allow" if artifact_hash.startswith(APPROVAL_CONTEXT_TOKEN_PREFIX) else "block"
-        return {
-            "decision": {
-                "action": action,
-                "artifact_hash": artifact_hash,
-                "scope": "artifact",
-                "source": "local",
-            },
-            "ignored_local_integrity": None,
-            "trust_status": {},
+        current: dict[str, object],
+        legacy: dict[str, object],
+        _alias: dict[str, object] | None,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        # The resident keeps the strictly more severe legacy-hash block over
+        # the exact v1 allow; the hook must probe both hashes in one call.
+        assert str(current["artifact_hash"]).startswith(APPROVAL_CONTEXT_TOKEN_PREFIX)
+        assert not str(legacy["artifact_hash"]).startswith(APPROVAL_CONTEXT_TOKEN_PREFIX)
+        decision = {
+            "action": "block",
+            "artifact_hash": legacy["artifact_hash"],
+            "scope": "artifact",
+            "source": "local",
         }
+        return {"decision": decision, "ignored_local_integrity": None, "trust_status": {}}, decision
 
     monkeypatch.setattr(
         GuardStore,
-        "resolve_policy_decision_lookup_with_memory_pattern",
+        "resolve_runtime_saved_decision",
         saved_decision_lookup,
     )
     monkeypatch.setattr(

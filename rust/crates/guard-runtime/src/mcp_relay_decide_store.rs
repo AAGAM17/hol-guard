@@ -5,10 +5,12 @@
 //! none of them, each lookup misses and the diagnostic has nothing to explain.
 //! With saved rows the resident reads them itself, on one read-only snapshot,
 //! with the integrity evidence the proxy would ship: the key and state the
-//! daemon published, which the store must still hold, protected. Remote or
-//! bundle authority, an integrity state other than the published protected
-//! one, a newer or unknown schema, and a store it cannot read all defer the
-//! call; a row bound to a portable identity defers every lookup but one whose
+//! daemon published, which the store must still hold, protected. Remote
+//! rows need no more evidence than the proxy ships: the lookup never serves a
+//! cloud-sync or team-policy row and verifies no remote row's integrity. A
+//! cached policy bundle, an integrity state other than the published
+//! protected one, a newer or unknown schema, and a store it cannot read all
+//! defer the call; a row bound to a portable identity defers every lookup but one whose
 //! workspace resolves to that identity.
 
 use crate::local_store_read::{
@@ -89,13 +91,11 @@ pub(super) fn saved<'c>(
         "guard_local_once_approvals",
         "select 1 from guard_local_once_approvals",
     )?;
-    if shape.any(
+    let has_remote_policy = shape.any(
         "policy_decisions",
         &format!("select 1 from policy_decisions where source in {REMOTE_SOURCES_SQL}"),
-    )? {
-        return Err(SAVED_REMOTE);
-    }
-    if !has_local_policy && !has_local_once {
+    )?;
+    if !has_local_policy && !has_remote_policy && !has_local_once {
         return Ok(None);
     }
     // A row bound to a portable identity is read only by a lookup whose

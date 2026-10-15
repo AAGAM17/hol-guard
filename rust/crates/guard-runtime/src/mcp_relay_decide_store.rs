@@ -12,7 +12,8 @@
 //! workspace resolves to that identity.
 
 use crate::local_store_read::{
-    open_read_only, schema_version, table_exists, STORE_FILE_NAME, SUPPORTED_SCHEMA_VERSION,
+    open_read_only_cached, schema_version, table_exists, CachedConnection, STORE_FILE_NAME,
+    SUPPORTED_SCHEMA_VERSION,
 };
 use crate::policy_store::policy_store_direct_lane::DirectLaneBinding;
 use base64ct::{Base64UrlUnpadded, Encoding};
@@ -32,10 +33,11 @@ const REMOTE_SOURCES_SQL: &str = "('cloud-sync', 'team-policy', 'policy-bundle',
      'policy-bundle-canonical', 'cloud-signed-memory')";
 
 /// The guard store, read-only, at a schema the resident reads; `None` when
-/// there is no store yet, so nothing is saved.
-pub(super) fn open(guard_home: &Path) -> Result<Option<Connection>, &'static str> {
+/// there is no store yet, so nothing is saved. A connection an earlier call
+/// kept for the same file is reused; the schema is still read every call.
+pub(super) fn open(guard_home: &Path) -> Result<Option<CachedConnection>, &'static str> {
     let Some(connection) =
-        open_read_only(&guard_home.join(STORE_FILE_NAME)).map_err(|_| STORE_UNREADABLE)?
+        open_read_only_cached(&guard_home.join(STORE_FILE_NAME)).map_err(|_| STORE_UNREADABLE)?
     else {
         return Ok(None);
     };
@@ -179,7 +181,8 @@ impl Shape<'_> {
             return Ok(false);
         }
         self.connection
-            .query_row(&format!("{query} limit 1"), [], |_| Ok(()))
+            .prepare_cached(&format!("{query} limit 1"))
+            .and_then(|mut statement| statement.query_row([], |_| Ok(())))
             .optional()
             .map(|found| found.is_some())
             .map_err(|_| STORE_UNREADABLE)

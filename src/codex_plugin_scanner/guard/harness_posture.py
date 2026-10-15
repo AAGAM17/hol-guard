@@ -66,26 +66,6 @@ def runtime_harness_key(value: object) -> str | None:
     return contract.harness if contract is not None else key
 
 
-def coerce_harness_posture_patch(value: object) -> dict[str, str | None]:
-    """Validate a settings write. ``None``/``"inherit"`` clears one harness."""
-
-    if not isinstance(value, Mapping):
-        raise ValueError("Harness postures must be a table.")
-    patch: dict[str, str | None] = {}
-    for key, raw in value.items():
-        harness = canonical_harness_id(key)
-        if harness is None:
-            raise ValueError("Unknown Guard harness for protection posture.")
-        if raw is None or (isinstance(raw, str) and raw.strip().lower() == HARNESS_POSTURE_INHERIT):
-            patch[harness] = None
-            continue
-        posture = normalize_protection_posture(raw)
-        if posture is None:
-            raise ValueError("Invalid Guard protection posture.")
-        patch[harness] = posture
-    return patch
-
-
 def coerce_loaded_harness_postures(value: object) -> dict[str, str]:
     """Read stored overrides; anything malformed is dropped (inherits baseline)."""
 
@@ -135,46 +115,6 @@ def protection_settings_payload(posture: object, *, harness: object, inherit: bo
 
 def managed_locks_harness_postures(locked_settings: Iterable[str]) -> bool:
     return bool(HARNESS_POSTURE_LOCK_KEYS & set(locked_settings))
-
-
-def reject_locked_harness_posture_patch(patch: Mapping[str, str | None], locked_settings: Iterable[str]) -> None:
-    if not managed_locks_harness_postures(locked_settings):
-        return
-    if any(posture not in {None, "extra_careful"} for posture in patch.values()):
-        raise ValueError("Managed policy locks prevent per-harness protection overrides.")
-
-
-def apply_harness_posture_patch(
-    next_payload: dict[str, object],
-    patch: Mapping[str, str | None],
-    *,
-    now_iso: str,
-) -> dict[str, object]:
-    """Merge a validated patch into the config payload and refresh Watch stamps.
-
-    Selecting Watch always stamps the harness, including re-selecting it while
-    it is already in Watch, so the 24h revert window restarts.
-    """
-
-    updated = dict(next_payload)
-    stored = coerce_loaded_harness_postures(updated.get(HARNESS_POSTURES_KEY))
-    stamps = coerce_loaded_harness_watch_entered_at(updated.get(HARNESS_WATCH_ENTERED_AT_KEY), stored)
-    for harness, posture in patch.items():
-        if posture is None:
-            stored.pop(harness, None)
-            stamps.pop(harness, None)
-            continue
-        stored[harness] = posture
-        if posture == "watch":
-            stamps[harness] = now_iso
-        else:
-            stamps.pop(harness, None)
-    for key, value in ((HARNESS_POSTURES_KEY, stored), (HARNESS_WATCH_ENTERED_AT_KEY, stamps)):
-        if value:
-            updated[key] = dict(sorted(value.items()))
-        else:
-            updated.pop(key, None)
-    return updated
 
 
 def harness_posture_override(config: GuardConfig, harness: object) -> str | None:
@@ -323,9 +263,7 @@ __all__ = [
     "HARNESS_POSTURE_INHERIT",
     "HARNESS_WATCH_ENTERED_AT_KEY",
     "VALID_PROTECTION_POSTURES",
-    "apply_harness_posture_patch",
     "canonical_harness_id",
-    "coerce_harness_posture_patch",
     "coerce_loaded_harness_postures",
     "coerce_loaded_harness_watch_entered_at",
     "config_for_harness",
@@ -341,6 +279,5 @@ __all__ = [
     "known_harness_ids",
     "managed_locks_harness_postures",
     "protection_settings_payload",
-    "reject_locked_harness_posture_patch",
     "runtime_harness_key",
 ]

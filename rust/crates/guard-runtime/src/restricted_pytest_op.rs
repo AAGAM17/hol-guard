@@ -10,6 +10,19 @@ pub(crate) fn evaluate(
     if bytes.len() > 2 * 1024 * 1024 || operation.len() > 64 {
         return Err("native_restricted_pytest_input_invalid");
     }
+    if matches!(
+        operation,
+        "linux_readonly_argv"
+            | "linux_read_grants"
+            | "linux_elf_loader"
+            | "linux_socket_filter"
+            | "linux_mount_targets"
+            | "linux_validate_records"
+    ) {
+        let result = crate::restricted_linux_launch::evaluate(operation, input, budget.deadline());
+        budget.check()?;
+        return Ok(result);
+    }
     if operation == "process_ceiling" {
         let result = crate::restricted_process_ceiling::evaluate(budget.deadline());
         budget.check()?;

@@ -554,6 +554,7 @@ mod resident_state_encoding;
 mod resident_transport;
 mod resident_transport_service;
 mod resident_update_lock;
+mod restricted_linux_launch;
 mod restricted_process_ceiling;
 mod restricted_pytest_op;
 mod rich_command_model_op;

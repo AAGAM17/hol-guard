@@ -700,7 +700,7 @@ fn evaluate_single_command(
         "review",
         "native_command_review_required",
         reason.as_deref().unwrap_or(
-            "HOL Guard requires review because this command could not be confirmed read-only. Approve it in the HOL Guard inbox (choose Always for a repeated read-only command), or split it into simpler commands.",
+            "HOL Guard requires review because this command could not be confirmed read-only. Splitting it into simpler commands can let the read-only parts run without review.",
         ),
     ))
 }

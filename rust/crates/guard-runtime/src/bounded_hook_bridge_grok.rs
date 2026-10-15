@@ -16,15 +16,13 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use crate::bounded_hook_bridge::{
-    read_hook_input, run_python, write_stdout, Input, MAX_HOOK_INPUT_BYTES,
-};
+use crate::bounded_hook_bridge::{read_hook_input, write_stdout, Input, MAX_HOOK_INPUT_BYTES};
 use crate::bounded_hook_bridge_grok_render::{
     approval_request_ids, approval_wait_seconds, dump_object, event_labels_are_ascii, event_name,
     failure_stdout, failure_stdout_for, is_observe_event, json_object, pretool_event_conflict,
     quote_component, rewrite_decision, to_native, WAITING_ACTIONS,
 };
-use crate::bounded_hook_bridge_grok_script::{invocation, read_ported_script, Invocation};
+use crate::bounded_hook_bridge_grok_script::{invocation, read_client_constants, Invocation};
 use crate::bounded_hook_bridge_render::member;
 use crate::claude_hook_bridge_auth::{private_file_raw, LOOPBACK_HOSTS};
 use crate::claude_hook_bridge_http::{LoopbackConnection, MAX_DAEMON_RESPONSE_BYTES};
@@ -430,15 +428,34 @@ impl Client {
     }
 }
 
+/// How long a hook whose client this bridge cannot read waits for its input.
+const UNREADABLE_CLIENT_INPUT: Duration = Duration::from_secs(5);
+
 /// `_fail("{}")`: the answer when the hook could not be read at all.
 fn fail_closed() -> i32 {
     write_stdout(&failure_stdout("{}"));
     0
 }
 
+/// The failure answer for a hook whose client this bridge cannot read,
+/// rendered for the hook's own event so an observer stays non-blocking.
+/// Input `route` would answer as a PreToolUse still fails as one.
+fn client_unreadable_stdout(raw: &[u8]) -> String {
+    let body = raw.strip_prefix(b"\xef\xbb\xbf").unwrap_or(raw);
+    let text = std::str::from_utf8(body)
+        .ok()
+        .filter(|_| raw.len() <= MAX_HOOK_INPUT_BYTES)
+        .filter(|text| {
+            json_object(text).is_some_and(|payload| {
+                !pretool_event_conflict(&payload) && event_labels_are_ascii(&payload)
+            })
+        });
+    failure_stdout(text.unwrap_or("{}"))
+}
+
 /// Answer one Grok hook. `python_argv` is `[python, "-I", script, config]`.
 pub(crate) fn run(python_argv: &[String], started: Instant) -> i32 {
-    let client = read_ported_script(Path::new(&python_argv[2])).and_then(|constants| {
+    let client = read_client_constants(Path::new(&python_argv[2])).and_then(|constants| {
         let invocation = invocation(&python_argv[3], &constants.guard_home)?;
         let budget = Duration::try_from_secs_f64(constants.timeout_seconds).ok()?;
         Some(Client {
@@ -449,7 +466,13 @@ pub(crate) fn run(python_argv: &[String], started: Instant) -> i32 {
         })
     });
     let Some(client) = client else {
-        return run_python(python_argv, None, started.elapsed(), false).unwrap_or_else(fail_closed);
+        // No install writes a client this bridge cannot read, so the hook
+        // fails closed rather than running Python.
+        let Input::Read(raw) = read_hook_input(started + UNREADABLE_CLIENT_INPUT) else {
+            return fail_closed();
+        };
+        write_stdout(&client_unreadable_stdout(&raw));
+        return 0;
     };
     let Input::Read(raw) = read_hook_input(client.deadline) else {
         return fail_closed();
@@ -462,3 +485,7 @@ pub(crate) fn run(python_argv: &[String], started: Instant) -> i32 {
 #[cfg(all(test, unix))]
 #[path = "bounded_hook_bridge_grok_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "bounded_hook_bridge_grok_client_tests.rs"]
+mod client_tests;

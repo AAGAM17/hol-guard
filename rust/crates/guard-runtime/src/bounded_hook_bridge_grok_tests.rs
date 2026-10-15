@@ -1,4 +1,4 @@
-//! The native answers for Grok's client: the ported-script check, the
+//! The native answers for Grok's client: the client constants, the
 //! invocation the hook command names, and routing against a scripted daemon.
 
 use std::io::{BufRead, BufReader, Read};
@@ -9,7 +9,8 @@ use serde_json::{json, Value};
 
 use super::*;
 use crate::bounded_hook_bridge_grok_script::{
-    invocation, normalize, ported_constants, python_home, python_path, Invocation, ScriptConstants,
+    invocation, normalize, python_home, python_path, read_client_constants, Invocation,
+    ScriptConstants,
 };
 use crate::bounded_hook_bridge_render::FAILURE_REASON;
 use crate::claude_hook_bridge_fixture::{write_private, write_response, GuardHome, Request};
@@ -64,8 +65,15 @@ fn clients_the_renderer_did_not_write_are_not_read() {
 }
 
 #[test]
-fn only_the_ported_client_is_answered() {
-    assert_eq!(ported_constants(&client_text("/g", "grok", "8")), None);
+fn a_client_an_older_guard_rendered_is_answered_natively() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("grok.py");
+    // Rendered from another template than the one the bridge was ported from.
+    std::fs::write(&script, client_text("/g", "grok", "8")).unwrap();
+    let constants = read_client_constants(&script).unwrap();
+    assert_eq!(constants.guard_home, "/g");
+    std::fs::write(&script, client_text("/g", "codex", "8")).unwrap();
+    assert_eq!(read_client_constants(&script), None);
 }
 
 #[test]

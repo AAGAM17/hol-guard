@@ -26,7 +26,6 @@
 
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use crate::bounded_hook_bridge_render::{
@@ -36,7 +35,6 @@ use crate::bounded_hook_bridge_render::{
 use crate::claude_hook_bridge_http::remaining;
 use crate::guard_store_json::py_repr_str;
 use crate::hook_bridge_daemon_start::{await_daemon, start_daemon, Attempt, TRANSPORT_FAILURE};
-use crate::hook_bridge_exit::exit_code;
 use crate::hook_env_stamp::{current_environment, stamp_hook_input_text, Stamp};
 use crate::pyjson::{self, PyVal, SurrogateMapped};
 
@@ -56,8 +54,6 @@ pub(crate) use daemon::{
 
 pub(crate) const BRIDGE_COMMAND: &str = "bounded-hook-bridge";
 pub(crate) const BRIDGE_FEATURE: &str = "bounded-hook-bridge-v1";
-pub(crate) const ELAPSED_ENV: &str = "HOL_GUARD_BOUNDED_NATIVE_ELAPSED_MS";
-pub(crate) const DAEMON_TRIED_ENV: &str = "HOL_GUARD_BOUNDED_NATIVE_DAEMON_TRIED";
 
 pub(crate) const MAX_HOOK_INPUT_BYTES: usize = 1_000_000;
 const READ_CHUNK: usize = 65_536;
@@ -422,35 +418,6 @@ fn direct_route(
         .ok()
         .and_then(|parsed| prepared.render(&config.harness, &parsed));
     Some(answered_route(rendered, prepared, deadline))
-}
-
-/// Run the Python bridge. `stdin` is the hook already read, or `None` to
-/// let Python read the hook itself.
-pub(crate) fn run_python(
-    argv: &[String],
-    stdin: Option<&[u8]>,
-    elapsed: Duration,
-    daemon_tried: bool,
-) -> Option<i32> {
-    let (program, args) = argv.split_first()?;
-    let mut command = Command::new(program);
-    command
-        .args(args)
-        .env(ELAPSED_ENV, elapsed.as_millis().to_string())
-        .env_remove(DAEMON_TRIED_ENV);
-    if daemon_tried {
-        command.env(DAEMON_TRIED_ENV, "1");
-    }
-    command.stdin(if stdin.is_some() {
-        Stdio::piped()
-    } else {
-        Stdio::inherit()
-    });
-    let mut child = command.spawn().ok()?;
-    if let (Some(mut pipe), Some(data)) = (child.stdin.take(), stdin) {
-        let _ = pipe.write_all(data);
-    }
-    child.wait().ok().map(exit_code)
 }
 
 pub(crate) fn write_stdout(text: &str) {

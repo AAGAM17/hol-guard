@@ -46,9 +46,7 @@ use std::time::{Duration, Instant};
 use guard_command::hook_adapter_prepare::{cursor_client_event, first_truthy, prepare_payload};
 use guard_command::hook_adapter_value::{OMap, OValue, PyJsonError};
 
-use crate::bounded_hook_bridge::{
-    read_hook_input, run_python, write_stdout, Input, MAX_HOOK_INPUT_BYTES,
-};
+use crate::bounded_hook_bridge::{read_hook_input, write_stdout, Input, MAX_HOOK_INPUT_BYTES};
 use crate::claude_hook_bridge_render::py_strip;
 use crate::codex_hook_bridge_direct::{direct_answer, CURSOR};
 use crate::codex_hook_response::{POST_TOOL_USE, PRE_TOOL_USE};
@@ -56,7 +54,7 @@ use crate::cursor_hook_bridge_response::{
     python_document, read_python_document, rendered, unavailable_output, unmapped_json,
     unparseable_output, AFTER_EVENTS, AFTER_STDOUT,
 };
-use crate::cursor_hook_bridge_script::read_ported_script;
+use crate::cursor_hook_bridge_script::read_client_constants;
 use crate::hook_env_stamp::{current_environment, stamp_hook_input_text, Stamp};
 use crate::pyjson::in_surrogate_plane;
 
@@ -158,7 +156,7 @@ pub(crate) fn workspace(
         .and_then(|cwd| directory_candidate(cwd, mapped)))
 }
 
-/// What the bridge needs of the ported client.
+/// What the bridge needs of the client.
 struct Client {
     guard_home: String,
     home: Option<String>,
@@ -373,8 +371,8 @@ fn reply(client: &Client, raw: &[u8]) -> Reply {
     daemon::daemon_reply(client, &request, resident)
 }
 
-/// The ported client the installer's argv runs, or `None` for any other
-/// argv or script.
+/// The client the installer's argv runs, or `None` for any other argv or
+/// for a script whose constants cannot be read.
 fn client(python_argv: &[String], started: Instant) -> Option<Client> {
     let [_, isolated, script, flag, event] = python_argv else {
         return None;
@@ -382,7 +380,7 @@ fn client(python_argv: &[String], started: Instant) -> Option<Client> {
     if isolated != "-I" || flag != EVENT_FLAG {
         return None;
     }
-    let constants = read_ported_script(Path::new(script))?;
+    let constants = read_client_constants(Path::new(script))?;
     let budget = Duration::from_secs(constants.timeout_seconds);
     Some(Client {
         guard_home: constants.guard_home,
@@ -403,9 +401,10 @@ pub(crate) fn run(python_argv: &[String]) -> i32 {
         .position(|argument| argument == EVENT_FLAG)
         .and_then(|index| python_argv.get(index + 1))
         .map_or("", |event| py_strip(event));
+    // No install writes a client this bridge cannot read, so the hook fails
+    // closed rather than running Python.
     let Some(client) = client(python_argv, started) else {
-        return run_python(python_argv, None, started.elapsed(), false)
-            .unwrap_or_else(|| unavailable(event));
+        return unavailable(event);
     };
     let raw = match read_hook_input(client.deadline) {
         Input::Read(raw) => raw,

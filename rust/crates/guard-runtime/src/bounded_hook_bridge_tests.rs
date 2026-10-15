@@ -481,37 +481,5 @@ fn an_answer_the_bridge_cannot_render_fails_closed() {
     assert!(daemon.join().unwrap().is_some());
 }
 
-#[test]
-fn python_runs_with_the_handoff_environment_and_hook_input() {
-    let shell = |script: &str| argv(&["/bin/sh", "-c", script]);
-    assert_eq!(
-        run_python(&shell("exit 3"), None, Duration::ZERO, false),
-        Some(3)
-    );
-    let handoff = r#"test "$HOL_GUARD_BOUNDED_NATIVE_ELAPSED_MS" = 1500 && test "$HOL_GUARD_BOUNDED_NATIVE_DAEMON_TRIED" = 1"#;
-    assert_eq!(
-        run_python(&shell(handoff), None, Duration::from_millis(1500), true),
-        Some(0)
-    );
-    let unflagged = r#"test -z "${HOL_GUARD_BOUNDED_NATIVE_DAEMON_TRIED+set}""#;
-    assert_eq!(
-        run_python(&shell(unflagged), None, Duration::ZERO, false),
-        Some(0)
-    );
-    let reads = r#"read line && test "$line" = hook"#;
-    assert_eq!(
-        run_python(&shell(reads), Some(b"hook\n"), Duration::ZERO, false),
-        Some(0)
-    );
-    assert_eq!(
-        run_python(&shell("kill -TERM $$"), None, Duration::ZERO, false),
-        Some(128 + 15)
-    );
-    assert_eq!(
-        run_python(&argv(&["/nonexistent/python"]), None, Duration::ZERO, false),
-        None
-    );
-}
-
 #[path = "bounded_hook_bridge_surrogate_tests.rs"]
 mod surrogates;

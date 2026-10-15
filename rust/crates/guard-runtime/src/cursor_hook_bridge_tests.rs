@@ -1,5 +1,5 @@
 //! The Cursor bridge's reproduction of its client's request, and the
-//! ported-client check.
+//! client constants it reads.
 
 use std::time::{Duration, Instant};
 
@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use super::*;
 use crate::cursor_hook_bridge_response::{FIXED_NOW, UNAVAILABLE_STDOUT};
-use crate::cursor_hook_bridge_script::{normalize, ported_constants, ScriptConstants};
+use crate::cursor_hook_bridge_script::{normalize, read_client_constants, ScriptConstants};
 
 fn client_text(guard_home: &str, hook_argv: &str, timeout: &str) -> String {
     format!(
@@ -74,8 +74,22 @@ fn clients_the_renderer_did_not_write_are_not_read() {
     ] {
         assert_eq!(normalize(&text), None, "{text}");
     }
-    // A client the renderer wrote from another template.
-    assert_eq!(ported_constants(&client_text("/g", HOOK_ARGV, "1")), None);
+}
+
+#[test]
+fn a_client_an_older_guard_rendered_is_answered_natively() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("cursor_hook.py");
+    // Rendered from another template than the one the bridge was ported from.
+    std::fs::write(&script, client_text("/g", HOOK_ARGV, "3")).unwrap();
+    let constants = read_client_constants(&script).unwrap();
+    assert_eq!(
+        (constants.guard_home.as_str(), constants.timeout_seconds),
+        ("/g", 3)
+    );
+    std::fs::write(&script, client_text("/g", HOOK_ARGV, "0")).unwrap();
+    assert_eq!(read_client_constants(&script), None);
+    assert_eq!(read_client_constants(&dir.path().join("missing.py")), None);
 }
 
 #[test]
@@ -448,8 +462,9 @@ fn only_the_installed_command_shape_is_answered() {
             .collect::<Vec<_>>()
     };
     let started = Instant::now();
+    let installed = argv(&["python3", "-I", &script, EVENT_FLAG, "preToolUse"]);
+    assert!(client(&installed, started).is_some());
     for python_argv in [
-        argv(&["python3", "-I", &script, EVENT_FLAG, "preToolUse"]),
         argv(&["python3", "-I", &script, EVENT_FLAG]),
         argv(&["python3", "-E", &script, EVENT_FLAG, "preToolUse"]),
         argv(&["python3", "-I", &script, "--event", "preToolUse"]),
@@ -461,7 +476,6 @@ fn only_the_installed_command_shape_is_answered() {
             "preToolUse",
         ]),
     ] {
-        // The fixture is not the ported client, so none of these is read.
         assert!(client(&python_argv, started).is_none(), "{python_argv:?}");
     }
     std::fs::remove_dir_all(root).unwrap();

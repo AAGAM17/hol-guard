@@ -392,11 +392,11 @@ fn stdin_stage(
         && super::super::safe_reads::safe_head_tail_stdin_arguments(&segment.arguments)
 }
 
-/// The directory `cd <path>` enters, spelled lexically. A shell `cd`
-/// resolves `..` against its logical `$PWD`, while Git created the checkout
-/// at a physical path, so the two agree only when the reported cwd has no
-/// symlinked component and the lexical target equals the canonical
-/// destination, which the caller compares.
+/// The directory `cd <path>` enters. A shell `cd` resolves `..` against its
+/// logical `$PWD`, while Git created the checkout at a physical path, so the
+/// two agree only when the reported cwd has no symlinked component. The
+/// lexical target's parent is then resolved physically and the result is
+/// compared with the canonical destination by the caller.
 fn cd_target(
     segment: &CommandSegmentV1,
     context: super::super::PathContext<'_>,
@@ -434,5 +434,14 @@ fn cd_target(
             other => target.push(other),
         }
     }
-    Some(target)
+    // The shell then enters the lexical target physically, through any
+    // symlinked parent such as `/tmp` on macOS, just as `-C` does. A link
+    // someone else could swap before the `cd` runs is never followed.
+    let leaf = target.file_name()?;
+    let parent = target.parent()?;
+    let home = std::fs::canonicalize(context.home_dir?).ok()?;
+    if !super::destination::fixed_symlinks(parent, &home) {
+        return None;
+    }
+    Some(std::fs::canonicalize(parent).ok()?.join(leaf))
 }

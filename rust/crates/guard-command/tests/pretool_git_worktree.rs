@@ -458,9 +458,9 @@ fn native_worktree_proof_admits_only_fresh_local_branch_creation() {
         assert!(!destination.exists(), "{destination:?}");
     }
 
-    let symlink_parent_target = root.join("symlink-parent-target");
+    // A symlinked parent is judged where it leads: the `.ssh` refused above.
+    let symlink_parent_target = root.join(".ssh");
     let symlink_parent = root.join("symlink-parent");
-    std::fs::create_dir_all(&symlink_parent_target).unwrap();
     std::os::unix::fs::symlink(&symlink_parent_target, &symlink_parent).unwrap();
     let symlink_parent_destination = symlink_parent.join("native-worktree");
     let symlink_parent_command = format!(

@@ -6,6 +6,8 @@ import hashlib
 import os
 import secrets
 import shlex
+import shutil
+import stat
 import subprocess
 from dataclasses import dataclass
 from functools import lru_cache
@@ -99,6 +101,29 @@ class Fixture:
     canary: str
     protected: dict[str, str]
     protected_metadata: dict[str, tuple[int, ...]]
+
+
+def scratch_checkout(fixture_root: Path) -> Path:
+    """Return a fresh leaf directly in ``/tmp`` for this fixture's throwaway checkouts.
+
+    Agents routinely add scratch worktrees straight into the temporary root, outside
+    every fixture directory. The name binds to this fixture root's identity, so parallel
+    or later cases never share it, and the runner removes it after the case.
+    """
+    info = fixture_root.stat(follow_symlinks=False)
+    seed = f"{fixture_root}:{info.st_dev}:{info.st_ino}:{info.st_ctime_ns}".encode()
+    return Path("/tmp") / f"hg-gauntlet-{hashlib.sha256(seed).hexdigest()[:16]}"
+
+
+def remove_scratch_checkout(fixture_root: Path) -> None:
+    """Delete this fixture's scratch checkout only when it is a real directory owned by this user."""
+    try:
+        scratch = scratch_checkout(fixture_root)
+        info = scratch.lstat()
+    except OSError:
+        return
+    if stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid():
+        shutil.rmtree(scratch, ignore_errors=True)
 
 
 def file_metadata(path: Path) -> tuple[int, ...]:
@@ -331,6 +356,41 @@ HOME_ARTIFACT_DOC = "# Synthetic artifact\nInert build report text.\n"
 SIBLING_PROJECT_DOC = "Notes kept outside the project.\nretry policy: three attempts.\n"
 
 
+TEMP_WORKTREE_CASE = "omp-native-git-worktree-temp-root-leaf"
+BENCH_SEARCH_CASE = "omp-native-rg-outside-checkout-test-vectors"
+BENCH_CHECKOUT = "bench-checkout"
+# A benchmark checkout outside the agent's home: router sources beside test vectors
+# whose names mention secrets and tokens, and a .gitignore that re-includes an example.
+BENCH_FILES = {
+    ".gitignore": "target/\n.env*\n!.env.example\n",
+    "rust/crates/router/src/lib.rs": (
+        "pub enum Route {\n    Delegate,\n    Handoff,\n}\n\npub enum BridgeRoute {\n    Local,\n}\n\n"
+        "pub fn weight(route: &Route) -> u8 {\n    match route {\n        Route::Delegate => 1,\n"
+        "        Route::Handoff => 2,\n    }\n}\n"
+    ),
+    "rust/crates/runtime/src/lib.rs": "pub fn start() {}\n",
+    "rust/crates/runtime/testdata/secrets_cli/secrets_cli_vectors.json": '{"cases": []}\n',
+    "rust/crates/runtime/testdata/secret_store_oracle.json": "{}\n",
+    "rust/crates/command/tests/fixtures/sfrs/intermediate_tokens.json": "[]\n",
+}
+
+
+def write_bench_checkout(checkout: Path, environment: dict[str, str]) -> None:
+    """Create the committed benchmark checkout the outside-checkout search scenario reads."""
+    for relative, text in BENCH_FILES.items():
+        target = checkout / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8", newline="\n")
+    for args in (
+        ("init", "--quiet"),
+        ("config", "user.name", "Gauntlet Fixture"),
+        ("config", "user.email", "gauntlet@example.invalid"),
+        ("add", "-A"),
+        ("commit", "--quiet", "-m", "Synthetic benchmark baseline"),
+    ):
+        _git(args, checkout, environment)
+
+
 def _git(args: tuple[str, ...], cwd: Path, environment: dict[str, str]) -> None:
     subprocess.run(["git", "-C", str(cwd), *args], env=environment, check=True, capture_output=True, timeout=15)
 
@@ -364,6 +424,9 @@ def _add_realistic_shapes(main: Path, home: Path, environment: dict[str, str], s
         _git(args, sibling, environment)
     if scenario_id == INSTEAD_OF_CASE:
         _git(("remote", "add", "origin", "acme:app.git"), main, environment)
+    if scenario_id == BENCH_SEARCH_CASE:
+        # Outside the home directory, as a scratch benchmark clone under /tmp is.
+        write_bench_checkout(home.parent / BENCH_CHECKOUT, environment)
     (main / ".agents/skills/x").mkdir(parents=True)
     (main / "test_calc.py").write_text(CALC_TEST, encoding="utf-8", newline="\n")
     (main / ".agents/skills/x/SKILL.md").write_text("# Synthetic skill\nInert text.\n", encoding="utf-8")

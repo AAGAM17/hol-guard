@@ -40,7 +40,8 @@ fn git(home: &Path, repository: &Path, arguments: &[&str]) {
 }
 
 /// `org/app` below a fresh home, with a remote-tracking `origin/main`, a
-/// sibling repository and a symlink beside it that leads out of `org`.
+/// sibling repository and a symlink beside it that leads out of `org` into a
+/// directory every user can write, where no checkout is admitted.
 fn repository(name: &str) -> (FixtureCleanup, PathBuf, PathBuf) {
     let unique = format!(
         "{}-{}",
@@ -87,6 +88,11 @@ fn repository(name: &str) -> (FixtureCleanup, PathBuf, PathBuf) {
     directory(&sibling);
     git(&home, &sibling, &["init", "--quiet"]);
     directory(&root.join("elsewhere"));
+    std::fs::set_permissions(
+        root.join("elsewhere"),
+        std::fs::Permissions::from_mode(0o777),
+    )
+    .unwrap();
     std::os::unix::fs::symlink(root.join("elsewhere"), organization.join("link")).unwrap();
     (cleanup, home, repository)
 }
@@ -327,7 +333,8 @@ fn existing_branch_worktree_add_neighbours_stay_reviewed() {
 /// An unquoted `~/` destination is the shell's HOME, here the declared one,
 /// so it names the same checkout as the absolute spelling. Quoted, Git would
 /// create a literal `~` directory, and other users' homes, hidden leaves,
-/// existing paths and symlinked parents stay reviewed as before.
+/// existing paths and a symlinked parent leading somewhere unowned stay
+/// reviewed as before.
 #[test]
 fn home_relative_worktree_destinations_match_the_absolute_spelling() {
     let (_cleanup, home, repository) = repository("home-relative");
@@ -352,4 +359,62 @@ fn home_relative_worktree_destinations_match_the_absolute_spelling() {
     ] {
         assert_reviewed(&home, &repository, command);
     }
+}
+
+/// A `cd` spelled through a fixed symlinked parent, as `/tmp` is on macOS,
+/// enters the checkout Git creates at the physical path.
+#[test]
+fn cd_through_a_symlinked_temporary_parent_matches_the_checkout() {
+    let (_cleanup, home, repository) = repository("tmp-spelling");
+    let spelled_home = Path::new("/tmp")
+        .join(home.parent().unwrap().file_name().unwrap())
+        .join("home");
+    let leaf = format!("/tmp/guard-worktree-leaf-{}", std::process::id());
+    let in_home = spelled_home.join("app-tmp").display().to_string();
+    for command in [
+        format!("git worktree add --detach {in_home} origin/main && cd {in_home} && git log -1 --format='%H %s'"),
+        format!(
+            "git -C {} worktree add -q --detach {leaf} HEAD && cd {leaf} && git log -1 --format='%H %s'",
+            repository.display()
+        ),
+    ] {
+        assert_allowed(&home, &repository, &command);
+    }
+    assert_reviewed(
+        &home,
+        &repository,
+        &format!("git worktree add --detach {in_home} origin/main && cd {leaf} && git log -1"),
+    );
+}
+
+/// A `cd` through a link someone else could swap before it runs, or a
+/// destination through a fixed link that leads on through such a link,
+/// stays reviewed: the read could land where the proof never looked.
+#[test]
+fn swappable_links_on_the_way_to_the_checkout_stay_reviewed() {
+    let (_cleanup, home, repository) = repository("swappable-link");
+    let organization = repository.parent().unwrap();
+    // `elsewhere` is writable by every user without the sticky bit, so
+    // anyone could repoint a link in it.
+    let swappable = home.parent().unwrap().join("elsewhere").join("org");
+    std::os::unix::fs::symlink(organization, &swappable).unwrap();
+    std::os::unix::fs::symlink(&swappable, home.join("via")).unwrap();
+    let destination = organization.join("app-flat").display().to_string();
+    let add = format!("git worktree add -b flat {destination} origin/main");
+    assert_allowed(
+        &home,
+        &repository,
+        &format!("{add} && cd {destination} && git log -1"),
+    );
+    let swapped = swappable.join("app-flat").display().to_string();
+    assert_reviewed(
+        &home,
+        &repository,
+        &format!("{add} && cd {swapped} && git log -1"),
+    );
+    assert_reviewed(
+        &home,
+        &repository,
+        "git worktree add -b flat ~/via/app-flat origin/main",
+    );
 }

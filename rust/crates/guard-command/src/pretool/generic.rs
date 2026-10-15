@@ -73,6 +73,9 @@ pub fn bounded_task_metadata_output(payload: &serde_json::Value, harness: &str) 
     let Some(tool) = root.get("tool_name").and_then(serde_json::Value::as_str) else {
         return false;
     };
+    if tool == "AskUserQuestion" && agent_metadata::names_guard_prompt(payload) {
+        return false;
+    }
     if root
         .get("toolName")
         .is_some_and(|alias| alias.as_str() != Some(tool))

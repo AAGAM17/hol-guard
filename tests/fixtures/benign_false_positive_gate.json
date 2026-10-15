@@ -10018,6 +10018,250 @@
       },
       "cwd": "worktree",
       "expect": "not_allow"
+    },
+    {
+      "id": "gauntlet-worktree-add-temp-root-leaf",
+      "fix_area": "worktree-add",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${HOME}/other-project worktree add -q --detach ${SCRATCH} HEAD && cd ${SCRATCH} && git log -1 --format='%H %s'"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "session-worktree-add-temp-root-leaf-log",
+      "fix_area": "worktree-add",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git worktree add -q --detach ${SCRATCH} HEAD && cd ${SCRATCH} && git log -1 --format='%H %s'"
+      },
+      "cwd": "parent",
+      "expect": "allow"
+    },
+    {
+      "id": "session-worktree-add-temp-root-leaf-from-tmp-repo",
+      "fix_area": "worktree-add",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${TMP_ORG}/app worktree add -q --detach ${SCRATCH} HEAD"
+      },
+      "cwd": "org",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-worktree-add-existing-temp-root-dir",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${HOME}/other-project worktree add -q --detach ${PRIVATE_TMP} HEAD"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-worktree-add-temp-root-leaf-fsmonitor",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git -C ${HOME}/other-project -c core.fsmonitor=/bin/true worktree add -q --detach ${SCRATCH} HEAD"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "gauntlet-rg-outside-checkout-test-vectors",
+      "fix_area": "shell",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "rg -n \"enum Route\\b|enum BridgeRoute|Delegate\\b.*=>|Handoff\\b\" ${GAUNTLET_ROOT}/bench-checkout/rust/crates --type rust -l | head -30"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-rg-outside-checkout-preprocessor",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "rg --pre cat -n Route ${GAUNTLET_ROOT}/bench-checkout/rust/crates"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "neg-rg-outside-checkout-config-path",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "RIPGREP_CONFIG_PATH=${GAUNTLET_ROOT}/bench-checkout/.ripgreprc rg -n Route ${GAUNTLET_ROOT}/bench-checkout/rust/crates"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "session-claude-ask-user-question-answered",
+      "fix_area": "read",
+      "harnesses": [
+        "claude-code"
+      ],
+      "tool": "ask_user_question",
+      "event": "PostToolUse",
+      "tool_input": {
+        "questions": [
+          {
+            "question": "Which approach should the fix use?",
+            "header": "Approach",
+            "multiSelect": false,
+            "options": [
+              {
+                "label": "Narrow the rule",
+                "description": "Keep review for the real vector"
+              },
+              {
+                "label": "Remove the rule",
+                "description": "Allow every form"
+              }
+            ]
+          }
+        ]
+      },
+      "tool_response": {
+        "questions": [
+          {
+            "question": "Which approach should the fix use?",
+            "header": "Approach",
+            "multiSelect": false,
+            "options": [
+              {
+                "label": "Narrow the rule",
+                "description": "Keep review for the real vector"
+              },
+              {
+                "label": "Remove the rule",
+                "description": "Allow every form"
+              }
+            ]
+          }
+        ],
+        "answers": {
+          "Which approach should the fix use?": "Narrow the rule"
+        }
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "session-git-init-temp-root-leaf",
+      "fix_area": "scratch-checkout",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git init -q ${SCRATCH}"
+      },
+      "cwd": "worktree",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-git-init-existing-temp-dir",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "git init -q ${PRIVATE_TMP}"
+      },
+      "cwd": "worktree",
+      "expect": "not_allow"
+    },
+    {
+      "id": "home-rg-sibling-literal-gitignore-negations",
+      "fix_area": "shell",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "rg -n route ${HOME}/Code/ignore-rules/web-console"
+      },
+      "cwd": "org_app",
+      "expect": "allow"
+    },
+    {
+      "id": "neg-home-rg-sibling-env-example-negation",
+      "fix_area": "negative",
+      "harnesses": [
+        "claude-code",
+        "codex",
+        "omp",
+        "zcode"
+      ],
+      "tool": "shell",
+      "tool_input": {
+        "command": "rg -n TOKEN ${HOME}/Code/ignore-rules/billing-api"
+      },
+      "cwd": "org_app",
+      "expect": "not_allow"
     }
   ],
   "pending_pr": {

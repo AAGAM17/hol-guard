@@ -235,3 +235,117 @@ fn git_reads_after_a_proven_worktree_add_keep_their_proof() {
     let result = session.evaluate_at(&format!("{add} && git status --short"), &session.primary);
     assert_ne!(result.minimum_action, "allow", "{}", result.reason_code);
 }
+
+fn fresh_temporary_leaf(label: &str) -> std::path::PathBuf {
+    let unique = format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    std::fs::canonicalize("/tmp")
+        .unwrap()
+        .join(format!("guard-scratch-{label}-{unique}"))
+}
+
+fn assert_allowed_anywhere(session: &Session, cwd: &Path, command: &str) {
+    let result = session.evaluate_at(command, cwd);
+    assert_eq!(
+        result.minimum_action, "allow",
+        "{command}: {}",
+        result.reason_code
+    );
+}
+
+/// Agents put a scratch checkout straight into `/tmp`, refresh `origin`
+/// first and read inside it. The leaf does not exist yet, so no other user
+/// can own the directory Git fills.
+#[test]
+fn worktree_add_directly_in_the_temporary_root_is_quiet() {
+    let session = session("temp-leaf");
+    let primary = session.primary.display().to_string();
+    let fresh = fresh_temporary_leaf("leaf");
+    let _cleanup = crate::git_helper_fixture::FixtureCleanup(fresh.clone());
+    let fresh = fresh.display().to_string();
+    let output = std::process::Command::new("git")
+        .args(["-C", &primary, "rev-parse", "HEAD"])
+        .output()
+        .unwrap();
+    let commit = String::from_utf8(output.stdout).unwrap().trim().to_owned();
+    for command in [
+        format!("git -C {primary} worktree add -q --detach {fresh} {commit}"),
+        format!("git -C {primary} worktree add -q --detach {fresh} origin/main"),
+        format!("git -C {primary} worktree add {fresh} -b feat/scratch origin/main"),
+    ] {
+        assert_allow_at(&session, &session.org, &command, WORKTREE_ADD);
+    }
+    for command in [
+        format!("git worktree add -q --detach {fresh} origin/main"),
+        format!("git worktree add -q --detach {fresh} HEAD && cd {fresh} && git log -1 --format='%H %s'"),
+        format!(
+            "git fetch -q origin main && git worktree add -q --detach {fresh} origin/main \
+             && cd {fresh} && git log -1 --format='%H %s'"
+        ),
+    ] {
+        assert_allowed_anywhere(&session, &session.primary, &command);
+    }
+    assert_allowed_anywhere(
+        &session,
+        &session.org,
+        &format!("git -C {primary} worktree add -q --detach {fresh} HEAD && cd {fresh} && git log -1 --format='%H %s'"),
+    );
+}
+
+/// The same scratch checkout stays reviewed where the leaf already exists,
+/// or where the repository could run a program while Git fills it.
+#[test]
+fn worktree_add_directly_in_the_temporary_root_keeps_its_protections() {
+    let session = session("temp-leaf-refused");
+    let primary = session.primary.display().to_string();
+    let planted = fresh_temporary_leaf("planted");
+    let _planted = crate::git_helper_fixture::FixtureCleanup(planted.clone());
+    std::fs::create_dir(&planted).unwrap();
+    assert_reviewed(
+        &session,
+        &format!(
+            "git -C {primary} worktree add -q --detach {} origin/main",
+            planted.display()
+        ),
+    );
+    let hidden = std::fs::canonicalize("/tmp")
+        .unwrap()
+        .join(format!(".guard-scratch-{}", std::process::id()));
+    assert_reviewed(
+        &session,
+        &format!(
+            "git -C {primary} worktree add -q --detach {} origin/main",
+            hidden.display()
+        ),
+    );
+    let fresh = fresh_temporary_leaf("programs");
+    let _cleanup = crate::git_helper_fixture::FixtureCleanup(fresh.clone());
+    let add = format!(
+        "git -C {primary} worktree add -q --detach {} origin/main",
+        fresh.display()
+    );
+    let chain = format!(
+        "git -C {primary} fetch -q origin main && {add} && cd {} && git log -1",
+        fresh.display()
+    );
+    for (key, value) in [
+        ("core.fsmonitor", "/bin/true"),
+        ("credential.helper", "!/bin/sh -c true"),
+        ("filter.fixture.smudge", "cat"),
+    ] {
+        session.config(&[key, value]);
+        assert_reviewed(&session, &add);
+        assert_reviewed(&session, &chain);
+        session.config(&["--unset-all", key]);
+    }
+    let hook = session.primary.join(".git/hooks/post-checkout");
+    executable_hook(&hook);
+    assert_reviewed(&session, &add);
+    assert_reviewed(&session, &chain);
+}

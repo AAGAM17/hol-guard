@@ -241,6 +241,15 @@ fn a_local_store_with_the_decision_is_read() {
         shape(&connection).readable(&published()).unwrap(),
         Some(true)
     );
+    // A cached bundle with no policy-bundle row for its identities to match
+    // leaves every lookup as it was.
+    connection
+        .execute_batch("insert into sync_state values ('policy_bundle', '{}', 'x');")
+        .unwrap();
+    assert_eq!(
+        shape(&connection).readable(&published()).unwrap(),
+        Some(true)
+    );
 }
 
 #[test]
@@ -252,7 +261,9 @@ fn a_store_the_lookup_reads_differently_defers() {
         ),
         (
             "bundle",
-            "insert into sync_state values ('policy_bundle', '{}', 'x');",
+            "insert into sync_state values ('policy_bundle', '{}', 'x');
+             insert into policy_decisions (harness, scope, action, source, created_at, updated_at)
+             values ('*', 'global', 'block', 'policy-bundle', 'x', 'x');",
         ),
         (
             "state",

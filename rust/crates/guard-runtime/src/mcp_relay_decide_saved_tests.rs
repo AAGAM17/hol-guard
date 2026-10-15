@@ -195,6 +195,9 @@ fn a_store_without_saved_rows_answers_as_empty() {
 fn a_cached_bundle_defers_and_remote_rows_are_read() {
     let (home, connection) = guard_home("bundle");
     sync_state(&connection, "policy_bundle", "{}");
+    // Without a policy-bundle row, the bundle's identities match nothing.
+    assert!(read(&home, &binding(), |saved| saved.is_none()).unwrap());
+    decide(&connection, "artifact", "block", None, "policy-bundle");
     let deferred = read(&home, &binding(), |_| ()).err();
     assert_eq!(deferred, Some("mcp_relay_saved_remote_policy"));
     // The lookup never serves a cloud-sync row, and serves a signed memory

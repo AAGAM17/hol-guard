@@ -22,11 +22,11 @@
 //! never serves a cloud-sync or team-policy row and verifies no remote row's
 //! integrity, so the integrity key and state go only with a local decision.
 //! Any other shape defers, so the daemon takes the request: custom grant
-//! rows, portable decisions bound anywhere but the
-//! workspace's own identity, a portable identity the resident does not
-//! resolve exactly, a policy bundle, an integrity state other than the
-//! published protected one, a missing or unreadable decision, and every step
-//! the daemon could answer differently.
+//! rows, portable decisions bound anywhere but the workspace's own identity,
+//! a portable identity the resident does not resolve exactly, a policy
+//! bundle with a policy-bundle row to match, an integrity state other than
+//! the published protected one, a missing or unreadable decision, and every
+//! step the daemon could answer differently.
 
 use super::{reviewed_edge, HookDirectDefer, PRE_TOOL_USE};
 use crate::local_store_read::{
@@ -376,13 +376,17 @@ impl StoreShape<'_> {
     }
 
     /// Whether the store holds a local decision, when the daemon's lookup
-    /// reads it under the published integrity state: no cached policy bundle,
-    /// whose decision identities come from a synced payload the resident does
-    /// not validate, and the published state still stored. `None` otherwise.
+    /// reads it under the published integrity state: no cached policy bundle
+    /// with a policy-bundle row to match, since the bundle's decision
+    /// identities come from a synced payload the resident does not validate,
+    /// and the published state still stored. `None` otherwise.
     /// Portable decisions are read through the workspace's identity
     /// (`portable::identity`).
     fn readable(&self, integrity_state: &Value) -> Result<Option<bool>, HookDirectDefer> {
         if self.any(
+            "select 1 from policy_decisions where source = 'policy-bundle' limit 1",
+            &[],
+        )? && self.any(
             "select 1 from sync_state where state_key = 'policy_bundle' limit 1",
             &[],
         )? {

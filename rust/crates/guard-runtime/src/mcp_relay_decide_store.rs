@@ -8,7 +8,7 @@
 //! daemon published, which the store must still hold, protected. Remote
 //! rows need no more evidence than the proxy ships: the lookup never serves a
 //! cloud-sync or team-policy row and verifies no remote row's integrity. A
-//! cached policy bundle, an integrity state other than the published
+//! cached policy bundle with a policy-bundle row to match, an integrity state other than the published
 //! protected one, a newer or unknown schema, and a store it cannot read all
 //! defer the call; a row bound to a portable identity defers every lookup but one whose
 //! workspace resolves to that identity.
@@ -76,8 +76,12 @@ pub(super) fn saved<'c>(
 ) -> Result<Option<Saved<'c>>, &'static str> {
     let shape = Shape { connection };
     // The bundle's decision identities come from a synced, signed payload
-    // the resident does not validate.
+    // the resident does not validate. The lookup reads them only for a
+    // policy-bundle row: with none, the proxy's identities change nothing.
     if shape.any(
+        "policy_decisions",
+        "select 1 from policy_decisions where source = 'policy-bundle'",
+    )? && shape.any(
         "sync_state",
         "select 1 from sync_state where state_key = 'policy_bundle'",
     )? {

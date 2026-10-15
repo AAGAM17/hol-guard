@@ -21,6 +21,48 @@ pub(super) fn yield_signal_payload(payload: &Value) -> Option<Value> {
     yield_report::signal_payload(payload)
 }
 
+/// Oh My Pi 18.8 adds `path` and `paths` to an `edit` hook input, copied from
+/// the patch's `[PATH#TAG]` headers. They name no new target, so when they
+/// match the headers exactly they are dropped and the patch keeps its own
+/// proof. Any other value is not Oh My Pi's derivation and stays reviewed.
+pub(super) fn edit_signal_payload(payload: &Value) -> Option<Value> {
+    if payload.get("tool_name")?.as_str()? != "edit" {
+        return None;
+    }
+    let input = strict_tool_input(payload)?;
+    if input.len() < 2
+        || !input
+            .keys()
+            .all(|key| matches!(key.as_str(), "input" | "path" | "paths"))
+    {
+        return None;
+    }
+    let headers = super::super::omp_hashline_writes::header_paths(input.get("input")?.as_str()?)?;
+    let paths = input.get("paths")?.as_array()?;
+    if headers.is_empty()
+        || paths.len() != headers.len()
+        || !paths
+            .iter()
+            .zip(&headers)
+            .all(|(path, header)| path.as_str() == Some(*header))
+    {
+        return None;
+    }
+    match input.get("path") {
+        None if headers.len() > 1 => {}
+        Some(path) if headers.len() == 1 && path.as_str() == Some(headers[0]) => {}
+        _ => return None,
+    }
+    let projected_input = Map::from_iter([("input".to_owned(), input["input"].clone())]);
+    let mut projected = payload.clone();
+    for alias in super::extract::EMBEDDED_ARGUMENT_KEYS {
+        if projected.get(alias).is_some() {
+            projected[alias] = Value::Object(projected_input.clone());
+        }
+    }
+    Some(projected)
+}
+
 pub(super) struct OmpContext<'a> {
     pub(super) harness: &'a str,
     pub(super) event: &'a str,
@@ -237,14 +279,42 @@ fn listing(
     let recursive = signals.tool_name.as_deref() == Some("find") || input.contains_key("pattern");
     let gitignore = input.get("gitignore").and_then(Value::as_bool) != Some(false);
     let targets = search_targets(input_path(input, signals)?.unwrap_or("."), context)?;
+    let proven =
+        |target: &str| listing_target_proven(target, signals, (recursive, gitignore), context);
+    if targets.iter().all(|target| proven(target)) {
+        return Some(directory_allow(
+            context,
+            "native_omp_directory_listing",
+            "The Rust authority proved this names-only listing targets a verified ordinary directory.",
+        ));
+    }
+    // A literal path that names nothing lists nothing, so stopping the call
+    // costs nothing. A read of the same path gets the same answer, so saying
+    // why reveals no more and lets the agent fix the path instead of waiting
+    // on an approval. Sensitive names keep their review.
+    let (home, cwd) = (context.path.home_dir, context.path.cwd);
+    let missing = |target: &str| {
+        !signals.sensitive_target
+            && super::super::read_paths::missing_read_target(target, home, cwd, false)
+            && !super::super::sensitive_command(target)
+            && !super::super::sensitive_read_path_argument(target)
+    };
     targets
-        .into_iter()
-        .all(|target| listing_target_proven(target, signals, (recursive, gitignore), context))
+        .iter()
+        .all(|target| proven(target) || missing(target))
         .then(|| {
-            directory_allow(
-                context,
-                "native_omp_directory_listing",
-                "The Rust authority proved this names-only listing targets a verified ordinary directory.",
+            generic_result(
+                generic_action(
+                    context.harness,
+                    context.event,
+                    PreToolActionTypeV1::FileRead,
+                    PreToolOperationV1::Read,
+                    true,
+                    false,
+                ),
+                "block",
+                super::evaluate::MISSING_PATH,
+                "HOL Guard did not run this listing because its path does not exist. Check the path, for example by listing its parent directory, and try again with the correct one.",
             )
         })
 }
@@ -635,29 +705,37 @@ fn grep_scope(
             "The Rust authority proved this directory search cannot reach a sensitive file.",
         ));
     }
-    // A list entry that names nothing is never searched, so stopping the call
-    // costs nothing. Saying why lets the agent fix the path instead of waiting
-    // on an approval. The other entries still need their proof.
+    // A path that names nothing is never searched, so stopping the call costs
+    // nothing. Saying why lets the agent fix the path instead of waiting on
+    // an approval. The other entries of a list still need their proof.
     let missing = |target: &str| {
         super::super::read_paths::missing_read_target(target, home, cwd, true)
             && (super::super::read_paths::bounded_file_read_target(target, home, cwd)
                 || missing_under_searchable_folder(target, home, cwd))
     };
-    (list && targets.iter().all(|target| proven(target) || missing(target))).then(|| {
-        generic_result(
-            generic_action(
-                context.harness,
-                context.event,
-                PreToolActionTypeV1::FileRead,
-                PreToolOperationV1::Read,
-                true,
-                false,
-            ),
-            "block",
-            super::evaluate::MISSING_PATH,
-            "HOL Guard did not run this search because a path in its list does not exist. Check each path, for example by listing its parent directory, and try again with the correct ones.",
-        )
-    })
+    let reason = if list {
+        "HOL Guard did not run this search because a path in its list does not exist. Check each path, for example by listing its parent directory, and try again with the correct ones."
+    } else {
+        "HOL Guard did not run this search because its path does not exist. Check the path, for example by listing its parent directory, and try again with the correct one."
+    };
+    targets
+        .iter()
+        .all(|target| proven(target) || missing(target))
+        .then(|| {
+            generic_result(
+                generic_action(
+                    context.harness,
+                    context.event,
+                    PreToolActionTypeV1::FileRead,
+                    PreToolOperationV1::Read,
+                    true,
+                    false,
+                ),
+                "block",
+                super::evaluate::MISSING_PATH,
+                reason,
+            )
+        })
 }
 
 /// An absolute or `~` name that does not exist cannot resolve as a bounded
@@ -761,24 +839,29 @@ pub(super) fn host_reference_reason(value: &str) -> Option<&'static str> {
 }
 
 /// `artifact://<digits>` names an Oh My Pi session artifact, never a path.
+/// It may carry an `N-M` line range, `raw`, or one of each in either order;
+/// `raw` only drops line formatting from the same artifact.
 fn artifact_reference(value: &str) -> bool {
     let Some(rest) = value.strip_prefix("artifact://") else {
         return false;
     };
-    let (id, range) = match rest.split_once(':') {
-        Some((id, range)) => (id, Some(range)),
-        None => (rest, None),
+    let mut chunks = rest.split(':');
+    let id = chunks.next().unwrap_or_default();
+    let number = |part: &str| {
+        !part.is_empty() && part.len() <= 9 && part.bytes().all(|byte| byte.is_ascii_digit())
     };
-    !id.is_empty()
-        && id.len() <= 9
-        && id.bytes().all(|byte| byte.is_ascii_digit())
-        && range.is_none_or(|range| {
-            range.split_once('-').is_some_and(|(start, end)| {
-                [start, end].iter().all(|part| {
-                    !part.is_empty()
-                        && part.len() <= 9
-                        && part.bytes().all(|byte| byte.is_ascii_digit())
-                })
-            })
-        })
+    let (mut raw, mut range) = (false, false);
+    let selectors_ok = chunks.all(|chunk| {
+        if chunk.eq_ignore_ascii_case("raw") && !raw {
+            raw = true;
+            return true;
+        }
+        let is_range = chunk
+            .split_once('-')
+            .is_some_and(|(start, end)| number(start) && number(end));
+        let fresh = is_range && !range;
+        range |= is_range;
+        fresh
+    });
+    number(id) && selectors_ok
 }

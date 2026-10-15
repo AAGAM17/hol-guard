@@ -31,9 +31,10 @@ pub(super) fn reaches_outside(
     }
     // A variable or home path the sandbox would resolve differently. Redirect
     // targets appear only in the segment text.
-    if (expands_variable(&segment.text, name)
-        && !identity_expansions_only(segment, name)
-        && !(temp_fixed && private_temp_expansions_only(&segment.text)))
+    let fixed_expansions = identity_expansions_only(segment, name)
+        || exit_status_expansions_only(&segment.text)
+        || (temp_fixed && private_temp_expansions_only(&segment.text));
+    if (expands_variable(&segment.text, name) && !fixed_expansions)
         || segment.text.split_whitespace().any(|word| {
             word.trim_start_matches(['>', '<', '&', '|', '"', '\'', '='])
                 .starts_with('~')
@@ -139,6 +140,32 @@ pub(in crate::pretool) fn private_temp_expansions_only(text: &str) -> bool {
                     return false;
                 };
                 index += length;
+                count += 1;
+            }
+            _ => {}
+        }
+    }
+    count > 0 && count == text.matches('$').count()
+}
+
+/// Whether every `$` in `text` is a `$?` the shell expands. The previous
+/// step's exit status is a decimal number, so it names no path the sandbox
+/// would resolve differently, as in `test -d out; printf 'out=%s\n' "$?"`.
+fn exit_status_expansions_only(text: &str) -> bool {
+    let characters: Vec<char> = text.chars().collect();
+    let (mut single, mut double, mut count, mut index) = (false, false, 0usize, 0usize);
+    while let Some(&current) = characters.get(index) {
+        index += 1;
+        match current {
+            '\\' if !single => index += 1,
+            '\'' if !double => single = !single,
+            '"' if !single => double = !double,
+            '`' if !single => return false,
+            '$' if !single => {
+                if characters.get(index) != Some(&'?') {
+                    return false;
+                }
+                index += 1;
                 count += 1;
             }
             _ => {}

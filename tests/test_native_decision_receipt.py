@@ -385,6 +385,54 @@ def test_receipt_sqlite_failure_is_recoverable_and_bounded(tmp_path: Path) -> No
     assert recovered.stats()["receipt_durable_pending"] == 0
 
 
+def _receipt_row_count(store: GuardStore) -> int:
+    with store._connect() as connection:
+        return connection.execute(
+            "select (select count(*) from native_hook_decision_receipts) + "
+            "(select count(*) from native_prompt_decision_receipts)"
+        ).fetchone()[0]
+
+
+def test_store_receipt_insert_is_idempotent(tmp_path: Path) -> None:
+    store = GuardStore(tmp_path / "guard-home")
+    receipt = _receipt()
+    assert store.record_native_decision_receipt(receipt)
+    assert store.record_native_decision_receipt(receipt)
+    assert _receipt_row_count(store) == 1
+
+
+def test_prompt_receipt_persists_without_rewriting_tool_receipt_schema(tmp_path: Path) -> None:
+    store = GuardStore(tmp_path / "guard-home")
+    tool = _receipt()
+    prompt = _receipt(
+        event_name="UserPromptSubmit",
+        decision="deny",
+        model_output_action="not_applicable",
+        policy_action="block",
+        reason_code="native_guard_bypass_prompt",
+        prompt_risk_classes=["local_env_read", "exfil_intent", "guard_bypass_intent"],
+    )
+    assert store.record_native_decision_receipt(tool)
+    assert store.record_native_decision_receipt(prompt)
+    assert _receipt_row_count(store) == 2
+    tool_id, prompt_id = tool["decision_id"], prompt["decision_id"]
+    assert isinstance(tool_id, str) and isinstance(prompt_id, str)
+    assert store.get_native_decision_receipt(tool_id) == tool
+    assert store.get_native_decision_receipt(prompt_id) == prompt
+    with store._connect() as connection:
+        legacy = connection.execute(
+            "select sql from sqlite_schema where type = 'table' and name = 'native_hook_decision_receipts'"
+        ).fetchone()[0]
+        assert "event_name in ('PreToolUse', 'PostToolUse')" in legacy
+        assert connection.execute("select count(*) from schema_migrations where version = 29").fetchone()[0] == 1
+        connection.execute(
+            "update native_prompt_decision_receipts set prompt_risk_classes_json = ? where decision_id = ?",
+            ('["guard_bypass_intent"]', prompt["decision_id"]),
+        )
+    assert store.get_native_decision_receipt(prompt_id) is None
+    assert store.get_native_decision_receipt(tool_id) == tool
+
+
 def test_existing_tool_receipt_schema_gains_prompt_storage_additively(tmp_path: Path) -> None:
     guard_home = tmp_path / "guard-home"
     guard_home.mkdir()

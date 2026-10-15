@@ -82,7 +82,7 @@ pub(super) fn unproven_steps_reason(
 
 /// The executable basename plus a subcommand-shaped first argument, or a
 /// neutral word when neither token has a safe shape.
-fn step_label(segment: &crate::CommandSegmentV1) -> String {
+pub(super) fn step_label(segment: &crate::CommandSegmentV1) -> String {
     let basename = segment
         .executable
         .as_deref()

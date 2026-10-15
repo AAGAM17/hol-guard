@@ -152,6 +152,31 @@ fn composed_profile_orders_denials_last_and_covers_credentials() {
 }
 
 #[test]
+fn only_the_user_database_mach_service_is_reachable() {
+    let profile = workspace_profile::compose(&input("/w/proj"), &[], &[]).unwrap();
+    let lookups: Vec<&str> = profile
+        .lines()
+        .filter(|line| line.contains("mach-lookup") || line.contains("global-name"))
+        .collect();
+    assert_eq!(
+        lookups,
+        ["(allow mach-lookup (global-name \"com.apple.system.opendirectoryd.libinfo\"))"]
+    );
+    for service in [
+        "opendirectoryd.api",
+        "SecurityServer",
+        "securityd",
+        "secd",
+        "keychain",
+        "authd",
+        "(allow mach-lookup)",
+        "global-name-prefix",
+    ] {
+        assert!(!profile.contains(service), "{service}");
+    }
+}
+
+#[test]
 fn privileged_binaries_are_denied_execution() {
     let profile = workspace_profile::compose(&input("/w/proj"), &[], &[]).unwrap();
     assert!(profile.contains("(deny process-exec (literal \"/usr/bin/sudo\")"));

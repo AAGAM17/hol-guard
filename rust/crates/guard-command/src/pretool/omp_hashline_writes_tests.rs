@@ -29,6 +29,16 @@ fn plain_hashline_patches_report_each_file_once() {
             ("src/b.ts".to_owned(), false)
         ])
     );
+    // Oh My Pi trims spaces around the path, as models often write them.
+    assert_eq!(
+        targets("*** Begin Patch\n[ src/a.ts#0AC4]\nPUT 1.=1:\n+x\n[  src/b.ts ]\nPUT >$:\n+y\n[src/a.ts]\nPUT 2.=2:\n+z\n*** End Patch\n"),
+        Some(vec!["src/a.ts".to_owned(), "src/b.ts".to_owned()])
+    );
+    // Oh My Pi opens a leading `~/` under the home folder, padded or not.
+    assert_eq!(
+        targets("*** Begin Patch\n[~/project/src/a.ts#0AC4]\nPUT 1.=1:\n+x\n[ ~/src/b.ts]\nPUT >$:\n+y\n*** End Patch\n"),
+        Some(vec!["~/project/src/a.ts".to_owned(), "~/src/b.ts".to_owned()])
+    );
     // The envelope is optional, as in Oh My Pi.
     assert_eq!(
         targets("[app/[id]/page.tsx#BEEF]\r\nPUT 1.=1:\r\n+x\r\n"),
@@ -43,9 +53,12 @@ fn deletes_moves_and_rewritten_paths_stay_unproven() {
         "*** Begin Patch\n[src/a.ts#0AC4]\nMV src/b.ts\n*** End Patch\n",
         "*** Begin Patch\n[\"src/a.ts\"#0AC4]\nPUT 1.=1:\n+x\n*** End Patch\n",
         "*** Begin Patch\n[*** Update File: src/a.ts#0AC4]\nPUT 1.=1:\n+x\n*** End Patch\n",
-        "*** Begin Patch\n[~/project/src/a.ts#0AC4]\nPUT 1.=1:\n+x\n*** End Patch\n",
         "*** Begin Patch\n[local:/notes.md#0AC4]\nPUT 1.=1:\n+x\n*** End Patch\n",
-        "*** Begin Patch\n[ src/a.ts#0AC4]\nPUT 1.=1:\n+x\n*** End Patch\n",
+        "*** Begin Patch\n[~user/src/a.ts#0AC4]\nPUT 1.=1:\n+x\n*** End Patch\n",
+        "*** Begin Patch\n[~#0AC4]\nPUT 1.=1:\n+x\n*** End Patch\n",
+        "*** Begin Patch\n[\tsrc/a.ts#0AC4]\nPUT 1.=1:\n+x\n*** End Patch\n",
+        "*** Begin Patch\n[\u{feff}src/a.ts#0AC4]\nPUT 1.=1:\n+x\n*** End Patch\n",
+        "*** Begin Patch\n[  #0AC4]\nPUT 1.=1:\n+x\n*** End Patch\n",
         "*** Begin Patch\n[src/a.ts#0AC]\nPUT 1.=1:\n+x\n*** End Patch\n",
         "*** Begin Patch\n[src/a#b.ts#0AC4]\nPUT 1.=1:\n+x\n*** End Patch\n",
         "*** Begin Patch\n[#0AC4]\nPUT 1.=1:\n+x\n*** End Patch\n",

@@ -356,7 +356,10 @@ class TestPiInstall:
         assert "sourceFileRefForPostToolUse" in text
         assert "isVirtualSourcePath" in text
         assert "isAbsoluteSourcePath" not in text
-        assert "if (!path || isVirtualSourcePath(path)) return null;" in text
+        assert (
+            "if (!path || isVirtualSourcePath(path) || isJsonQueryPath(path) || isPathListRead(path)) return null;"
+            in text
+        )
         assert "text_excerpt: toolOutput" in text
         assert "GUARD_SOURCE_REF_MAX_OUTPUT_CHARS" in text
         assert "GUARD_SOURCE_REF_ALLOWED_TOOL_NAMES" in text

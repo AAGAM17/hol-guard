@@ -6,6 +6,7 @@ pub mod repository_scanner;
 pub mod secret_detection;
 pub mod staged_scanner;
 
+mod continuation;
 mod field_copy;
 mod masked_value;
 mod match_spans;
@@ -240,63 +241,6 @@ fn assignment_value(matched: &str) -> Option<&str> {
     Some(value)
 }
 
-/// Whether the text right after a matched assignment continues the value as
-/// an expression, as in `'mock-' + real_secret` or `"mock-"$REAL`, on its own
-/// line or, after a trailing `\` or an operator opening the next line, on the
-/// next. The match then holds only a prefix of the value, so its wording
-/// proves nothing.
-fn continues_as_expression(rest: &str) -> bool {
-    let mut lines = rest.split('\n').map(|line| line.trim_end_matches('\r'));
-    let line = lines.next().unwrap_or_default();
-    match line.trim() {
-        "\\" => return true,
-        "" => {
-            let next = lines.find(|next| !next.trim().is_empty());
-            return next.is_some_and(continues_previous_line);
-        }
-        _ => {}
-    }
-    let mut characters = line.chars();
-    match characters.next() {
-        None => return false,
-        Some('.') => {
-            return characters.next().is_some_and(|next| !next.is_whitespace());
-        }
-        Some(first) if !first.is_whitespace() => {
-            return !matches!(first, ',' | ';' | ')' | ']' | '}' | '`');
-        }
-        Some(_) => {}
-    }
-    let trimmed = line.trim_start();
-    if trimmed.starts_with("&&") {
-        return false;
-    }
-    matches!(
-        trimmed.chars().next(),
-        Some('+' | '.' | '|' | '~' | '%' | '&' | '$' | '"' | '\'')
-    )
-}
-
-/// Whether a line continues the previous line's expression: indented, and
-/// opening with a spaced `+`, `~`, `%` or `||`, or a `.` member call such as
-/// `.concat(`. Unindented lines (diff `+` lines, bullets) and `...` do not,
-/// nor does a quote or `$`, which usually starts a new statement or entry.
-fn continues_previous_line(line: &str) -> bool {
-    let operator = line.trim_start();
-    if operator.len() == line.len() {
-        return false;
-    }
-    let mut characters = operator.chars();
-    match characters.next() {
-        Some('+' | '~' | '%') => characters.next().is_some_and(char::is_whitespace),
-        Some('|') => characters.next() == Some('|'),
-        Some('.') => characters
-            .next()
-            .is_some_and(|next| next == '_' || next.is_ascii_alphabetic()),
-        _ => false,
-    }
-}
-
 /// Whether a value substitutes something else when it is used, as in
 /// `mock-${REAL_SECRET}`, `mock-$REAL`, `mock-$(cat key)`, `f"mock-{key}"`
 /// or `` `mock-${key}` ``. Its sample wording then proves nothing.
@@ -319,7 +263,7 @@ fn is_sample(
         return false;
     }
     if classifier == "credential-assignment"
-        && (field_copy::is_field_copy(matched)
+        && (field_copy::is_field_copy(matched, rest_of_line)
             || self_named_value::is_self_named(matched, rest_of_line)
             || assignment_value(matched).is_some_and(|value| {
                 inert_code_expression_regex().is_match(value) || masked_value::is_masked(value)
@@ -371,7 +315,7 @@ fn counted_matches<'t>(
         !is_sample(
             classifier,
             matched.as_str(),
-            continues_as_expression(&text[matched.end()..]),
+            continuation::continues_as_expression(&text[matched.end()..]),
             &text[matched.end()..line_end],
             suppress_samples,
             documentation_sample_context,

@@ -7,6 +7,11 @@ use guard_command::pretool::evaluate_pre_tool_envelope_with_context;
 use guard_contracts::PreToolResultV1;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+// Parallel tests can read the same clock value, so each fixture also takes a
+// unique sequence number.
+static FIXTURE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 struct Fixture {
     root: PathBuf,
@@ -28,8 +33,9 @@ fn fixture() -> Fixture {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/pretool-omp-workspace-search")
         .join(format!(
-            "home-{}-{}",
+            "home-{}-{}-{}",
             std::process::id(),
+            FIXTURE_COUNTER.fetch_add(1, Ordering::Relaxed),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -154,4 +160,107 @@ fn globs_list_names_below_the_workspace() {
             "{path}"
         );
     }
+}
+
+#[test]
+fn globs_pass_gitignored_links_that_leave_the_workspace() {
+    let f = fixture();
+    // A worktree package borrowing another checkout's installed packages.
+    let shared = f.root.join("shared/node_modules");
+    write(shared.join("pkg/index.js"), "synthetic fixture\n");
+    let link = f.home.join("app/web/node_modules");
+    write(f.home.join("app/web/package.json"), "{}\n");
+    std::os::unix::fs::symlink(&shared, &link).unwrap();
+    for path in ["**/*.sh", "**/*{registry,deploy,cleanup}*"] {
+        let result = omp(&f, "app", "glob", json!({"path": path}));
+        assert!(allowed(&result), "{path}: {}", result.reason_code);
+    }
+    // Without the gitignore the host walks the link, so it stays on review.
+    let input = json!({"path": "**/*.sh", "gitignore": false});
+    assert!(!allowed(&omp(&f, "app", "glob", input)));
+    // A link the gitignore does not cover still may not leave the workspace.
+    std::os::unix::fs::symlink(f.home.join(".ssh"), f.home.join("app/web/keys")).unwrap();
+    assert!(!allowed(&omp(
+        &f,
+        "app",
+        "glob",
+        json!({"path": "**/*.sh"})
+    )));
+}
+
+#[test]
+fn globs_walk_a_workspace_larger_than_the_content_search_bound() {
+    let f = fixture();
+    // More entries than a content search walks, as in a mid-size repository.
+    let large = f.home.join("app/src/generated");
+    for directory in 0..120 {
+        let directory = large.join(format!("d{directory}"));
+        std::fs::create_dir_all(&directory).unwrap();
+        for file in 0..180 {
+            std::fs::File::create(directory.join(format!("f{file}.ts"))).unwrap();
+        }
+    }
+    write(f.home.join("app/docs/AGENTS.md"), "synthetic fixture\n");
+    for path in ["**/AGENTS*", "**/*.md", "src/**/f1.ts"] {
+        let result = omp(&f, "app", "glob", json!({"path": path}));
+        assert!(allowed(&result), "{path}: {}", result.reason_code);
+        assert_eq!(result.reason_code, "native_omp_directory_listing");
+    }
+    // A content search over the same tree is still bounded.
+    let input = json!({"pattern": "deploy", "path": "."});
+    assert!(!allowed(&omp(&f, "app", "grep", input)));
+    // A directory link that leaves the prefix still fails the larger walk.
+    std::os::unix::fs::symlink(f.home.join(".ssh"), large.join("d7/keys")).unwrap();
+    let result = omp(&f, "app", "glob", json!({"path": "**/AGENTS*"}));
+    assert!(!allowed(&result), "{}", result.reason_code);
+}
+
+#[test]
+fn globs_list_a_linked_worktree_of_a_workspace_repository() {
+    let f = fixture();
+    // The session runs in `org`; the agent checks the repository out beside it.
+    let repository = f.home.join("org/repo");
+    let worktree = f.home.join("repo-fix");
+    let copy = f.home.join("repo-copy");
+    let admin = repository.join(".git/worktrees/repo-fix");
+    std::fs::create_dir_all(&admin).unwrap();
+    write(admin.join("commondir"), "../..\n");
+    write(
+        admin.join("gitdir"),
+        &format!("{}/.git\n", worktree.display()),
+    );
+    write(
+        worktree.join(".git"),
+        &format!("gitdir: {}\n", admin.display()),
+    );
+    std::fs::create_dir_all(copy.join(".git")).unwrap();
+    for checkout in [&repository, &worktree, &copy] {
+        write(
+            checkout.join("tests/auth-journey.test.ts"),
+            "synthetic fixture\n",
+        );
+        write(
+            checkout.join("tests/fixtures/tls/server.key"),
+            "synthetic fixture\n",
+        );
+    }
+    let glob = |checkout: &Path| {
+        let path = format!("{}/tests/*auth*journey*", checkout.display());
+        omp(&f, "org", "glob", json!({"path": path, "gitignore": true}))
+    };
+    for checkout in [&repository, &worktree] {
+        let result = glob(checkout);
+        assert!(
+            allowed(&result),
+            "{}: {}",
+            checkout.display(),
+            result.reason_code
+        );
+    }
+    // A checkout that is not a worktree of the session's repository keeps
+    // the stricter walk, which a key fixture below the prefix fails.
+    assert!(!allowed(&glob(&copy)));
+    // So does a worktree whose admin entry does not name it back.
+    write(admin.join("gitdir"), &format!("{}/.git\n", copy.display()));
+    assert!(!allowed(&glob(&worktree)));
 }

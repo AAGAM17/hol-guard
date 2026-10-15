@@ -536,6 +536,7 @@
           "src/codex_plugin_scanner/guard/native_*.py",
           "src/codex_plugin_scanner/guard/proxy/*",
           "src/codex_plugin_scanner/guard/runtime/restricted_*.py",
+          "src/codex_plugin_scanner/guard/runtime/git_execution_safety.py",
           "src/codex_plugin_scanner/guard/runtime/verified_*.py",
           "src/codex_plugin_scanner/guard/runtime/supply_chain*.py",
           "src/codex_plugin_scanner/guard/runtime/package_request_evaluation.py",

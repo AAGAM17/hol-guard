@@ -22,7 +22,8 @@ mod github;
 
 pub use catalog::compatibility_rule_ids;
 pub(crate) use environment::{
-    code_or_redirect_environment_name, inert_environment_name, plain_printed_name,
+    code_or_redirect_environment_name, credential_routing_environment_name, inert_environment_name,
+    plain_printed_name,
 };
 pub(crate) use git::{
     repository_routes_verified as git_repository_routes_verified,

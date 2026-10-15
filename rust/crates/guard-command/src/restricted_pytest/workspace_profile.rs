@@ -32,6 +32,10 @@ const PRIVILEGE_NAMES: &[&str] = &[
     "killall",
     "pkill",
 ];
+/// The libinfo endpoint Apple's own `system.sb` grants for user and group
+/// lookups. Credential, keychain and directory-administration services stay
+/// unreachable.
+pub(super) const USER_DATABASE_SERVICE: &str = "com.apple.system.opendirectoryd.libinfo";
 /// Root-level links (`/var` -> `/private/var`) that system tools name.
 /// xcode-select reads `/var/select/developer_dir`; without metadata on the
 /// link it fails with EPERM instead of falling back to its default.
@@ -331,6 +335,12 @@ pub(super) fn compose(
         format!("(deny process-exec {})", filter(&privileged, "literal")),
         "(allow signal (target self) (target children))".to_owned(),
         "(allow sysctl-read)".to_owned(),
+        // `getpwuid`, `getgrgid` and `getgrouplist` reach the user database
+        // through this one opendirectoryd endpoint; without it `id`, Python's
+        // `pwd`, Go's `os/user`, ssh and git cannot name the current user.
+        // It answers the same account queries any process can make, and no
+        // other mach service is reachable.
+        format!("(allow mach-lookup (global-name \"{USER_DATABASE_SERVICE}\"))"),
         format!("(allow file-read-data {})", filter(&listed, "literal")),
         format!(
             "(allow file-read-metadata {})",

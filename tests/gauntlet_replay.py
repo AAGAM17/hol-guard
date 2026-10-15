@@ -83,6 +83,10 @@ def _entry(entry: dict[str, Any], harness: str, expect: str) -> ReplayCase:
 def expand() -> list[ReplayCase]:
     cases = [_entry(e, h, e["expect"]) for e in REPLAY_DOCUMENT["cases"] for h in e["harnesses"]]
     for entry in GATE_DOCUMENT["cases"]:
+        # The replay runs every case in one environment, so it cannot model
+        # a case that depends on an inherited variable.
+        if entry.get("environment"):
+            continue
         mirror_pi = "omp" in entry["harnesses"] and entry["tool"] in PI_TOOLS
         harnesses = list(entry["harnesses"]) + (["pi"] if mirror_pi else [])
         expect = "quiet" if entry["expect"] == "allow" else "block"

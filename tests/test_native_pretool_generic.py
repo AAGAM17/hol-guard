@@ -160,6 +160,11 @@ def test_native_review_queues_approval_without_escaping_to_cli(
         started_at="2026-09-05T00:00:00+00:00",
         last_heartbeat_at="2026-09-05T00:00:00+00:00",
     )
+    # The approval wait is offered only for a review the agent's retry can match.
+    monkeypatch.setattr(
+        "codex_plugin_scanner.guard.daemon.hook_native_review_approval.native_review_binding",
+        lambda *_args, **_kwargs: f"native-review-v4:{'ab' * 32}:ask:review:review:r",
+    )
     worker = HookWorker(store=store)
     response = worker.review_http_payload(
         payload={"hook_event_name": "PreToolUse", "tool_input": {"url": "https://example.test"}},

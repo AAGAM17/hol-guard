@@ -7,13 +7,17 @@
 
 use super::search_scope_filter::{Override, SearchFilter};
 use super::search_scope_ignore::{
-    is_ignored, load_ignore_file, slash_path, IgnoreRule, IgnoreTiers, ScopeUnproven,
+    holds_custom_ignore_file, is_ignored, link_ignored, load_custom_rules, load_ignore_file,
+    slash_path, IgnoreRule, IgnoreTiers, ScopeUnproven,
 };
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 const MAX_SCOPE_ENTRIES: usize = 20_000;
+/// A names-only walk checks only entry metadata and links, never contents,
+/// so it may cover an ordinary mid-size repository in full.
+const MAX_NAME_SCOPE_ENTRIES: usize = 100_000;
 
 /// Which ignore files a walk honors, matching the host that searches.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -174,8 +178,9 @@ fn unfiltered_walk_proven(root: &Path) -> bool {
 }
 
 /// Oh My Pi `glob` walks below its fixed prefix and returns names only. Below
-/// a workspace cwd (not the home directory or an ancestor of it) that is the
-/// listing `find` already gets; anywhere else no sensitive file may be
+/// a workspace cwd (not the home directory or an ancestor of it), or in a
+/// linked worktree of a repository inside it, that is the listing `find`
+/// already gets; anywhere else no sensitive file may be
 /// reachable below the prefix. Either way no link may lead the walk out of it.
 pub(super) fn omp_glob_scope_proven(
     target: &str,
@@ -195,7 +200,15 @@ pub(super) fn omp_glob_scope_proven(
         SearchFilter::from_input(&Map::new())
             .is_some_and(|filter| walk_scope(&root, &filter, ignores, true, &mut None).is_ok())
     };
-    if !workspace.is_some_and(|cwd| root.starts_with(cwd)) {
+    // A linked worktree of a repository inside the workspace holds the same
+    // checkout, so its names are the workspace's too.
+    let in_workspace = workspace.is_some_and(|cwd| {
+        root.starts_with(&cwd)
+            || super::worktree_writes::linked_worktree_common_dir(&root)
+                .and_then(|common| common.parent().map(Path::to_path_buf))
+                .is_some_and(|checkout| checkout.starts_with(&cwd))
+    });
+    if !in_workspace {
         return unfiltered_walk_proven(&root) && names_walk(Ignores::None);
     }
     // Without ignore rules the walk covers every entry the host can reach,
@@ -335,18 +348,6 @@ fn ancestor_custom_rules(root: &Path, tiers: &mut IgnoreTiers) -> Result<(), Sco
     Ok(())
 }
 
-fn holds_custom_ignore_file(directory: &Path) -> bool {
-    [".ignore", ".rgignore"]
-        .iter()
-        .any(|name| std::fs::symlink_metadata(directory.join(name)).is_ok())
-}
-
-fn load_custom_rules(directory: &Path, tiers: &mut IgnoreTiers) -> Result<(), ScopeUnproven> {
-    let base = slash_path(directory).ok_or(ScopeUnproven)?;
-    load_ignore_file(&directory.join(".ignore"), &base, &mut tiers.ignore)?;
-    load_ignore_file(&directory.join(".rgignore"), &base, &mut tiers.rgignore)
-}
-
 /// Repository exclude rules and `.gitignore` files from the repository root
 /// down to the search root's parent.
 fn ancestor_git_rules(root: &Path, repository: &Path) -> Result<Vec<IgnoreRule>, ScopeUnproven> {
@@ -385,8 +386,8 @@ struct PendingDirectory {
 }
 
 /// Walks the modeled search scope. With `names`, the walk models a names-only
-/// listing: sensitive names are fine, but every link must resolve inside
-/// `root`. When a sensitive file fails the proof, `blocker` names it.
+/// listing: sensitive names are fine, but every link it walks must resolve
+/// inside `root`. When a sensitive file fails the proof, `blocker` names it.
 fn walk_scope(
     root: &Path,
     filter: &SearchFilter,
@@ -416,6 +417,11 @@ fn walk_scope(
         tiers: Rc::new(tiers),
     }];
     let mut inspected = 0_usize;
+    let entry_limit = if names {
+        MAX_NAME_SCOPE_ENTRIES
+    } else {
+        MAX_SCOPE_ENTRIES
+    };
     while let Some(directory) = pending.pop() {
         if directory.depth > MAX_SCOPE_DEPTH {
             return Err(ScopeUnproven);
@@ -442,7 +448,7 @@ fn walk_scope(
         for entry in entries {
             let entry = entry.map_err(|_| ScopeUnproven)?;
             inspected += 1;
-            if inspected > MAX_SCOPE_ENTRIES {
+            if inspected > entry_limit {
                 return Err(ScopeUnproven);
             }
             let path = entry.path();
@@ -461,7 +467,10 @@ fn walk_scope(
                 let target = std::fs::canonicalize(&path).ok();
                 let escapes = !target.as_deref().is_some_and(|t| t.starts_with(root));
                 if names {
-                    if escapes {
+                    // A link the ignore rules skip is never walked.
+                    let skipped =
+                        ignores != Ignores::None && link_ignored(&tiers, &path, target.as_deref())?;
+                    if escapes && !skipped {
                         return Err(ScopeUnproven);
                     }
                 } else if sensitive_scope_file(&path)

@@ -12,8 +12,8 @@
 //! `Update File:`-style noise and leading `***`, and recovers lowercase tags.
 //! This parser accepts only the plain grammar, so every target it reports is
 //! the file Oh My Pi would open. Deletes (`REM`), moves (`MV`), quoted or
-//! decorated paths, `~` and anything else it does not recognize leave the
-//! edit unproven.
+//! decorated paths, `~` other than a leading `~/`, and anything else it does
+//! not recognize leave the edit unproven.
 
 use std::path::Path;
 
@@ -83,6 +83,23 @@ pub(super) fn hashline_targets(input: &str) -> Option<Vec<(String, bool)>> {
     (!targets.is_empty()).then_some(targets)
 }
 
+/// Every header path in order, repeats included, the way Oh My Pi lists them
+/// in the `path`/`paths` fields it adds to an edit's hook input. `None` when a
+/// header is not plain or a legacy `¶` header is present.
+pub(super) fn header_paths(input: &str) -> Option<Vec<&str>> {
+    let mut paths = Vec::new();
+    for line in input.split('\n') {
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        if line.trim_start().starts_with('¶') {
+            return None;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            paths.push(header_path(line)?.0);
+        }
+    }
+    Some(paths)
+}
+
 fn header_path(line: &str) -> Option<(&str, bool)> {
     let body = line.strip_prefix('[')?.strip_suffix(']')?;
     let (path, tagged) = match body.rsplit_once('#') {
@@ -94,14 +111,24 @@ fn header_path(line: &str) -> Option<(&str, bool)> {
         Some(_) => return None,
         None => (body, false),
     };
-    // Oh My Pi rewrites quoted, starred, `Update File:`-prefixed and padded
-    // paths before opening them, and `~` or a scheme names another location,
-    // so only a path it would open as written is reported.
+    // Oh My Pi trims the path with JavaScript's `trim`. Without control
+    // characters or a byte order mark, that trims exactly what `str::trim`
+    // does, so a padded path names the same file once trimmed.
+    if path.chars().any(|c| c.is_control() || c == '\u{feff}') {
+        return None;
+    }
+    let path = path.trim();
+    // Oh My Pi rewrites quoted, starred and `Update File:`-prefixed paths
+    // before opening them, and a scheme names another location, so only a
+    // path it would open as written is reported. It opens a leading `~/`
+    // under the home folder, and shows paths that way, so models copy it.
+    let home_relative = path
+        .strip_prefix('~')
+        .is_none_or(|rest| rest.starts_with('/'));
     let plain = !path.is_empty()
-        && path.trim() == path
-        && !path.starts_with(['"', '\'', '*', '~'])
-        && !path.contains(['#', ':'])
-        && !path.chars().any(char::is_control);
+        && home_relative
+        && !path.starts_with(['"', '\'', '*'])
+        && !path.contains(['#', ':']);
     plain.then_some((path, tagged))
 }
 
@@ -115,6 +142,10 @@ pub(super) fn evaluate_hashline_edit(
     let targets = hashline_targets(input)?;
     let mut missing = false;
     for (target, tagged) in &targets {
+        let target = &match target.strip_prefix("~/") {
+            Some(rest) => Path::new(home_dir?).join(rest).to_str()?.to_owned(),
+            None => target.clone(),
+        };
         // Only an ordinary name may say it is missing; a sensitive or
         // protected one keeps its review.
         let missing_target = || {

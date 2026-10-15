@@ -436,13 +436,22 @@ fn private_temp_paths_run_in_the_workspace_sandbox() {
         "OUT_DIR=\"$TMPDIR/report-test\" npm run build",
         "OUT_DIR=\"${TMPDIR}/report-test\" npm run build",
         "OUT_DIR=$TMPDIR/report-test PORT=4173 npm run build",
-        "OUT_DIR=\"$TMPDIR/report-test\" bunx vitest run src/report.test.ts",
     ] {
         assert_eq!(
             reason("omp", command, &ws, true) == CONTAINED,
             host(),
             "{command}"
         );
+    }
+    // A runner reaches the sandbox only once its tool is installed, since
+    // `bunx` would otherwise fetch it; macOS may claim it with a narrower
+    // node profile first.
+    let runner = "OUT_DIR=\"$TMPDIR/report-test\" bunx vitest run src/report.test.ts";
+    assert_ne!(reason("omp", runner, &ws, true), CONTAINED);
+    std::fs::create_dir_all(ws.join("node_modules/.bin")).unwrap();
+    std::fs::write(ws.join("node_modules/.bin/vitest"), "#!/bin/sh\n").unwrap();
+    if cfg!(target_os = "linux") && host() {
+        assert_eq!(reason("omp", runner, &ws, true), CONTAINED);
     }
     // Another variable, a rebound TMPDIR, a default or a command
     // substitution could name a host directory, and a single-quoted `$` is

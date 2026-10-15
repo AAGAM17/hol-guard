@@ -144,6 +144,7 @@ pub fn evaluate_pre_tool_envelope_with_context(
             rustup_override_absent: false,
             npm_config_inert: false,
             shell_home_matches: false,
+            ripgrep_config_absent: false,
         },
         None,
     )
@@ -211,8 +212,8 @@ pub fn evaluate_pre_tool_envelope_with_execution_context(
         })
     });
     // Name what kept the extension controls from evaluating the command, a
-    // code-loading setting or an open quote, so the agent can fix it and retry
-    // instead of guessing.
+    // code-loading or credential setting or an open quote, so the agent can
+    // fix it and retry instead of guessing.
     if result.reason_code == "native_command_extension_evaluation_failed" {
         let command = extract_generic_signals(payload)
             .ok()
@@ -232,6 +233,13 @@ pub fn evaluate_pre_tool_envelope_with_execution_context(
         {
             result.reason = format!(
                 "HOL Guard blocked this command because the {setting} setting is filled by a command substitution or variable expansion, which Guard does not allow in an environment prefix. Do not capture credentials or other output into a setting. Rely on the tool's own login (for example gh's active account), or run the commands separately without passing the output through the environment."
+            );
+        } else if let Some(setting) = command
+            .as_deref()
+            .and_then(env_prefix_projection::credential_setting)
+        {
+            result.reason = format!(
+                "HOL Guard blocked this command because the {setting} setting passes a credential that the installed extension controls cannot check. Do not put credentials in an environment prefix. Rely on the tool's own login or the environment the session already has, or ask the user to run the command."
             );
         } else if command
             .as_deref()
@@ -323,14 +331,23 @@ fn evaluate_envelope(
         });
     // Oh My Pi sends an edit as `edit` with a hashline patch in `input`. Its
     // `+` rows are file content, so the patch has its own proof too.
+    // Oh My Pi 18.8 copies the headers into `path`/`paths`; the proof reads
+    // the edit without those copies once they are shown to match.
+    let edit_payload = (event == "PreToolUse" && harness == "omp")
+        .then(|| omp::edit_signal_payload(payload))
+        .flatten();
+    let edit_signals = edit_payload
+        .as_ref()
+        .and_then(|projected| extract_generic_signals(projected).ok());
+    let edit_signals = edit_signals.as_ref().unwrap_or(&signals);
     let omp_hashline_edit = (event == "PreToolUse"
         && harness == "omp"
-        && signals.tool_name.as_deref() == Some("edit")
-        && signals.url_values.is_empty()
-        && signals.path_values.is_empty()
-        && signals.command.is_none()
-        && !signals.independent_sensitive_target)
-        .then(|| omp::strict_tool_input(payload))
+        && edit_signals.tool_name.as_deref() == Some("edit")
+        && edit_signals.url_values.is_empty()
+        && edit_signals.path_values.is_empty()
+        && edit_signals.command.is_none()
+        && !edit_signals.independent_sensitive_target)
+        .then(|| omp::strict_tool_input(edit_payload.as_ref().unwrap_or(payload)))
         .flatten()
         .filter(|input| input.len() == 1)
         .and_then(|input| input.get("input")?.as_str())
@@ -568,6 +585,7 @@ fn evaluate_envelope(
     // A link to a secret file is that secret under another name.
     signals.sensitive_target |=
         super::secret_aliases::decision_names_secret_alias(command_decision.as_ref(), context);
+    let hashline_edit_proven = omp_hashline_edit.is_some();
     let mut result = if search_scope_proven {
         generic_result(
             generic_action(
@@ -641,6 +659,18 @@ fn evaluate_envelope(
             cwd,
         )
     };
+    // An Oh My Pi hashline edit writes the files its headers name, whatever
+    // its `path` field says, so only the hashline proof may allow it.
+    if harness == "omp"
+        && !hashline_edit_proven
+        && result.reason_code == "native_exact_safe_file_write"
+        && signals.tool_name.as_deref() == Some("edit")
+        && omp::strict_tool_input(payload)
+            .is_none_or(|input| input.contains_key("input") || input.contains_key("_input"))
+    {
+        let (reason_code, reason) = result::review_reason(PreToolActionTypeV1::FileWrite);
+        result = generic_result(result.action.clone(), "review", reason_code, reason);
+    }
     if result.reason_code == "native_file_read_review" {
         if let Some(note) = omp::grep_review_note(payload, &signals, &omp_context) {
             result.reason = format!("{} {note}", result.reason);
@@ -700,6 +730,11 @@ fn evaluate_envelope(
         _ => result,
     };
     let pre_floor = (result.reason_code.clone(), result.minimum_action.clone());
+    let floor_context = super::PathContext {
+        home_dir,
+        cwd,
+        ..context
+    };
     if event == "PreToolUse"
         // Existing helper-context review may delegate only to enforced
         // read-only containment below; do not replace that protection.
@@ -707,7 +742,7 @@ fn evaluate_envelope(
         && command_model.is_some_and(|model| {
             super::git_read_floor::requires_review(
                 model,
-                super::PathContext { home_dir, cwd, ..context },
+                floor_context,
                 deadline,
                 execution_environment,
             )
@@ -722,7 +757,11 @@ fn evaluate_envelope(
         result.decision = "deny".into();
         result.explicitly_benign = false;
         result.reason_code = "native_git_execution_context_review".into();
-        result.reason = "HOL Guard requires review because this Git read may execute a configured helper, or its effective configuration could not be verified.".into();
+        result.reason = command_model
+            .and_then(|model| {
+                git_read_order_reason(model, floor_context, deadline, execution_environment)
+            })
+            .unwrap_or_else(|| "HOL Guard requires review because this Git read may execute a configured helper, or its effective configuration could not be verified.".into());
     }
     let contained_test_reason = command_model.and_then(|model| {
         super::restricted_tests::readonly_test_reason(model).or_else(|| {
@@ -865,4 +904,47 @@ fn extension_rule_matched(result: &PreToolResultV1) -> bool {
             .iter()
             .any(|row| !row.effective_segment_indexes.is_empty())
     })
+}
+
+/// The Git floor's reason when every Git read was proven helper-free on its
+/// own and only an earlier step kept that proof from carrying over. Agents
+/// given the generic helper reason stopped using Git altogether; naming the
+/// step tells them the read is fine as its own command.
+fn git_read_order_reason(
+    model: &crate::CanonicalCommandV1,
+    context: super::PathContext<'_>,
+    deadline: Option<Instant>,
+    execution_environment: Option<&guard_contracts::GuardExecutionEnvironmentV1>,
+) -> Option<String> {
+    let steps = super::git_read_floor::unsettled_steps_before_reads(
+        model,
+        context,
+        deadline,
+        execution_environment,
+    )?;
+    let named: Vec<String> = steps
+        .iter()
+        .take(3)
+        .map(|index| {
+            format!(
+                "{} ({})",
+                index + 1,
+                super::compound_reason::step_label(&model.segments[*index])
+            )
+        })
+        .collect();
+    let more = if steps.len() > named.len() {
+        " and others"
+    } else {
+        ""
+    };
+    let (noun, verb) = if steps.len() == 1 {
+        ("Step", "runs")
+    } else {
+        ("Steps", "run")
+    };
+    Some(format!(
+        "HOL Guard requires review because {noun} {}{more} {verb} before the Git read and could not be proven to leave Git's configuration unchanged. The Git read was checked and runs no configured helper; run it as its own command.",
+        named.join(", "),
+    ))
 }

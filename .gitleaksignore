@@ -225,3 +225,5 @@ b6926bac2ef58d0794d1df6e2bb9ee401d8ac18b:tests/test_guard_runtime.py:generic-api
 478186a9bc5d3ba3cb17054e99327e7c83c0c968:rust/crates/guard-scanner/src/reference_value.rs:generic-api-key:99
 # Synthetic private key header in a source-slice unit test, assembled from parts in a follow-up commit.
 1249cd32613b79fa4f2241ac931c98b29de738ce:rust/crates/guard-hook-core/src/source_slice.rs:private-key:130
+# Synthetic base64 credential in a field-copy unit test that must still match.
+5797263da1a42106da975a2758b427831d1af7d1:rust/crates/guard-scanner/src/field_copy.rs:generic-api-key:151

@@ -18,6 +18,10 @@ pub struct PathContext<'a> {
     /// The shell expands `~` to `home_dir`: its HOME names the same
     /// directory. Literal contexts leave this false.
     pub shell_home_matches: bool,
+    /// No inherited `RIPGREP_CONFIG_PATH` can prepend options such as
+    /// `--pre`, `--hidden` or extra search paths to an `rg` command that
+    /// omits `--no-config`. Literal contexts leave this false.
+    pub ripgrep_config_absent: bool,
 }
 
 mod contained_wrapper;

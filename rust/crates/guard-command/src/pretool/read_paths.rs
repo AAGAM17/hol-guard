@@ -6,6 +6,8 @@ pub(super) use allowances::{
 };
 #[path = "hidden_listing.rs"]
 mod hidden_listing;
+#[path = "omp_json_query.rs"]
+mod omp_json_query;
 #[path = "omp_read_targets.rs"]
 mod omp_targets;
 pub(super) use hidden_listing::{home_hidden_directory, repository_hidden_directory};

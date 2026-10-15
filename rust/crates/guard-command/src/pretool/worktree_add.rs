@@ -54,6 +54,7 @@ pub(super) fn exact_safe_command(
         rustup_override_absent: context.rustup_override_absent,
         npm_config_inert: context.npm_config_inert,
         shell_home_matches: context.shell_home_matches,
+        ripgrep_config_absent: context.ripgrep_config_absent,
         cwd: cwd_proof
             .as_ref()
             .map(|proof| proof.cwd.as_str())

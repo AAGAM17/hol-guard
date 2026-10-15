@@ -177,7 +177,8 @@ fn envelope_target(payload: &Value) -> Option<String> {
     None
 }
 
-fn sensitive_envelope_target(payload: &Value) -> bool {
+fn sensitive_envelope_target(request: &NativeHookRequestV1) -> bool {
+    let payload = &request.payload;
     let target = envelope_target(payload);
     let resolved_directory_target = payload
         .get("resolved_directory_target")
@@ -186,8 +187,50 @@ fn sensitive_envelope_target(payload: &Value) -> bool {
         let path = Path::new(target.trim());
         sensitive_path_family(path).is_some() || guard_secure_fs::credential_named_path(path)
     };
-    target.as_deref().is_some_and(is_sensitive)
-        || resolved_directory_target.is_some_and(is_sensitive)
+    // A `file.json?q=<filter>` read queries the file before the `?`.
+    let is_sensitive_entry = |entry: &str| {
+        is_sensitive(entry)
+            || entry
+                .split_once('?')
+                .is_some_and(|(base, _)| is_sensitive(base))
+    };
+    target.as_deref().is_some_and(|target| {
+        search_entries(target, request)
+            .iter()
+            .any(|entry| is_sensitive_entry(entry))
+    }) || resolved_directory_target.is_some_and(is_sensitive)
+}
+
+/// The paths an OMP search `path` names. When the whole string is not an
+/// existing path, OMP splits it on `;` and searches each entry, so each entry
+/// is judged on its own: joining them would let one entry's directory names
+/// and another's file name read as a single credential path. A string that
+/// exists, or cannot be resolved, is also judged whole.
+fn search_entries<'a>(target: &'a str, request: &NativeHookRequestV1) -> Vec<&'a str> {
+    if !target.contains(';') {
+        return vec![target];
+    }
+    let mut entries: Vec<&str> = target
+        .split(';')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .collect();
+    let literal = match target.strip_prefix("~/") {
+        Some(rest) => Some(Path::new(&request.home_dir).join(rest)),
+        None if Path::new(target).is_absolute() => Some(Path::new(target).to_path_buf()),
+        None => request
+            .cwd
+            .as_deref()
+            .map(|cwd| Path::new(cwd).join(target)),
+    };
+    let literal_absent = literal.is_some_and(|path| {
+        std::fs::symlink_metadata(path)
+            .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+    });
+    if !literal_absent {
+        entries.push(target);
+    }
+    entries
 }
 
 fn inline_local_content(payload: &Value) -> bool {
@@ -626,7 +669,7 @@ pub fn review_post_tool(request: &NativeHookRequestV1) -> HookReviewResponseV1 {
     // PreToolUse cannot make a sensitive root's listing model-visible.
     if request.harness == "omp"
         && source_ref(&request.payload).is_none()
-        && sensitive_envelope_target(&request.payload)
+        && sensitive_envelope_target(request)
     {
         return HookReviewResponseV1::deny(
             "sensitive_path",

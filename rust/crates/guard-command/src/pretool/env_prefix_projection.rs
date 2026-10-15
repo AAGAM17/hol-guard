@@ -493,6 +493,21 @@ fn code_loading_name(upper: &str) -> bool {
 /// The first leading setting of any simple command that can load other code,
 /// as a shape-checked name a reason may echo.
 pub(super) fn code_loading_setting(command: &str) -> Option<String> {
+    leading_setting(command, |upper| {
+        crate::command_compatibility::code_or_redirect_environment_name(upper)
+    })
+}
+
+/// The first leading setting of any simple command named for a credential
+/// (`API_KEY`, `GH_TOKEN`), as a shape-checked name a reason may echo.
+pub(super) fn credential_setting(command: &str) -> Option<String> {
+    leading_setting(
+        command,
+        crate::command_compatibility::credential_routing_environment_name,
+    )
+}
+
+fn leading_setting(command: &str, matches: impl Fn(&str) -> bool) -> Option<String> {
     if command.len() > MAX_PROJECTED_CHARS {
         return None;
     }
@@ -522,9 +537,7 @@ pub(super) fn code_loading_setting(command: &str) -> Option<String> {
         };
         if name.len() <= MAX_SETTING_CHARS
             && assignment_name_shape(name)
-            && crate::command_compatibility::code_or_redirect_environment_name(
-                &name.to_ascii_uppercase(),
-            )
+            && matches(&name.to_ascii_uppercase())
         {
             return Some(name.to_owned());
         }

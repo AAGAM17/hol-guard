@@ -286,7 +286,7 @@ def build_fixture(root: Path) -> BenignFixture:
     (worktree / "dashboard" / "node_modules").symlink_to(parent / "dashboard" / "node_modules")
     # Fresh worktree package whose dependencies are installed only in the canonical checkout.
     _write(parent / "web" / "node_modules" / "left-pad" / "package.json", "{}\n")
-    _write(worktree / "web" / "package.json", "{\"private\": true}\n")
+    _write(worktree / "web" / "package.json", '{"private": true}\n')
 
     # Untracked child repository nested inside the parent working tree.
     nested.mkdir(parents=True)
@@ -335,7 +335,7 @@ def build_fixture(root: Path) -> BenignFixture:
         _write(repository / ".github" / "workflows" / "ci.yml", "name: ci\n")
         _write(repository / "src" / "index.ts", f"export const name = '{name}';\n")
         _write(repository / "README.md", f"# {name}\n")
-        _write(repository / "src" / "lib.rs", "pub fn name() -> &'static str {\n    \"fixture\"\n}\n")
+        _write(repository / "src" / "lib.rs", 'pub fn name() -> &\'static str {\n    "fixture"\n}\n')
         if name == "service-api":
             _write(repository / "contracts" / "commands.json", '{"commands": []}\n')
             _write(repository / "validation" / "schema.json", '{"type": "object"}\n')

@@ -254,7 +254,7 @@ def test_wrappers_always_route_to_native(tmp_path: Path, monkeypatch: pytest.Mon
     assert calls == ["inspect", "discover"]
 
 
-def test_windows_paths_are_utf16le_encoded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_all_os_paths_require_native_authority(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(transport, "_is_windows", lambda: True)
 
     assert transport._encoded_path(tmp_path) == str(tmp_path).encode("utf-16-le", "surrogatepass").hex()

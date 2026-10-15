@@ -436,6 +436,11 @@ pub(super) fn readonly_test_reason(model: &CanonicalCommandV1) -> Option<&'stati
             matches!(arguments, [tool, run, ..] if tool == "vitest" && run == "run")
                 || matches!(arguments, [flag, tool, run, ..] if flag == "--no-install" && tool == "vitest" && run == "run")
         }
+        // pnpm's spelling of a local-bin run. A pnpm option before the tool
+        // (`-c` runs a shell, `-r`/`--filter` fan out) keeps the review.
+        "pnpm" => {
+            matches!(arguments, [exec, tool, run, ..] if exec == "exec" && tool == "vitest" && run == "run")
+        }
         "vitest" => arguments.first().is_some_and(|arg| arg == "run"),
         "node" | "nodejs" => {
             matches!(arguments, [entry, run, ..] if entry.replace('\\', "/").contains("/node_modules/vitest/") && entry.ends_with("/vitest.mjs") && run == "run")

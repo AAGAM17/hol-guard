@@ -16,6 +16,23 @@ static MEMBER_ACCESS: LazyLock<Regex> = LazyLock::new(|| {
         .expect("member access rule must compile")
 });
 
+/// The start of the next field after a `,`: a bare or quoted key followed by
+/// `:` or `=`. Anything else after the comma, such as a literal, continues
+/// the value as a tuple or argument list.
+static NEXT_FIELD: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"^(?:"[A-Za-z_][A-Za-z0-9_.-]*"|'[A-Za-z_][A-Za-z0-9_.-]*'|[A-Za-z_][A-Za-z0-9_.-]*)\s*[:=]"#)
+        .expect("next field rule must compile")
+});
+
+/// Whether `text` holds nothing that continues a value: it is empty, a
+/// trailing comment, or closes a bracket.
+fn ends_value(text: &str) -> bool {
+    let text = text.trim_start_matches(|character: char| {
+        character.is_whitespace() || matches!(character, ')' | '}')
+    });
+    text.is_empty() || text.starts_with('#') || text.starts_with("//")
+}
+
 /// Field names that hold a credential, lowercased without `_` or `-`.
 const CREDENTIAL_FIELDS: [&str; 6] = [
     "apikey",
@@ -27,9 +44,22 @@ const CREDENTIAL_FIELDS: [&str; 6] = [
 ];
 
 /// Whether a credential assignment's value is an unquoted member access
-/// whose last field names a credential. A quoted value is a string literal
-/// and is never treated as a copy.
-pub(crate) fn is_field_copy(matched: &str) -> bool {
+/// whose last field names a credential and ends its statement. A quoted value
+/// is a string literal and is never treated as a copy, and neither is a
+/// member access that its own statement or field continues, as in
+/// `API_KEY = process.env.API_KEY || "literal"`. A following field or a
+/// trailing comment does not continue it.
+pub(crate) fn is_field_copy(matched: &str, rest_of_line: &str) -> bool {
+    let end = rest_of_line.find([',', ';']).unwrap_or(rest_of_line.len());
+    if !ends_value(&rest_of_line[..end]) {
+        return false;
+    }
+    if rest_of_line[end..].starts_with(',') {
+        let next = rest_of_line[end + 1..].trim_start();
+        if !(ends_value(next) || NEXT_FIELD.is_match(next)) {
+            return false;
+        }
+    }
     let Some(index) = matched.find([':', '=']) else {
         return false;
     };
@@ -72,7 +102,7 @@ mod tests {
             "password = cfg.Password",
             "token: response?.data?.accessToken",
         ] {
-            assert!(is_field_copy(matched), "{matched:?}");
+            assert!(is_field_copy(matched, ""), "{matched:?}");
         }
         for matched in [
             "password = \"admin.password\"",
@@ -84,7 +114,7 @@ mod tests {
             "token = session.token+literal",
             "password = admin.password.",
         ] {
-            assert!(!is_field_copy(matched), "{matched:?}");
+            assert!(!is_field_copy(matched, ""), "{matched:?}");
         }
     }
 
@@ -98,6 +128,15 @@ mod tests {
         assert!(!credential_assignment(source));
         let javascript = "const client = connect({\n  token: session.token,\n  password: config.db?.password,\n});\n";
         assert!(!credential_assignment(javascript));
+        for text in [
+            "connect({ token: session.token, user: session.user })",
+            "password = admin.password  # from the URL",
+            "password: cfg.password, // database",
+            "connect(token=session.token, user=session.user)",
+            "{ token: session.token, \"user\": session.user }",
+        ] {
+            assert!(!credential_assignment(text), "{text:?}");
+        }
     }
 
     #[test]
@@ -106,6 +145,10 @@ mod tests {
             "password = admin.password\npassword = hunter2-production-value",
             "token: session.token,\ntoken: \"a1b2c3d4e5f6g7h8\",",
             "password = \"admin.password\"",
+            "const API_KEY = process.env.API_KEY || \"hunter2-production-value\";",
+            "password = admin.password, \"hunter2-production-value\"",
+            "password = admin.password, \"admin:hunter2-production\"",
+            concat!("token = session.token, 'aGVsbG8gd29y", "bGQgc2VjcmV0='"),
         ] {
             assert!(credential_assignment(text), "{text:?}");
         }

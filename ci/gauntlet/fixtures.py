@@ -15,6 +15,7 @@ from pathlib import Path
 
 from .business_policy import BUSINESS_CLI_CASES, BUSINESS_CLI_EXECUTABLES
 from .extension_adapters import EXTENSION_ADAPTERS
+from .realism_fixtures import add_home_tools, add_main_shapes, borrow_main_modules
 from .review_fixtures import (
     GH_LOG,
     add_linked_worktree,
@@ -147,8 +148,10 @@ def create_fixture(
     registered main checkout is a sibling outside the working directory, as in real agent
     sessions. The repository also gains global Git LFS filter configuration, an untracked
     nested repository, an untracked linked worktree inside the tree, project and home
-    skill documents, an artifact document under the home directory and a bracketed route
-    directory. Benign first-contact scenarios use it so a regression on any of those
+    skill documents, an artifact document under the home directory, a bracketed route
+    directory and the shapes in ``realism_fixtures``: a gitignored ``node_modules`` link
+    into the main checkout, credential placeholders in docs and source, and a read-only
+    ``doctl``. Benign first-contact scenarios use it so a regression on any of those
     shapes cannot hide behind a minimal fixture. ``linked_worktree`` instead keeps the
     main checkout as the workspace and adds a linked worktree beside it under the home.
     ``scenario_id`` selects the optional global gitconfig variant a realistic scenario needs.
@@ -422,6 +425,7 @@ def _add_realistic_shapes(main: Path, home: Path, environment: dict[str, str], s
         ("worktree", "add", "--quiet", "-b", "fix/report-window", str(home / SIBLING_WORKTREE)),
     ):
         _git(args, sibling, environment)
+    add_home_tools(home)
     if scenario_id == INSTEAD_OF_CASE:
         _git(("remote", "add", "origin", "acme:app.git"), main, environment)
     if scenario_id == BENCH_SEARCH_CASE:
@@ -433,11 +437,13 @@ def _add_realistic_shapes(main: Path, home: Path, environment: dict[str, str], s
     (main / "src/password-reset-email.tsx").write_text("export const mail = 1;\n", encoding="utf-8")
     (main / "app/registry/[slug]").mkdir(parents=True)
     (main / "app/registry/[slug]/page.tsx").write_text("export default 1;\n", encoding="utf-8")
-    _git(("add", ".agents", "src", "app", "test_calc.py"), main, environment)
+    tracked = add_main_shapes(main)
+    _git(("add", ".agents", "src", "app", "test_calc.py", *tracked), main, environment)
     _git(("commit", "--quiet", "-m", "Synthetic shapes"), main, environment)
     # Agents routinely run inside a linked worktree whose main checkout is a sibling.
     worktree = home / "project-feature"
     _git(("worktree", "add", "--quiet", "-b", "feature", str(worktree)), main, environment)
+    borrow_main_modules(main, worktree)
     for relative in (".env", "deletion-target/keep.txt"):
         (worktree / relative).parent.mkdir(parents=True, exist_ok=True)
         (worktree / relative).write_bytes((main / relative).read_bytes())

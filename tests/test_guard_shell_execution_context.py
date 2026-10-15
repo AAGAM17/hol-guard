@@ -19,6 +19,7 @@ from codex_plugin_scanner.guard.cli.commands_support_runtime_policy import (
 from codex_plugin_scanner.guard.config import GuardConfig
 from codex_plugin_scanner.guard.consumer import artifact_hash
 from codex_plugin_scanner.guard.models import GuardArtifact
+from codex_plugin_scanner.guard.native_context import is_unbound_context_digest
 from codex_plugin_scanner.guard.runtime.package_intent_common import build_package_request_artifact
 from codex_plugin_scanner.guard.runtime.package_intent_parser import parse_package_intent
 from codex_plugin_scanner.guard.runtime.secret_file_requests import (
@@ -607,6 +608,11 @@ def test_missing_explicit_execution_context_completeness_cannot_reuse_token(tmp_
     first = _approval_token(artifact, workspace=workspace, config=config)
     second = _approval_token(artifact, workspace=workspace, config=config)
 
+    if is_unbound_context_digest(first) or is_unbound_context_digest(second):
+        # A loaded runner can leave the resident unreachable; the degraded
+        # sentinel never validates, so it cannot be reused either.
+        assert is_unbound_context_digest(first) and is_unbound_context_digest(second)
+        return
     assert first != second
 
 

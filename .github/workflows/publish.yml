@@ -2033,7 +2033,7 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           set -euo pipefail
-          status=$(curl -sS -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/plugin-scanner/${VERSION}/json")
+          status=$(curl -sS --max-time 30 --retry 3 -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/plugin-scanner/${VERSION}/json")
           if [[ "$status" == "404" ]]; then
             echo "plugin-scanner ${VERSION} is not on PyPI; publishing this run's build."
             exit 0

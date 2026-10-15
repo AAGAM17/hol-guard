@@ -38,6 +38,7 @@ from pathlib import Path
 import pytest
 
 from ci.gauntlet.fixtures import BENCH_CHECKOUT, BENCH_FILES
+from ci.gauntlet.realism_fixtures import REVIEW_NOTES, SESSION_SOURCE
 from codex_plugin_scanner.guard.adapters import codex_contained_tests
 
 _GIT_IDENTITY = {
@@ -275,7 +276,9 @@ def build_fixture(root: Path) -> BenignFixture:
     _write(parent / "src" / "password-reset-email.tsx", "export const Email = () => null;\n")
     _write(parent / "app" / "registry" / "[slug]" / "page.tsx", "export default function Page() { return null; }\n")
     _write(parent / ".agents" / "skills" / "x" / "SKILL.md", "---\nname: x\n---\nSynthetic skill body.\n")
-    _write(parent / ".gitignore", "node_modules/\n")
+    # Git treats a link as a file, so `node_modules/` alone leaves the borrowed
+    # `dashboard/node_modules` link below unignored.
+    _write(parent / ".gitignore", "node_modules/\ndashboard/node_modules\n")
     _git(parent, "add", "-A", home=home)
     _git(parent, "commit", "--quiet", "-m", "fixture base", home=home)
     _git(parent, "worktree", "add", "--quiet", "-b", "feature", str(worktree), home=home)
@@ -291,6 +294,9 @@ def build_fixture(root: Path) -> BenignFixture:
     _node_toolchain(parent / "dashboard")
     _write(worktree / "dashboard" / "package.json", (parent / "dashboard" / "package.json").read_text())
     (worktree / "dashboard" / "node_modules").symlink_to(parent / "dashboard" / "node_modules")
+    # The live Gauntlet's placeholder docs and field-copy source, read by its shell cases.
+    _write(worktree / "docs" / "review-notes.md", REVIEW_NOTES)
+    _write(worktree / "dashboard" / "src" / "session.js", SESSION_SOURCE)
     # Fresh worktree package whose dependencies are installed only in the canonical checkout.
     _write(parent / "web" / "node_modules" / "left-pad" / "package.json", "{}\n")
     _write(worktree / "web" / "package.json", '{"private": true}\n')

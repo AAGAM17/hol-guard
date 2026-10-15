@@ -433,3 +433,13 @@ def test_every_confirmed_false_positive_class_has_a_gate_case() -> None:
         "uv-version",
         "pytest-quiet",
     } <= ids
+    # Shapes the live Gauntlet missed: a gitignored node_modules link out of the
+    # worktree, piped local builds and doctl reads, and placeholder docs reads.
+    assert {
+        "omp-glob-recursive-sh",
+        "omp-glob-recursive-sh-pattern",
+        "gauntlet-linked-modules-relative-vite-build",
+        "doctl-apps-list-format-head",
+        "neg-doctl-auth-token-head",
+        "gauntlet-cat-credential-placeholder-docs",
+    } <= ids
